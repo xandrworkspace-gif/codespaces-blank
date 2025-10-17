@@ -1,0 +1,167 @@
+<?php
+
+
+define('TABLE_USER_STORE','user_store');
+define('FIELD_USER_STORE','');
+define('TABLE_USER_STORE_ARTIFACTS','user_store_artifacts');
+define('FIELD_USER_STORE_ARTIFACTS','');
+define('TABLE_USER_STORE_LOG','user_store_log');
+define('FIELD_USER_STORE_LOG','');
+
+define('USER_STORE_FLAG_ACTIVE',  0x000001); // Магазин открыт
+define('USER_STORE_FLAG_SHOW',  0x000002); // Магазин отображается в списке магазинов игроков
+define('USER_STORE_FLAG_PREMIUM',  0x000004); // Премиум магазин
+
+define('USER_STORE_NALOG', 0.01); //1% от стоимости предмета, но не более 5 серебра
+define('USER_STORE_NALOG_MIN', 1); //1 серебро минимальный налог
+define('USER_STORE_NALOG_MAX', 5); //5 серебра макс
+
+$user_store_flags_hash = array(
+    USER_STORE_FLAG_ACTIVE => 'Магазин открыт',
+    USER_STORE_FLAG_SHOW => 'Отображение в общем списке магазинов игроков',
+    USER_STORE_FLAG_PREMIUM => 'Премиум магазин',
+);
+
+define('USER_STORE_ARTIFACT_FLAG_NEW', 0x000001); //Только новый предмет
+
+define('USER_STORE_DEFINE_SLOTS', 5); //5 Слотов на продажу дефолтно
+define('USER_STORE_DEFINE_SLOTS_MAX', 15); //20 Слота на продажу макс
+
+define('USER_STORE_SLOTS_PRICE', 2); //Стоимость слота
+
+define('PREM_STORE_PRICE_TYPE', 3);
+define('PREM_STORE_PRICE', 10);
+
+define('PREM_STORE_TIME', 604800); //1 неделя
+
+$user_store_flags_hash = array(
+    //USER_STORE_ARTIFACT_FLAG_NEW => 'Только новый предмет',
+);
+
+#Работа с базой данных
+function user_store_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_USER_STORE,$ref,$add);
+}
+
+function user_store_list($ref=false, $add='', $ex = false) {
+    global $db_path;
+    return common_list($db_path,TABLE_USER_STORE,$ref,$add);
+}
+
+function user_store_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_USER_STORE, $ref, $add);
+}
+
+function user_store_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_USER_STORE,$param,FIELD_USER_STORE);
+}
+
+function user_store_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_USER_STORE,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////
+
+function user_store_artifacts_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_USER_STORE_ARTIFACTS,$ref,$add);
+}
+
+function user_store_artifacts_list($ref=false, $add='',$field='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_USER_STORE_ARTIFACTS,$ref,$add,$field);
+}
+
+function user_store_artifacts_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_USER_STORE_ARTIFACTS, $ref, $add);
+}
+
+function user_store_artifacts_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_USER_STORE_ARTIFACTS,$param,FIELD_USER_STORE_ARTIFACTS);
+}
+
+function user_store_artifacts_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_USER_STORE_ARTIFACTS,$ref,$add);
+    return true;
+}
+
+/////////////////////////////////////////////
+
+function user_store_log_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_USER_STORE_LOG,$ref,$add);
+}
+
+function user_store_log_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_USER_STORE_LOG,$ref,$add);
+}
+
+function user_store_log_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_USER_STORE_LOG, $ref, $add);
+}
+
+function user_store_log_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_USER_STORE_LOG,$param,FIELD_USER_STORE_LOG);
+}
+
+function user_store_log_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_USER_STORE_LOG,$ref,$add);
+    return true;
+}
+
+function user_store_slots($user_store){
+    if(!$user_store) return false;
+    if(!$user_store['id']) $user_store = user_store_get(array('user_id' => $user_store));
+    $slots_all = $user_store['slots'] + USER_STORE_DEFINE_SLOTS;
+    $slots_equal = user_store_artifacts_count(array('user_id' => $user_store['user_id']));
+    $slots_free = $slots_all - $slots_equal;
+    return array(
+        'all' => $slots_all,
+        'equal' => $slots_equal,
+        'free' => $slots_free,
+    );
+}
+
+function user_store_slots_price($user_store){
+    if(!$user_store) return false;
+    $cnt = $user_store['slots'] ? $user_store['slots'] : 1;
+    $price = USER_STORE_SLOTS_PRICE * $cnt;
+    return $price;
+}
+
+function user_store_title_correct($nick) {
+    if ((mb_strlen($nick) < 2) || (mb_strlen($nick) > 30)) return false;
+    if (preg_match('/^\d/',$nick)) return false;
+    if (preg_match(common_get_regexp('valid_name_symbols'),$nick)) return false;
+    if (@constant('_TRANS_LANG') == 'ru' && preg_match('/[a-zA-Z]/',$nick) && preg_match(common_get_regexp('locale_symbols'),$nick)) return false;
+    if (preg_match('/^('.translate('Фаулиус|Андельван|Го-Занар|Шеара|Ор-Веррон|Таллаар|Лайтир|Градон|Аквалон|Эарит|Айстрин|Эгос|Гельдокк|Умаллоу|Вулкан|Фиониус|Лецест|Андэр|ААрон|Осмол').')$/i',$nick)) return false;
+    if (preg_match('/('.translate('стреагорн|стриагрон|сртиагорн|страигорн|стриагрон|стреагрон|стеагорн|стриагон|Эрифариус|Арифариус|Эрефариус|Эрифаруис|Эфирариус|Эрефареус').')/i',$nick)) return false;
+    return true;
+}
+
+function user_store_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('USER_STORE_'.intval($ref),$timewait,$timelock);
+}
+
+function user_store_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('USER_STORE_'.intval($ref));
+}

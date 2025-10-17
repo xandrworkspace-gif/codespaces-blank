@@ -1,0 +1,222 @@
+<?php
+
+define('TABLE_AUTO_ACTION','auto_action');
+define('FIELD_AUTO_ACTION','');
+
+define('AUTO_ACTION_MAX_CNT_HAVE', 3); //Одновременные задачи
+define('AUTO_ACTION_MAX_CNT', 300);
+
+define('AUTO_ACTION_PRICE', 25);
+define('AUTO_ACTION_PRICE_TYPE', 1);
+define('AUTO_ACTION_DISCOUNT', 0); //Скидка в % от 0 до 100
+
+//Зависимости
+require_once("lib/action.lib");
+require_once("lib/skill.lib");
+require_once("lib/session.lib");
+require_once("lib/restriction.lib");
+
+function auto_action_open($user = array()){
+    if(((defined('AUTO_ACTION_ADMIN_ACTIVE') && AUTO_ACTION_ADMIN_ACTIVE) && $user['flags'] & USER_FLAG_ADMIN) || (defined('AUTO_ACTION_ACTIVE') && AUTO_ACTION_ACTIVE)) {
+        return true;
+    }
+    return false;
+}
+
+#Работа с базой данных
+function auto_action_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_AUTO_ACTION,$ref,$add);
+}
+
+function auto_action_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_AUTO_ACTION,$ref,$add);
+}
+
+function auto_action_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_AUTO_ACTION, $ref, $add);
+}
+
+function auto_action_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_AUTO_ACTION,$param,FIELD_AUTO_ACTION);
+}
+
+function auto_action_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_AUTO_ACTION,$ref,$add);
+    return true;
+}
+
+
+function auto_action_bkey($unit=0, $value=0, $descr=false) {
+    $info = array(
+        1 => array(date('Y-m-d.H:i'),                             64, translate('в минуту')),
+        4 => array(date('Y-m-d.H:5\M').(int)(date('i')/5),       304, translate('в 5 минут')),
+        7 => array(date('Y-m-d.H:10\M').(int)(date('i')/10),     604, translate('в 10 минут')),
+        10 => array(date('Y-m-d.H:15\M').(int)(date('i')/15),     904, translate('в 15 минут')),
+        13 => array(date('Y-m-d.H:30\M').(int)(date('i')/30),     1804, translate('в 30 минут')),
+        20 => array(date('Y-m-d.H'),                             3604, translate('в час')),
+        22 => array(date('Y-m-d.3\H').(int)(date('H')/3),       10804, translate('в 3 часа')),
+        24 => array(date('Y-m-d.6\H').(int)(date('H')/6),       21604, translate('в 6 часов')),
+        26 => array(date('Y-m-d.12\H').(int)(date('H')/12),     43204, translate('в 12 часов')),
+        30 => array(date('Y-m-d'),                              86404, translate('в день')),
+        40 => array(date('Y-\WW'),                             604804, translate('в неделю')),
+    );
+    if ($descr) {
+        if ($unit == 110) return sprintf(translate('1 раз в %d сек.'),$value);
+        if ($info[$unit]) return $value.' '.translate('раз').' '.$info[$unit][2];
+        $out = array();
+        $out[0] = 'Отключено';
+        foreach ($info as $k=>$v) $out[$k] = ($value ? $value.' '.translate('раз').' ' : '').$v[2];
+
+        return $out;
+    }
+    return $info[$unit];
+}
+
+function auto_action_cron(){
+    $auto_action_list = auto_action_list(false, ' AND per_unit > 0 AND amount > 0 AND last_active < '.time_current());
+    foreach ($auto_action_list as $auto_action){
+        $out = auto_action_use($auto_action);
+        print_r($out);
+        $bkey = auto_action_bkey($auto_action['per_unit'], 1);
+        if($out['act']['status'] != ACTION_STATUS_OK){
+            //Ошибка при выполнении действия.
+            auto_action_save(array(
+                'id' => $auto_action['id'],
+                '_set' => ' last_active = '.(time_current() + $bkey[1]),
+            ));
+        }elseif($out['act']['status'] == ACTION_STATUS_OK){
+            auto_action_save(array(
+                'id' => $auto_action['id'],
+                '_set' => ' amount = amount - 1, last_active = '.(time_current() + $bkey[1]),
+            ));
+        }
+    }
+}
+
+$auto_action_user_hash = array();
+
+function auto_action_use($auto_action = array()){
+    global $auto_action_user_hash;
+    $out = array();
+    if(!$auto_action) {$out['status'] = false; $out['error'] = 'Не указан объект'; return $out;}
+
+    if(!$auto_action['user_id']) {$out['status'] = false; $out['error'] = 'Не указан пользователь'; return $out;}
+    if(!$auto_action['artifact_id']) {$out['status'] = false; $out['error'] = 'Не указан артифакт'; return $out;}
+
+    if(!$auto_action['per_unit']) {$out['status'] = false; $out['error'] = 'Не запущено'; return $out;}
+    if(!$auto_action['amount']) {$out['status'] = false; $out['error'] = 'Закончилось'; return $out;}
+    if(!$auto_action['last_time'] > time_current()) {$out['status'] = false; $out['error'] = 'Еще не пришло время'; return $out;}
+
+    $user_id = $auto_action['user_id'];
+    $artifact_id = $auto_action['artifact_id'];
+
+    $user = cache_fetch($auto_action_user_hash, $user_id, 'user_get');
+
+    if(!auto_action_open($user)) {$out['status'] = false; $out['error'] = 'Функционал отключен'; return $out;}
+
+    NODE_SWITCH(false, $user_id);
+    $session = session_get($user_id);
+
+    $object = artifact_get(array('user_id' => $user_id, 'id' => $artifact_id));
+
+    if(!$object){
+        auto_action_discover($user_id, $auto_action);
+        $out['mail'] = 1; $out['send_mail'] = true;
+        $out['status'] = false; $out['error'] = 'Не найден объект'; return $out;
+    }
+    $object_class = $object['object_class'];
+    $object_id = $object['id'];
+    $action_id = false;
+    $action = ($object_class && $object_id) ? action_object_get($object_class,$object_id,$action_id,'',true) : false;
+
+    if(!$action['id']) {
+        auto_action_save(array(
+            'id' => $auto_action['id'],
+            'per_unit' => 0,
+        )); //Отключаем нахуй
+        $out['mail'] = 2; $out['send_mail'] = true;
+        $out['status'] = false; $out['error'] = 'Не задано действие'; return $out;
+    }
+
+    if(!$action) {
+        auto_action_save(array(
+            'id' => $auto_action['id'],
+            'per_unit' => 0,
+        )); //Отключаем нахуй
+        $out['mail'] = 2; $out['send_mail'] = true;
+        $out['status'] = false; $out['error'] = 'Не задано действие'; return $out;
+    }
+
+    if ($action['flags'] & ACTION_FLAG_EXCEPT_MYSELF || $action['flags'] & ACTION_FLAG_CONFIRM) {	// ЧЕЕ
+        auto_action_discover($user_id, $auto_action);
+        $out['mail'] = 3; $out['send_mail'] = true;
+        $out['status'] = false; $out['error'] = 'Не найден объект'; return $out;
+    }
+
+    if ($action['flags'] & ACTION_FLAG_CONFIRM) {	// требуется подтверждение цели
+        {
+            auto_action_save(array(
+                'id' => $auto_action['id'],
+                'per_unit' => 0,
+            )); //Отключаем нахуй
+            $out['mail'] = 4; $out['send_mail'] = true;
+            $out['status'] = false; $out['error'] = 'Требуется подтверждение'; return $out;}
+    } elseif ($action['ltime']) {
+        if ($session['action_id'] == $action['id']) {
+            if ($session['ltime'] > time_current()) {
+                {$out['status'] = false; $out['error'] = 'Нужно подождать'; return $out;}
+            }
+        } else {
+            // Проверяем ограничения на длительном действии, чтобы игрок зря не ждал
+            if ($action['flags'] & ACTION_FLAG_RESTRICTION_CHECK_ONSTART) {
+                $restriction_object_list = array();
+                restriction_get_dependent($subject, $restriction_object_list);
+                if ($object) restriction_get_dependent($object,$restriction_object_list);
+                $out_restriction = restriction_check($action, $restriction_object_list, $restriction_object_list);
+                if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) {
+                    {$out['status'] = false; $out['error'] = 'Ограничение'; return $out;}
+                }
+            }
+            session_save(array(
+                'uid' => $session['uid'],
+                'action_id' => $action['id'],
+                'ltime' => time_current() + $action['ltime'],
+                'stime' => time_current(),
+            ));
+        }
+    }
+
+    if ($session['ltime'] || $session['action_id']) {
+        session_save(array(
+            'uid' => $session['uid'],
+            'ltime' => 0,
+            'action_id' => 0,
+            'stime' => time_current(),
+        ));
+    }
+    // Выполняем действие
+    $out['act'] = action_do($action,$user,$object, array('auto' => true));
+    $out['status'] = true;
+    return $out;
+}
+
+function auto_action_discover($user_id, $auto_action){
+    skill_object_set_value(OBJECT_CLASS_USER, $user_id, 'AUTO_ACTION_CNT', $auto_action['amount'], array('relative' => true));
+    //Сохраним кол-во действия и удалим авто-действие
+    auto_action_delete($auto_action['id']); //Очистим задание (т.к нет артефакта)
+}
+
+#Работа с базой данных
+
+function auto_action_price(){
+    if(defined('AUTO_ACTION_DISCOUNT') && AUTO_ACTION_DISCOUNT){
+        return AUTO_ACTION_PRICE - (AUTO_ACTION_PRICE * (AUTO_ACTION_DISCOUNT / 100));
+    }
+    return AUTO_ACTION_PRICE;
+}

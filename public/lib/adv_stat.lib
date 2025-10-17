@@ -1,0 +1,167 @@
+<?
+define('TABLE_ADV_STAT_ARTIKUL_LIST','adv_stat_artikul');
+define('FIELD_ADV_STAT_ARTIKUL_LIST','');
+define('TABLE_ADV_STAT_LIST','adv_stat');
+define('FIELD_ADV_STAT_LIST','');
+
+define('ADV_TYPE_HIT', 1); //Переход (Константа)
+define('ADV_TYPE_REGISTER', 2); //Регистрация (Переменная)
+
+define('ADV_FLAG_ACTIVE',	0x00001); //Активна
+define('ADV_FLAG_SEE', 		0x00002); //Следить из админки
+
+$adv_flags_hash = array(
+    ADV_FLAG_ACTIVE => 'Активна',
+    ADV_FLAG_SEE => 'Следить из админки',
+);
+
+$adv_types = array(
+    ADV_TYPE_HIT => array('title' => 'Переход', 'const' => true, 'log' => true),
+    ADV_TYPE_REGISTER => array('title' => 'Регистрация', 'const' => false, 'log' => true),
+);
+
+#Работа с базой данных
+function adv_artikul_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_STAT_ARTIKUL_LIST,$ref,$add);
+}
+
+function adv_artikul_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_STAT_ARTIKUL_LIST,$ref,$add);
+}
+
+function adv_artikul_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_STAT_ARTIKUL_LIST, $ref, $add);
+}
+
+function adv_artikul_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_STAT_ARTIKUL_LIST,$param,FIELD_ADV_STAT_ARTIKUL_LIST);
+}
+
+function adv_artikul_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_STAT_ARTIKUL_LIST,$ref,$add);
+    return true;
+}
+
+#Работа с базой данных
+
+#Работа с базой данных
+function adv_stat_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_STAT_LIST,$ref,$add);
+}
+
+function adv_stat_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_STAT_LIST,$ref,$add);
+}
+
+function adv_stat_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_STAT_LIST, $ref, $add);
+}
+
+function adv_stat_save($param, $relative = array()) {
+    global $db_path,$adv_types;
+    if($adv_types[$param['type']]['const']){
+        $old_param = adv_stat_get(array('artikul_id' => $param['artikul_id'], 'type' => $param['type']));
+        foreach($relative as $v){
+            $param[$v] += $old_param[$v];
+        }
+        $param['id'] = $old_param['id']; //Поставили;)
+    }
+    return common_save($db_path,TABLE_ADV_STAT_LIST,$param,FIELD_ADV_STAT_LIST);
+}
+
+function adv_stat_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_STAT_LIST,$ref,$add);
+    return true;
+}
+
+#Работа с базой данных
+
+function adv_stat_cache($update = false){
+    $adv_stat_cache = new Cache(md5('adv_stat_cache6'));
+    if (!$adv_stat_cache->get() || $update) {// Проверим кеш
+        $ret_array = array();
+        $list = adv_artikul_list(false, ' AND flags & '.ADV_FLAG_SEE);
+        foreach($list as $artikul){
+            $count_reg = adv_stat_count(false, ' AND artikul_id = '.$artikul['id'].' AND uid != 0 AND type = '.ADV_TYPE_REGISTER);
+            $stat_click = adv_stat_get(array('artikul_id' => $artikul['id']), ' AND type = '.ADV_TYPE_HIT);
+            $ret_array[$artikul['id']] = array('title' => $artikul['title'],'reg_cnt' => intval($count_reg), 'stat_click' => intval($stat_click['cnt']));
+        }
+        $adv_stat_cache->update($ret_array,180);
+        return $ret_array;
+    }else{
+        return $adv_stat_cache->get();
+    }
+}
+
+function adv_stat_init($r_id = false, $c_id = false){
+    $adv_stat_id = (defined('ACTIVE_RC_ID') && ACTIVE_RC_ID ? ACTIVE_RC_ID : 0);
+    if(!$adv_stat_id) return false;
+    $adv_link = intval($r_id) ? intval($r_id) : intval($c_id); //Или по тоучу или по куки.
+    if($adv_stat_id != -1 && $adv_link != $adv_stat_id) return false;
+    if($adv_link){
+        $adv_cur = adv_artikul_get($adv_link, ' AND flags & '.ADV_FLAG_ACTIVE);
+        if($adv_cur){
+            if(!intval($c_id)){ //Вносим если только куки нет...
+                setcookie('rc',$adv_cur['id'],time_current()+60*60*24*7,'/',session_cookie_domain()); //Храним куку неделю) вдруг статистика изменится
+            }
+            if(!intval($_COOKIE['rc'])){ //Только по первому переходу, не надо брать из куки епт
+                //Учтем статистку по хиту сразу же!
+                $adv_stat_hit = array(
+                    'artikul_id' => $adv_cur['id'],
+                    'type' => ADV_TYPE_HIT,
+                    'time_set' => time_current(),
+                    'ip' => common_client_ip(),
+                    'cnt' => 1,
+                );
+                adv_stat_save($adv_stat_hit, array('cnt'));
+                adv_stat_log();
+            }
+        }
+        return $adv_cur;
+    }
+    return false;
+}
+
+function adv_stat_trigger($user_id, $cnt_stat = ''){
+    if($user_id && intval($_COOKIE['rc']) > 0){
+        $adv_cur_stat = adv_stat_get(array('artikul_id' => intval($_COOKIE['rc']), 'type' => ADV_TYPE_REGISTER, 'uid' => $user_id));
+        if($adv_cur_stat['cnt_'.$cnt_stat] >= 10){
+            common_resetcookie('rc', '');
+            return;
+        }
+        if($adv_cur_stat){
+            adv_stat_save(array(
+                'id' => $adv_cur_stat['id'],
+                '_set' => sql_pholder(' cnt_'.$cnt_stat.' = cnt_'.$cnt_stat.' + 1'),
+            ));
+        }
+    }
+}
+
+define('ADV_STAT_REC_LOG', 'logs/rec_log.log');
+define('ADV_STAT_MAX_LEN', 4999);
+
+function adv_stat_log(){
+    if (strstr($_SERVER['HTTP_USER_AGENT'], 'YandexBot')) {$bot='YandexBot';}
+    elseif (strstr($_SERVER['HTTP_USER_AGENT'], 'Googlebot')) {$bot='Googlebot';}
+    else { $bot=$_SERVER['HTTP_USER_AGENT']; }
+
+    $ip = common_client_ip();
+    $date = date("H:i:s d.m.Y");        //дата события
+    $home = $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];    //какая страница сайта
+    $lines = file(ADV_STAT_REC_LOG);
+    while(count($lines) > ADV_STAT_MAX_LEN) array_shift($lines);
+    $lines[] = $date."|".$bot."|".$ip."|".$home."|\r\n";
+    file_put_contents(ADV_STAT_REC_LOG, $lines);
+}

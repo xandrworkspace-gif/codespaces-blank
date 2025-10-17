@@ -1,0 +1,42 @@
+<?
+require_once("include/common.inc");
+require_once("lib/common.lib");
+
+common_init();
+
+define('TABLE_IP_REGER','ip_reger');
+
+define('REGISTER_MULTS_TIME', 600); //10 минут
+
+function register_get_ip($ip){
+    global $db_path;
+    return common_get($db_path, TABLE_IP_REGER, array('ip' => $ip));
+}
+
+function ip_reger_get($ref, $add = ''){
+    global $db_path;
+    return common_get($db_path, TABLE_IP_REGER, $ref, $add);
+}
+function ip_reger_delete($ref, $add = ''){
+    global $db_path;
+    return common_delete($db_path, TABLE_IP_REGER, $ref, $add);
+}
+
+function register_save_ip($ip,$user_id){
+    global $db_path;
+    return common_save($db_path, TABLE_IP_REGER, array('ip' => $ip, 'user_id' => $user_id, 'time' => time_current()));
+}
+
+
+function register_lock($ip = false, $timewait = 20, $timelock = 60){
+    global $tq;
+    if (!$ip) return false;
+    return $tq->capture('REGISTER_LOCK_'.strval($ip),$timewait,$timelock);
+}
+
+function register_unlock($ip = false){
+    global $tq;
+    if (!$ip) return false;
+    return $tq->release('REGISTER_LOCK_'.strval($ip));
+}
+?>

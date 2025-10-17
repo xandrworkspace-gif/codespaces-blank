@@ -1,0 +1,60 @@
+<? # $Id: npc.lib,v 1.3 2009-10-27 13:46:19 s.ignatenkov Exp $
+
+// Имена и поля таблиц
+define('TABLE_NPCS','npcs');
+define('FIELD_NPCS','');
+define('TABLE_NPC_QUESTS','npc_quests');
+define('FIELD_NPC_QUESTS','');
+
+
+function npc_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_NPCS,$ref,$add);
+}
+
+function npc_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_NPCS,$ref,$add);
+}
+
+function npc_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_NPCS, $ref, $add);
+}
+
+function npc_save($param) {
+	global $db;
+	return common_save($db,TABLE_NPCS,$param,FIELD_NPCS);
+}
+
+function npc_delete($ref) {
+	global $db;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db,TABLE_NPCS,$ref);
+	npc_quest_delete(array('npc_id' => $ref));
+	return true;
+}
+
+function npc_quest_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_NPC_QUESTS,$ref,$add);
+}
+
+function npc_quest_list($ref=false, $add='') {
+	global $db;
+	if (!$ref && !$add) return false;
+	return common_list($db,TABLE_NPC_QUESTS,$ref,$add);
+}
+
+function npc_quest_save($param) {
+	global $db;
+	if (!$param['id'] && !$param['npc_id']) return false;
+	return common_save($db,TABLE_NPC_QUESTS,$param,FIELD_NPC_QUESTS);
+}
+
+function npc_quest_delete($ref=false) {
+	global $db;
+	return common_delete($db,TABLE_NPC_QUESTS,$ref);
+}
+
+?>

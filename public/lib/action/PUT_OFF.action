@@ -1,0 +1,132 @@
+<? # $Id: PUT_OFF.action,v 1.9 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "снять предмет"
+
+$inventory_swf_ignored_slots = array('EFFECT', 'VARIANT_EFFECT');
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (!$object['slot_id'] || ($object['slot_id'] == 'TEMP_EFFECT')) return;
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if ($object['type_id'] == ARTIFACT_TYPE_ID_INJURY) {
+	$out['error'] = translate('Нельзя снять травму!');
+	return;
+}
+$skill = skill_object_get($object['object_class'],$object,false," AND skill_id='SLOT_CNT'");
+if ($skill) { // попытка снять вещь добавляющую боевые слоты
+	$user_slots_rest = user_get_slot_num_max($subject['id'], 'EFFECT') - $skill['value'];
+	$effect_list = user_get_artifact_list($subject['id'], 'EFFECT');
+	$user_slot_num_hash = get_hash($effect_list, 'slot_num', 'slot_num');
+	if ($user_slot_num_hash && (max($user_slot_num_hash) > $user_slots_rest)) {
+		$out['error'] = translate('Можно снять только пустой пояс!');
+		return;
+	}
+	$out['param_success'] = array('slot_num' => 1);
+}
+
+if (!isset($artikul) || $artikul['id'] != $object['artikul_id']) {
+	$artikul = artifact_artikul_get($object['artikul_id']);
+}
+$inventory_swf = in_array($artikul['slot_id'], $inventory_swf_ignored_slots) ? '' : "'inventory':'',";
+
+if ($object['cnt'] > 0) { // снятие для любых стекающихся вещей
+	$artifact = artifact_get(false,sql_pholder(" AND artikul_id=? AND user_id=? AND slot_id='' AND (time_expire = 0 OR time_expire > ?)",$object['artikul_id'],$subject['id'], time_current()));
+	if (!$artifact) {
+		artifact_save(array(
+			'id' => $object['id'],
+			'slot_id' => '',
+		));
+	} else {
+		artifact_change_cnt($artifact['id'],$object['cnt'], '', array(
+			'time_expire' => intval($object['time_expire']),
+		));
+		artifact_delete($object);
+	}
+	$out['status'] = ACTION_STATUS_OK;
+	//chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => "updateSwf({'lvl':'','items':'',".$inventory_swf."'items_right':''});"));
+	artifact_bag_send_diff($subject['id'], array($artifact['id'],$object['id']));
+	return;
+}
+
+// Если снимаемая вещь - доспех стиля в правой или левой руке
+$hand_slots = array('RHAND', 'LHAND');
+if (in_array($object['slot_id'], $hand_slots) && ($object['flags'] & ARTIFACT_FLAG_ARMOR_STYLE)) {
+	// То проверяем, что вещь одетая поднизом была двуручным оружием - тогда снимаем противоположную сторону с доспехом стиля (если что-то есть)
+	$artifact_list = artifact_list(false, $subject['id'], $hand_slots, true);
+	$other_artifact_id = 0;
+	$artikuls = array();
+	foreach ($artifact_list as $artifact) {
+		if (!($artifact['flags'] & ARTIFACT_FLAG_ARMOR_STYLE)) {
+			$artikuls[] = $artifact['artikul_id'];
+		} elseif ($object['id'] != $artifact['id']) {
+			$other_artifact_id = $artifact['id'];
+		}
+	}
+	// Дальнейшие действия только, если под доспеком стиля только одна вещь и есть в другой руке доспех стиля
+	if (count($artikuls) == 1 && $other_artifact_id) {
+		$artikul = artifact_artikul_get($artikuls[0]);
+		if ($artikul && ($artikul['f_cfg'] & ARTIFACT_PPT_MW)) {
+			artifact_save(array(
+				'id' => $other_artifact_id,
+				'slot_id' => '',
+			));
+		}
+	}
+}
+
+artifact_save(array(
+	'id' => $object['id'],
+	'slot_id' => '',
+));
+
+try{
+	artifact_energy_slot_change($subject['id'], $object['id'], '', $artikul['farm_energy'], ENERGY_TYPE_FARM);
+}catch (Exception $artifact_energy_exception){}
+
+if($artikul['slot_id'] == 'BANGLE') {
+	$artifact_list_ark = user_get_artifact_list($subject['id'], 'ARK', ' ORDER BY slot_num DESC');
+	$arkat_max = user_get_slot_num_max($subject['id'], 'ARK');
+	$cnt_have = count($artifact_list_ark);
+	if($cnt_have && $cnt_have != $arkat_max){
+		foreach ($artifact_list_ark as $_art) {
+			if(!($cnt_have > $arkat_max)) break;
+			artifact_save(array(
+				'id' => $_art['id'],
+				'slot_id' => '',
+			));
+		}
+	}
+}
+
+// Снимаем признак на пользователе, что он находится при исполнении обязанностей стража
+if ($object['flags'] & ARTIFACT_FLAG_ACTING_GUARD 
+	&& in_array($subject['object_class'],array(OBJECT_CLASS_USER)) 
+	&& $subject['flags2'] & USER_FLAG2_ACTING_GUARD
+) {
+	user_save(array(
+		'id' => $subject['id'],
+		'flags2' => $subject['flags2'] & ~USER_FLAG2_ACTING_GUARD,
+	));
+}
+
+// Снятие ресурсов из проф. рюкзака
+if ($object['slot_id'] == 'PR_BAG') {
+	//chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => 'user_show_prof_bag(0)'));
+	$bag_artifact_hash = make_hash(user_get_artifact_list($subject['id'], '', '', ARTIFACT_STORAGE_TYPE_PR_BAG));
+	if (count($bag_artifact_hash)) {
+		foreach($bag_artifact_hash as $prof_bag_artifact) {
+			artifact_move($prof_bag_artifact['id'], $prof_bag_artifact['cnt'], $subject['id'], false, false, array(), ARTIFACT_STORAGE_TYPE_USER);
+		}
+	}
+}
+
+//chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => "updateSwf({'lvl':'','items':'',".$inventory_swf."'items_right':''});"));
+artifact_bag_send_diff($subject['id'], $object['id']);
+
+$out['status'] = ACTION_STATUS_OK;
+
+?>

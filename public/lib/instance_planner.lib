@@ -1,0 +1,82 @@
+<?
+
+define('TABLE_INSTANCE_SCHEDULER_LIST', 'instance_scheduler_list');
+define('TABLE_INSTANCE_PLANNER_LIST', 'instance_planner_list');
+
+define('INSTANCE_PLANNER_PREP_AREA_ID', 644);
+
+$instance_week_flags_hash = array(
+    1 => translate('Понедельник'),
+    2 => translate('Вторник'),
+    4 => translate('Среда'),
+    8 => translate('Четверг'),
+    16 => translate('Пятница'),
+    32 => translate('Суббота'),
+    64 => translate('Воскресенье'),
+);
+
+define('INSTANCE_SCHEDULER_FLAG_ACTIVE', 0x000001);
+define('INSTANCE_SCHEDULER_FLAG_PROD_TIME', 0x000002);
+
+$instance_scheduler_flags_hash = array(
+    INSTANCE_SCHEDULER_FLAG_ACTIVE => 'Планировщик инстанса активен',
+    INSTANCE_SCHEDULER_FLAG_PROD_TIME => 'Следующий инстанс через указанное время',
+);
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function instance_scheduler_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_INSTANCE_SCHEDULER_LIST,$ref,$add);
+}
+
+function instance_scheduler_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_INSTANCE_SCHEDULER_LIST,$ref,$add);
+}
+
+function instance_scheduler_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_INSTANCE_SCHEDULER_LIST, $ref, $add);
+}
+
+function instance_scheduler_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_INSTANCE_SCHEDULER_LIST,$param);
+}
+
+function instance_scheduler_delete($ref) {
+    global $db_2;
+    if (!$ref || is_array($ref)) return false;
+    common_delete($db_2,TABLE_INSTANCE_SCHEDULER_LIST,$ref);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function instance_planner_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_INSTANCE_PLANNER_LIST,$ref,$add);
+}
+
+function instance_planner_list($ref=false, $add='', $field='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_INSTANCE_PLANNER_LIST,$ref,$add, $field);
+}
+
+function instance_planner_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_INSTANCE_PLANNER_LIST, $ref, $add);
+}
+
+function instance_planner_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_INSTANCE_PLANNER_LIST,$param);
+}
+
+function instance_planner_delete($ref) {
+    global $db_2;
+    if (!$ref || is_array($ref)) return false;
+    common_delete($db_2,TABLE_INSTANCE_PLANNER_LIST,$ref);
+    return true;
+}

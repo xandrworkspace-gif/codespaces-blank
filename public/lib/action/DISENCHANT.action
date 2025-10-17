@@ -1,0 +1,71 @@
+<? # $Id: DISENCHANT.action,v 1.11 2010-02-02 11:08:36 p.knoblokh Exp $
+
+// действие "разобрать предмет"
+// Параметры:
+//	$in['artifact_id'] - артефакт который нужно разобрать
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+//if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+
+if (!$artifact || $artifact['slot_id']) { // неверный или одетый предмет
+	$out['error'] = translate('Нужно выбрать предмет!');
+	return;
+}
+
+if ($artifact['flags'] & ARTIFACT_FLAG_CANT_BROKEN) {
+	$out['error'] = translate('Этот артефакт не может быть сломан!');
+	return;
+}
+// нельзя разрушать серые артефакты с левелом 1 и 2
+
+$artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+/* if (((int)$artifact_artikul['quality'] == 0) && in_array($artifact_artikul['level_min'], array(1,2))) {
+	$out['error'] = translate('Магия разрушения не сработала!');
+	return;
+} */
+
+
+global $quality_info, $disenchant_slots;
+$bonus_id = $quality_info[$artifact_artikul['quality']]['disenchant_bonus_id'];
+$enchant = $object['param1'] ? artifact_artikul_get($object['param1']) : false;
+if (!$bonus_id) return;
+if (!in_array($artifact_artikul['slot_id'], $disenchant_slots + array('BELT'))) {
+	$out['error'] = translate('Невозможно выполнить действие, неверный слот!');
+	return;
+}
+
+
+
+$d = @($artifact['durability_max'] / $artifact_artikul['durability_max']);
+$probability = ($d > 0.3) ? 1.0 : $d;
+artifact_delete($artifact);
+if (mt_rand(1,100) <= intval($probability*100)) {
+	artifact_artikul_get_title($artifact);
+	$msg_txt = sprintf(translate('<b>Вы применили <a href="/artifact_info.php?artikul_id=400" target="_blank" style="color:#808080">Свиток разрушения</a> на %s.</b>'),$artifact['title']);
+	require_once("lib/bonus.lib");
+	bonus_apply($subject, $bonus_id);
+	$out['status'] = ACTION_STATUS_OK;
+} else {
+	$msg_txt = translate('Ввиду высокой изношенности вещи, магия разрушения не сработала и вещь безвозвратно пропала...');
+	$out['error'] = $msg_txt;
+}
+chat_msg_send_system($msg_txt, CHAT_CHF_USER, $subject['id']);
+
+// лог-сервис -----------------------
+logserv_log_action(array(
+	'action' => $action,
+),$action_user);
+logserv_log_operation(array(
+	'artifact' => $artifact,
+	'cnt' => -max($artifact['cnt'],1),
+	'comment' => ($out['status'] == ACTION_STATUS_OK ? translate('Вещь разобрана') : translate('Вещь не разобрана')),
+),$action_user);
+// ----------------------------------
+
+?>

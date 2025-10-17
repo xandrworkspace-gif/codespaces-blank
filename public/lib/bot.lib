@@ -1,0 +1,640 @@
+<? # $Id: bot.lib,v 1.74 2009-12-17 09:22:07 s.predein Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/skill.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/area.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/event.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/bot_skin.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/session.lib");
+
+
+// Имена и поля таблиц
+define('TABLE_BOT_TYPES','bot_types');
+define('FIELD_BOT_TYPES','');
+define('TABLE_BOT_GROUPS','bot_groups');
+define('FIELD_BOT_GROUPS','');
+define('TABLE_BOT_ARTIKUL_EFFECTS','bot_artikul_effects');
+define('FIELD_BOT_ARTIKUL_EFFECTS','');
+
+define('BOT_CREATE_FIELDS','nick, type_id, group_id, picture, picture2, f_sk, f_pmask, f_ctrlfile, f_ctrlfunc, level, gender, kind, exp_coef, respawn_time, bonus_id, money_min, money_max, hunt, h_agrlevel, h_agrdist, h_speed, inst_bonus_id, flags');
+
+// Флаги ботов
+define('BOT_FLAG_NOATTACK',              0x00001);
+define('BOT_FLAG_ART',                   0x00002);
+define('BOT_FLAG_TEMP',                  0x00004);	// временный бот
+define('BOT_FLAG_SKGHOST',               0x00008);
+define('BOT_FLAG_CRITSIMILAR',           0x00010);	// критующий морок
+define('BOT_FLAG_WITH_RESTRICTIONS',     0x00020);	// бот с ограничениями
+define('BOT_FLAG_STAT',                  0x00040);	// вести статистику побежденным ботам
+define('BOT_FLAG_DIE_LOSS',              0x00080);	// бот умирает только при проигрыше команды
+define('BOT_FLAG_STAT_TIME',             0x00100);	// вести статистику побежденным ботам по времени убийства
+define('BOT_FLAG_ALLOW_GREAT_BATTLE',    0x00200);	// Разрешить призывать в великих битвах
+define('BOT_FLAG_DENY_FLEE',             0x00400);	// запретить выход из боя
+define('BOT_FLAG_IGNORE_CONDITIONS',     0x00800);	// не проверять условия существования
+define('BOT_FLAG_DO_NOT_COUNT_DMG',      0x01000);	// не учитывать урон от игроков при распределении дропа
+define('BOT_FLAG_SK_HALF_MOROC_LIGHT',   0x02000);	// Скелет-полуморок светлый
+define('BOT_FLAG_SK_HALF_MOROC_DARK',    0x08000);	// Скелет-полуморок темный
+define('BOT_FLAG_BESIARY',    0x10000);	// Бот Бестиария
+define('BOT_FLAG_NO_PROVOCATION', 0x20000); //Не учавствует в провокации, нельзя спровоцировать
+define('BOT_FLAG_NOX2_PREMIUM', 0x40000); //Не сдваивать дроп бонуса при премиуме
+define('BOT_FLAG_KENNEL',               0x80000); //Бот псарни
+
+// Флаги группы ботов
+define('BOT_GRPF_USERATTACK',   0x0001);	// Нападение на ботов
+define('BOT_GRPF_RANDOMATTACK', 0x0002);	// Случайное нападение
+define('BOT_GRPF_BOTAVAIL',     0x0004);	// Боты вне боев
+define('BOT_GRPF_USERAVAIL',    0x0008);	// Персонаж вне боя
+define('BOT_GRPF_CHAOSFIGHT',   0x0010);	// Бой с хаосом
+
+// Флаги эффектов бота
+define('BOT_EFFECT_GET_EFFECTS',   0x0001);	// Брать эффекты с артефактов
+define('BOT_EFFECT_GET_VIEW',      0x0002);	// Брать отображение образа
+define('BOT_EFFECT_SHOW_IN_INFO',  0x0004);	// Отображать в бот-инфо
+
+function _bot_artikul_title(&$artikul) {
+	return $artikul['nick'].' ['.$artikul['level'].']';
+}
+
+// ===========================================================================================================================
+
+function bot_get($ref=false, $add='') {
+	global $db_4;
+	$bot = common_get($db_4,TABLE_BOTS,$ref,$add);
+	if ($bot) $bot['object_class'] = OBJECT_CLASS_BOT;
+	return $bot;
+}
+
+function bot_list($artikul_id=false, $fight_id=null, $area_id=null, $instance_id=null, $add='', $field_list='*') {
+	global $db_4;
+	$ref = false;
+	if ($artikul_id) $ref['artikul_id'] = $artikul_id;
+	if (isset($fight_id)) $ref['fight_id'] = $fight_id;
+	if (isset($area_id)) $ref['area_id'] = $area_id;
+	if (isset($instance_id)) $ref['instance_id'] = $instance_id;
+	$bot_list = common_list($db_4,TABLE_BOTS,$ref,$add,$field_list);
+	foreach ($bot_list as $k=>$bot) $bot_list[$k]['object_class'] = OBJECT_CLASS_BOT;
+	return $bot_list;
+}
+
+function bot_count($artikul_id=false, $fight_id=null, $area_id=null, $instance_id=null, $add='') {
+	global $db_4;
+	$ref = false;
+	if ($artikul_id) $ref['artikul_id'] = $artikul_id;
+	if (isset($fight_id)) $ref['fight_id'] = $fight_id;
+	if (isset($area_id)) $ref['area_id'] = $area_id;
+	if (isset($instance_id)) $ref['instance_id'] = $instance_id;
+	return common_count($db_4,TABLE_BOTS,$ref,$add);
+}
+
+function bot_save($param) {
+	global $db_4;
+	return common_save($db_4,TABLE_BOTS,$param,FIELD_BOTS);
+}
+
+function bot_clear_from_area($area_id, $clear_cache = false) {
+	global $db_4;
+	$id = get_hash(bot_list(null,null,$area_id), 'id', 'id');
+	if (!$id) return;
+	common_delete($db_4, TABLE_BOTS, array('id' => $id));
+	common_delete($db_4, TABLE_BOT_SKILLS, array('bot_id' => $id));
+	$cache = new Cache('HUNT'.$area_id.'_0');
+	if ($cache->tryLock()) {
+		$cache->remove();
+		$cache->freeLock();
+	}
+}
+
+function bot_delete($ref=false, $add='') {
+	global $db_4;
+	common_delete($db_4,TABLE_BOTS,$ref,$add);
+	return true;
+}
+
+function bot_type_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_BOT_TYPES,$ref,$add);
+}
+
+function bot_type_list($add='') {
+	global $db;
+	return common_list($db,TABLE_BOT_TYPES,false,$add);
+}
+
+function bot_type_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_BOT_TYPES, $ref, $add);
+}
+
+function bot_type_save($param) {
+	global $db;
+	return common_save($db,TABLE_BOT_TYPES,$param,FIELD_BOT_TYPES);
+}
+
+function bot_type_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_BOT_TYPES,$ref,$add);
+}
+
+function bot_group_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_BOT_GROUPS,$ref,$add);
+}
+
+function bot_group_list($add='') {
+	global $db;
+	return common_list($db,TABLE_BOT_GROUPS,false,$add);
+}
+
+function bot_group_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_BOT_GROUPS, $ref, $add);
+}
+
+function bot_group_save($param) {
+	global $db;
+	return common_save($db,TABLE_BOT_GROUPS,$param,FIELD_BOT_GROUPS);
+}
+
+function bot_group_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_BOT_GROUPS,$ref,$add);
+}
+
+function bot_bulk_update($bot_ids, $field, $value='', $value_old=null, $add='') {
+	global $db_4;
+	return common_bulk_update($db_4,TABLE_BOTS,$bot_ids,$field,$value,$value_old,$add);
+}
+
+// ========== работа с артикулами ================
+
+function bot_artikul_get($ref=false, $add='') {
+	global $db;
+	$artikul = common_get($db,TABLE_BOT_ARTIKULS,$ref,$add);
+	if ($artikul) $artikul['object_class'] = OBJECT_CLASS_BOT_ARTIKUL;
+	return $artikul;
+}
+
+function bot_artikul_list($type_id=false, $add='', $field_list='*') {
+	global $db;
+	$ref = false;
+	if ($type_id) $ref['type_id'] = $type_id;
+	return common_list($db,TABLE_BOT_ARTIKULS,$ref,$add, $field_list);
+}
+
+
+function bot_artikul_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_BOT_ARTIKULS, $ref, $add);
+}
+
+function bot_artikul_save($param) {
+	global $db;
+	return common_save($db,TABLE_BOT_ARTIKULS,$param,FIELD_BOT_ARTIKULS);
+}
+
+function bot_artikul_delete($ref) {
+	global $db;
+	common_delete($db,TABLE_BOT_ARTIKULS,$ref);
+	skill_object_delete(OBJECT_CLASS_BOT_ARTIKUL,$ref,false);
+	bot_artikul_effect_delete(array('bot_artikul_id' => $ref));
+	return true;
+}
+
+function bot_artikul_effect_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_BOT_ARTIKUL_EFFECTS,$ref,$add);
+}
+
+function bot_artikul_effect_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_BOT_ARTIKUL_EFFECTS,$ref,$add);
+}
+
+function bot_artikul_effect_save($param) {
+	global $db;
+	return common_save($db,TABLE_BOT_ARTIKUL_EFFECTS,$param,FIELD_BOT_ARTIKUL_EFFECTS);
+}
+
+function bot_artikul_effect_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_BOT_ARTIKUL_EFFECTS,$ref,$add);
+}
+
+function bot_artikul_sync($artikul_id, $param=false, $flags=0, $flags_mask=0) {
+	if (!$artikul_id) return false;
+	$cnt = 0;
+	$param = get_params($param,BOT_CREATE_FIELDS,true);
+	if ($param) {
+		unset($param['flags']);
+		$param['_cnt'] = true;
+		$param['_add'] = sql_pholder(" AND artikul_id=?",$artikul_id);
+		$cnt += bot_save($param);
+	}
+	$set_flag = $flags & $flags_mask;
+	$unset_flag = ~$flags & $flags_mask;
+	if ($set_flag || $unset_flag) {
+		$cnt += bot_save(array(
+			'_cnt' => true,
+			'_set' => "flags = (flags | ".$set_flag.") &~ ".$unset_flag,
+			'_add' => sql_pholder(" AND artikul_id=?",$artikul_id),
+		));
+	}
+	return $cnt;
+}
+
+function bot_artikul_copy($param) {
+	$old_id = $param['id'];
+	unset($param['id']);
+	$new_id = bot_artikul_save($param);
+	if (!$new_id) return false;
+
+	$bot_artikul_skills = skill_object_list(OBJECT_CLASS_BOT_ARTIKUL, $old_id);
+	foreach($bot_artikul_skills as $bot_artikul_skill) {
+		$bot_artikul_skill['object_class'] = OBJECT_CLASS_BOT_ARTIKUL;
+		$bot_artikul_skill['object_id'] = $new_id;
+		skill_object_copy($bot_artikul_skill, $new_id);
+	}
+
+	$bot_artikul_effects = bot_artikul_effect_list(array('bot_artikul_id' => $old_id));
+	foreach($bot_artikul_effects as $effect) {
+		unset($effect['id']);
+		$effect['bot_artikul_id'] = $new_id;
+		bot_artikul_effect_save($effect);
+	}
+
+//	$bot_artikul_actions = action_object_list(OBJECT_CLASS_BOT_ARTIKUL, $old_id);
+//	foreach($bot_artikul_actions as $bot_artikul_action) {
+//		$bot_artikul_skill['object_class'] = OBJECT_CLASS_BOT_ARTIKUL;
+//		$bot_artikul_skill['object_id'] = $new_id;
+//		action_object_copy($bot_artikul_action, $new_id);
+//	}
+
+	return $new_id;
+}
+
+function bot_lock($ref, $timewait=20, $timelock=600) {
+	global $tq;
+	$ref = intval($ref);
+	if (!$ref) return false;
+	return $tq->capture('BOT_'.$ref, $timewait, $timelock);
+}
+
+function bot_unlock($ref) {
+	global $tq;
+	$ref = intval($ref);
+	if (!$ref) return false;
+	return $tq->release('BOT_'.$ref);
+}
+
+function bot_create($artikul_id, $n=1, $area_id=false, $instance_id=false, $force_param=array()) {
+	if ($n <= 0) return false;
+	$artikul = bot_artikul_get($artikul_id);
+	if (!$artikul) return false;
+	$bot = get_params($artikul,BOT_CREATE_FIELDS);
+	$bot['artikul_id'] = $artikul['id'];
+	$bot['ctime'] = time_current();
+	if ($area_id) $bot['area_id'] = $area_id;
+	if ($instance_id) {
+		$bot['instance_id'] = $instance_id;
+		$bot['area_id'] = 0;
+	}
+	if ($force_param) {
+		$force_param['flags'] = intval($force_param['flags']) | intval($bot['flags']);
+		foreach ($force_param as $k=>$v) $bot[$k] = $v;
+	}
+	$bot['artikul_skills'] = 1;
+	$ids = array();
+	for ($i=0; $i<$n; $i++) {
+		$bot_id = bot_save($bot);
+		if (!$bot_id) return false;
+		$ids[] = $bot_id;
+	}
+	return count($ids)>1 ? $ids: $ids[0];
+}
+
+// ===============================================
+
+function bot_get_info($bot_id=false, $bot_artikul_id=false) {
+	global $bot_hash, $bot_artikul_hash;
+	$bot = array();
+	if ($bot_id) $bot = cache_fetch($bot_hash,$bot_id,'bot_get');
+	if (!$bot && $bot_artikul_id) {
+		$bot = cache_fetch($bot_artikul_hash,$bot_artikul_id,'bot_artikul_get');
+		unset($bot['id']);
+		$bot['artikul_id'] = $bot_artikul_id;
+	}
+	return $bot;
+}
+
+function bot_group_attack($area_id, $instance_id, $group_id, $user_id, $param = array()) {
+	require_once("lib/fight.lib");
+	$group = bot_group_get($group_id);
+	$user = user_get($user_id);
+	if (!$group || !$user) return false;
+	$fight_id = null;
+	if ($group['flags'] & BOT_GRPF_BOTAVAIL) $fight_id = 0;
+	if ($instance_id) $area_id = 0;
+	$bot_list = bot_list(null,$fight_id,$area_id,$instance_id,sql_pholder(" AND group_id=? AND rtime<=?",$group_id,time_current()));
+	$out = array(
+		'status' => true,
+		'bot_cnt' => count($bot_list),
+	);
+	$attack_cnt = 0;
+	if ($group['flags'] & BOT_GRPF_CHAOSFIGHT) $param['fight_flags'] |= FIGHT_FLAG_CHAOSFIGHT;
+	if ($bot_list) {
+		shuffle($bot_list);
+		if ($group['flags'] & BOT_GRPF_RANDOMATTACK) $bot_list = array($bot_list[0]);
+		foreach ($bot_list as $bot) {
+			if ($group['flags'] & BOT_GRPF_USERATTACK) {
+				if ($group['flags'] & BOT_GRPF_BOTAVAIL) $param['attack_object_avail'] = true;
+				if ($group['flags'] & BOT_GRPF_USERAVAIL) $param['attack_subject_avail'] = true;
+				$out_attack = fight_attack($user,$bot,$param);
+			} else {
+				if ($group['flags'] & BOT_GRPF_BOTAVAIL) $param['attack_subject_avail'] = true;
+				if ($group['flags'] & BOT_GRPF_USERAVAIL) $param['attack_object_avail'] = true;
+				$out_attack = fight_attack($bot,$user,$param);
+			}
+			if (!$out_attack['status']) continue;
+			$attack_cnt++;
+		}
+	}
+	$out['attack_cnt'] = $attack_cnt;
+	return $out;
+}
+
+// $param:
+//   ['attack_user_attack'] = true - нападение игрока на бота
+//   ['attack_user_avail'] = true - игрок должен быть вне боя
+//   ['activator_id'] = user_id - игрок который инициировал нападение бота (абилкой например)
+//   * - передача параметров во вложенные вызовы fight_*
+// ВНИМАНИЕ: Функция содержит LOCK
+function bot_attack(&$object, $bot_artikul_id, $param=array()) {
+	if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+
+    // TODO: Временная заплатка для мороков в великих битвах, в ближайшее время она будет спилена
+	if ($object['fight_id'] && !$object['instance_id']) {
+		require_once("lib/fight.lib");
+		$fight = fight_get_safe($object['fight_id']);
+		if ($fight['level']) return false;
+	}
+	
+	// передаем в param персонажа, на которого совершено нападение
+	$bot_id = bot_create($bot_artikul_id,1,($object['instance_id'] ? 0 : $object['area_id']), $object['instance_id'],array('hunt' => 0, 'flags' => BOT_FLAG_TEMP));
+	if (!$bot_id) return false;
+	$bot = bot_get($bot_id);
+	
+	// запоминаем на кого напал бот
+	$param['bot_params'][$bot_id]['target_class'] = $object['object_class'];
+	$param['bot_params'][$bot_id]['target_id'] = $object['id'];
+	
+	if ($param['activator_id']) {
+		$param['bot_params'][$bot_id]['activator_class'] = OBJECT_CLASS_USER; // натравить бота может только другой пользователь
+		$param['bot_params'][$bot_id]['activator_id'] = $param['activator_id'];
+		unset($param['activator_id']);
+	}
+	
+	
+	$out_attack = false;
+	require_once("lib/fight.lib");
+	if ($object['instance_id'] ? instance_lock($object['instance_id']) : 1) {
+		if ($param['attack_user_attack']) {
+			if ($param['attack_user_avail']) $param['attack_subject_avail'] = true;
+			$out_attack = fight_attack($object,$bot,$param);
+		} else {
+			if ($param['attack_user_avail']) $param['attack_object_avail'] = true;
+			$out_attack = fight_attack($bot,$object,$param);
+		}
+		if ($object['instance_id']) instance_unlock($object['instance_id']);
+	}
+	if (!$out_attack['status']) bot_delete($bot['id']);
+	return $out_attack['status'];
+}
+
+// $param:
+//   ['attack_user_attack'] = true - нападение игрока на бота
+//   ['attack_user_avail'] = true - игрок должен быть вне боя
+//   ['activator_id'] = user_id - игрок который инициировал нападение бота (абилкой например)
+//   * - передача параметров во вложенные вызовы fight_*
+// ВНИМАНИЕ: Функция содержит LOCK
+function bot_attack_test(&$object, $bot_artikul_id, $param=array()) {
+    if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return "11";
+
+    // TODO: Временная заплатка для мороков в великих битвах, в ближайшее время она будет спилена
+    if ($object['fight_id'] && !$object['instance_id']) {
+        require_once("lib/fight.lib");
+        $fight = fight_get_safe($object['fight_id']);
+        if ($fight['level']) return "22";
+    }
+
+    // передаем в param персонажа, на которого совершено нападение
+    $bot_id = bot_create($bot_artikul_id,1,($object['instance_id'] ? 0 : $object['area_id']), $object['instance_id'],array('hunt' => 0, 'flags' => BOT_FLAG_TEMP));
+    if (!$bot_id) return "33";
+    $bot = bot_get($bot_id);
+
+    // запоминаем на кого напал бот
+    $param['bot_params'][$bot_id]['target_class'] = $object['object_class'];
+    $param['bot_params'][$bot_id]['target_id'] = $object['id'];
+
+    if ($param['activator_id']) {
+        $param['bot_params'][$bot_id]['activator_class'] = OBJECT_CLASS_USER; // натравить бота может только другой пользователь
+        $param['bot_params'][$bot_id]['activator_id'] = $param['activator_id'];
+        unset($param['activator_id']);
+    }
+
+
+    $out_attack = "44";
+    require_once("lib/fight.lib");
+    if ($object['instance_id'] ? instance_lock($object['instance_id']) : 1) {
+        if ($param['attack_user_attack']) {
+            if ($param['attack_user_avail']) $param['attack_subject_avail'] = true;
+            $out_attack = "55";
+            $out_attack = fight_attack($object,$bot,$param);
+        } else {
+            if ($param['attack_user_avail']) $param['attack_object_avail'] = true;
+            $out_attack = "66";
+            $out_attack = fight_attack($bot,$object,$param);
+        }
+        if ($object['instance_id']) instance_unlock($object['instance_id']);
+    }
+    if (!$out_attack['status']) bot_delete($bot['id']);
+    return $out_attack;
+}
+
+// ВНИМАНИЕ: Функция содержит LOCK
+//   * - передача параметров во вложенные вызовы fight_*
+function bot_help(&$object, $bot_artikul_id, $param=array()) {
+	global $object_table_info;
+
+	if (!in_array($object['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_BOT))) return false;
+	if (!$object['fight_id']) return false;
+	require_once("lib/fight.lib");
+	$fight_user = fight_user_get(array('fight_id' => $object['fight_id'], $object_table_info[$object['object_class']]['link'] => $object['id']));
+	if (!$fight_user) return false;
+	
+	$bot_artikul = bot_artikul_get($bot_artikul_id);
+	if (!$bot_artikul) {
+		return false;
+	}
+
+	$fight = fight_get($object['fight_id']);
+	$area=area_get($object['area_id']);		
+	
+	if (!$object['instance_id'] && ($fight['level'])) {
+		if (!($area['flags'] & AREA_FLAG_ALLOW_MOROC) && !($bot_artikul['flags'] & BOT_FLAG_ALLOW_GREAT_BATTLE)) return false;
+	}
+	
+	$bot_id = bot_create($bot_artikul_id,1,($object['instance_id'] ? 0 : $object['area_id']), $object['instance_id'],array('hunt' => 0, 'flags' => BOT_FLAG_TEMP));
+	if (!$bot_id) return false;
+	$bot = bot_get($bot_id);
+	
+	// запоминаем кто призвал бота
+	$param['bot_params'][$bot_id]['activator_class'] = $object['object_class'];
+	$param['bot_params'][$bot_id]['activator_id'] = $object['id'];
+	
+	$status = false;
+	if ($object['instance_id'] ? instance_lock($object['instance_id']) : 1) {
+		$fight = fight_get($object['fight_id']);
+		$status = fight_join($fight,$bot,$fight_user['team'],$param);
+		if ($object['instance_id']) instance_unlock($object['instance_id']);
+	}
+	if (!$status) bot_delete($bot['id']);
+	return $status;
+}
+
+function bot_delete_all($bot_artikul_id){
+    if(!$bot_artikul_id) return false;
+    bot_delete(array('artikul_id' => $bot_artikul_id));
+}
+
+// Управление динамическим кол-вом ботов в локациях
+function bot_plant() {
+	global $NODE_NUMS;
+	no_translate_push(1);
+	$area_bot_hash_grp = make_hash(area_bot_list(),'area_id',true);
+	$bot_artikuls = make_hash(bot_artikul_list(false, ' AND 1 = 1 ', 'id, hunt'));
+	foreach ($area_bot_hash_grp as $area_id=>$area_bot_list) {
+		$online = 0;
+		$bots_to_delete = array();
+		foreach($NODE_NUMS as $nn) {
+			NODE_PUSH($nn);
+			$tmp_sessions_cnt = session_count($area_id,null,true,'',true);
+			$online += $tmp_sessions_cnt;
+			NODE_POP();
+		}
+		if (!area_lock($area_id)) continue;
+		$bot_list = bot_list(null,null,$area_id, null, sql_pholder(' AND (flags & ?)=0',BOT_FLAG_TEMP|BOT_FLAG_IGNORE_CONDITIONS));
+		foreach ($area_bot_list as $area_bot) {
+		    if(!$bot_artikuls[$area_bot['bot_artikul_id']]){
+		        //logfile(NODE_FILE_LOG, print_r($area_bot, true));
+            }
+			if ($bot_artikuls[$area_bot['bot_artikul_id']]['hunt'] <= 0) continue;
+			// Если указан этап события, то нужно проверить, что именно это событие сейчас идёт
+			if ($area_bot['event_point_id'] && !event_get(array('point_id' => $area_bot['event_point_id'], 'artikul_id' => $area_bot['event_artikul_id']))) continue;
+			$cnt = ($online * $area_bot['cnt_ratio'])/100;
+			$cnt = min(max($cnt,$area_bot['cnt_min']),$area_bot['cnt_max']);
+			$cnt = round($cnt);
+			$artikul_id = $area_bot['bot_artikul_id'];
+			foreach ($bot_list as $k=>$bot) {
+				if ($bot['artikul_id'] != $artikul_id) continue;
+				$cnt--;
+				if (!$bot['fight_id'] && ($cnt < 0)) $bots_to_delete[$bot['id']] = $bot['id'];
+				unset($bot_list[$k]);
+			}
+			if ($cnt > 0) bot_create($artikul_id,$cnt,$area_id);
+		}
+		foreach ($bot_list as $bot) {	// удаление неучтенных ботов либо простановка им фрага временный, если они в бою
+			if ($bot['fight_id']) bot_save(array('id' => $bot['id'], 'flags' => $bot['flags'] | BOT_FLAG_TEMP));
+			else $bots_to_delete[$bot['id']] = $bot['id'];
+		}
+		if ($bots_to_delete) bot_delete(array('id' => array_keys($bots_to_delete)));
+		area_unlock($area_id);
+	}
+	no_translate_pop();
+	return true;
+}
+
+function bot_get_cfg($bot, $by_artikul = false, $shadow = array()) {
+	global $_part_match;
+	
+	if (!$bot || !is_array($bot)) 
+		return false;
+
+	if(intval($bot['rent_user_id'])){
+	    $user = user_get(intval($bot['rent_user_id']));
+	    if($user) return user_get_cfg($user, false, null, true);
+    }
+
+    if($shadow){
+        return companion_get_cfg($shadow);
+    }
+
+	$layers = array();
+	
+	if (!$by_artikul) {
+		$bot_artikul = bot_artikul_get($bot['artikul_id']);
+		if (!$bot_artikul) return false;
+		$bot = $bot_artikul;
+	}
+	
+	if ($bot['f_sk']) {
+		return array('skeleton' => $bot['f_sk'], 'layers' => array());
+	}
+	
+	foreach ($_part_match as $k=>$v) $layers[0][$v] = ($v != FS_PPT_HD2) && ($v <= FS_PPT_LL3) ? $bot['cfg_pbody'] : 0;
+	$layers[0][FS_PPT_HD1] = $bot['cfg_phead'];
+	$layers[1][FS_PPT_HD1] = $bot['cfg_phair'];
+
+	$bot_artifact_list = bot_artikul_effect_list(array('bot_artikul_id' => $bot['id']));
+	$artikul_ids = array();
+	foreach($bot_artifact_list as $bot_artifact_artikul) {
+		if ($bot_artifact_artikul['flags'] & BOT_EFFECT_GET_VIEW) {
+			$artikul_ids[] = $bot_artifact_artikul['artifact_artikul_id'];
+		}
+	}
+	$artifact_artikul_list = ($artikul_ids) ? artifact_artikul_list(array('id' => $artikul_ids)) : array();
+	foreach ($artifact_artikul_list as $artifact_artikul) {
+		if (!$artifact_artikul['f_pack'] || ($artifact_artikul['slot_id'] == 'MOUNT')) continue;
+		if ($artifact_artikul['flags'] & ARTIFACT_FLAG_WEAPON) $weapon_mask |= $artifact_artikul['f_cfg'] & (ARTIFACT_PPT_RW | ARTIFACT_PPT_LW | ARTIFACT_PPT_MW);
+		foreach ($_part_match as $k=>$v) {
+			if (!($artifact_artikul['f_cfg'] & $k)) continue;
+			if ($layers[$artifact_artikul['f_layer']][$v] && !($artifact_artikul['flags'] & ARTIFACT_FLAG_LAYERPRIO)) continue;
+			$layers[$artifact_artikul['f_layer']][$v] = $artifact_artikul['f_pack'];
+		}
+	}
+	if ($layers[2][FS_PPT_HD1] || $layers[2][FS_PPT_HD2]) $layers[1][FS_PPT_HD1] = 0;
+	$slot_artifacts = make_hash($artifact_artikul_list,'slot_id',true);
+	foreach (array_keys($slot_artifacts) as $slot_id) {
+		$artikul_id = $slot_artifacts[$slot_id][0]['artikul_id'];
+		$slot_artifacts[$slot_id][0]['f_cfg'] = $artifact_artikul_list[$artikul_id]['f_cfg'];
+	}
+	$parts = array();
+	foreach ($_part_match as $k=>$v) {
+		$parts[] = (int)$layers[0][$v];
+		$parts[] = (int)$layers[1][$v];
+		$parts[] = (int)$layers[2][$v];
+	}
+	$skeleton = 0;
+	$skeleton =
+		($slot_artifacts['MOUNT'] ? 9 :
+		(($weapon_mask & ARTIFACT_PPT_RW) && ($weapon_mask & ARTIFACT_PPT_LW) ? 4:	// две руки с оружием
+		($weapon_mask & ARTIFACT_PPT_MW ? 3:	// двуручное оружие
+		($weapon_mask & ARTIFACT_PPT_RW ? 1:	// правое оружие
+		($weapon_mask & ARTIFACT_PPT_LW ? 5:	// левое оружие
+		2)))));	// нет оружия
+	
+	$ret = array(
+		'skeleton' => $skeleton,
+		'layers' => &$layers,
+		'parts' => &$parts,
+		'artifacts' => &$artifact_list,
+		'slot_artifacts' => &$slot_artifacts,
+	);
+	return $ret;
+}
+
+function bot_multi_update($params, $fields) {
+	global $db_4;
+	if (!$params || !$fields) return;
+	return common_multi_update($db_4, TABLE_BOTS, $params, $fields, $fields);
+}
+
+?>

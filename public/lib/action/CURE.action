@@ -1,0 +1,125 @@
+<? # $Id: CURE.action,v 1.21 2010-02-05 10:53:05 p.knoblokh Exp $
+
+// действие "лечить травму"
+// Параметры:
+//	$in['nick'] - ник
+//	$in['slot_id'] - слот
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if ($subject['flags'] & USER_FLAG_GHOST) {
+	$out['error'] = translate('Призрак не может применять магию исцеления!');
+	return;
+}
+require_once("lib/injury.lib");
+global $injury_slot_info;
+$slot_hash = get_hash($injury_slot_info,'slot_id','slot_id');
+$user_id = $subject['id'];
+$slot_id = false;
+list($injury_weight,$injury_time) = explode(',',$action['param1']);
+if ($action['param2'] & 1) {	// Ввод ника
+	$user = user_get(false,$in['nick']);
+	if (!$user) {
+		$out['error'] = translate('Пользователь не найден!');
+		return;
+	}
+	if ($subject['id'] == $user['id'] && !($subject['profession'] & PR_MEDIC)) {
+		$out['error'] = translate('Нельзя лечить самого себя!');
+		return;
+	}
+	if ($subject['kind'] != $user['kind'] && !($subject['flags'] & USER_FLAG_ADMIN)) {
+		$out['error'] = translate('Нельзя лечить персонажа другой расы!');
+		return;
+	}
+	if (!user_is_near($subject,$user) && !($subject['flags'] & USER_FLAG_ADMIN)) {
+		$out['error'] = translate('Нельзя лечить персонажа, который не находится рядом!');
+		return;
+	}
+	if ($user['flags'] & USER_FLAG_GHOST && !($subject['flags'] & USER_FLAG_ADMIN)) {
+		$out['error'] = translate('Нельзя лечить персонажа, пока он призрак!');
+		return;
+	}
+	if (!user_is_online($user['id'], true)) {
+		$out['error'] = translate('Пользователь отсутствует в игре!');
+		return;
+	}
+	$user_id = $user['id'];
+}
+if ($action['param2'] & 2) {	// Выбор слота
+	$slot_id = $in['slot_id'];
+	if (!$slot_hash[$slot_id]) {
+		$out['error'] = translate('Неверный слот!');
+		return;
+	}
+}
+
+NODE_PUSH(null, $user_id);
+
+$artifact_list = artifact_list(false,$user_id,'*',true,false," AND type_id=".ARTIFACT_TYPE_ID_INJURY);
+$artikul_ids = get_hash($artifact_list, 'artikul_id', 'artikul_id');
+$artikul_hash = $artikul_ids ? make_hash(artifact_artikul_list(array('id' => $artikul_ids), '', 'id, weight')) : array();
+foreach ($artifact_list as $k => $artifact) {
+	$artifact_list[$k]['weight'] = $artikul_hash[$artifact['artikul_id']]['weight'];
+}
+common_fldsort($artifact_list,true,'weight');
+$expires = array(0);
+$n = 0;
+foreach ($artifact_list as $artifact) {
+	if (!$slot_hash[$artifact['slot_id']]) continue;
+	$time_expire = $artifact['time_expire'];
+	$expires[$artifact['id']] = $time_expire;
+	if ($injury_time <= 0) continue;
+	if ($injury_weight < $artifact['weight']) continue;
+	if ($slot_id && ($artifact['slot_id'] != $slot_id)) continue;
+	$cure_time = min(max($time_expire - time_current(), 0), $injury_time);
+	$time_expire -= $cure_time;
+	if ($time_expire <= time_current()) {
+		artifact_delete($artifact);
+	} else {
+		artifact_save(array(
+			'id' => $artifact['id'],
+			'time_expire' => $time_expire,
+		));
+	}
+	$injury_time -= $cure_time;
+	$expires[$artifact['id']] = $time_expire;
+	$n++;
+}
+
+NODE_POP();
+
+user_save(array(
+	'id' => $user_id,
+	'injury_time' => max($expires),
+));
+if (!$n) {
+	$out['error'] = translate('У персонажа нет травм, которые можно вылечить этой магией!');
+	return;
+}
+if (($subject['id'] != $user_id) || ($subject['profession'] & PR_MEDIC)) {
+	if ($injury_weight >= 9) {
+		// маг травмы в игре начинаются с 9-го уровня профессии и отнимаем 8,
+		// чтобы прокачка была как и раньше,
+		// то есть прокачка начиналась с +1 к уровни характеристики.
+		$injury_weight -= 8;
+		$skill_id = 'MAG_CURED_WEIGHT'; // магическая травма
+	} else {
+		$skill_id = 'CURED_WEIGHT'; // физическая травма
+	}
+	
+    $status = skill_object_set_value(OBJECT_CLASS_USER,$subject['id'],$skill_id,$injury_weight,array('relative' => true));
+	chat_msg_send_system(sprintf(translate('Вы применили магию исцеления на персонажа %s.'),user_is_invisible($user) ? translate('Невидимка') : html_user_info($user)),CHAT_CHF_USER,$subject['id']);
+	if(($subject['id'] != $user_id)) chat_msg_send_system(sprintf(translate('Персонаж %s применил на Вас магию исцеления.'),user_is_invisible($subject) ? translate('Невидимка') : html_user_info($subject)),CHAT_CHF_USER,$user['id']);
+
+    $skills_proff_x2 = array('PR_MEDIC');
+    $user_premium = user_premium_get($subject['id']);
+    if($user_premium['vars'][P_PROFESSIONS] && $status) {
+        skill_object_set_value(OBJECT_CLASS_USER,$subject['id'],$skill_id,1, array('relative' => true));
+        chat_msg_send_system('Вы получили дополнительно +1 к профессии благодаря премиуму', CHAT_CHF_USER, $subject['id']);
+    }
+
+}
+$out['status'] = ACTION_STATUS_OK;

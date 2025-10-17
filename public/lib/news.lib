@@ -1,0 +1,188 @@
+<?
+
+define('TABLE_NEWS_LIST','news');
+define('FIELD_NEWS_LIST','');
+
+define('TABLE_NEWS_FAST_LIST','news_fast');
+define('FIELD_NEWS_FAST_LIST','');
+
+define('TABLE_NEWS_BEST_LIST', 'news_best');
+define('FIELD_NEWS_BEST_LIST','');
+
+define('TABLE_NEWS_COMMENTS_LIST','news_comments');
+define('FIELD_NEWS_COMMENTS_LIST','');
+
+define('TABLE_NEWS_CLIENT_LIST','news_client');
+define('FIELD_NEWS_CLIENT_LIST','');
+
+define('COMMENT_TIME' , 1440);
+define('NEWS_ALL_PAGE_SIZE', 10);
+
+define('NEWS_FLAG_HIDE', 0x0000001); //Новость скрыта
+
+define('NEWS_CLIENT_FLAG_SETUP_V', 0x00000001);
+define('NEWS_CLIENT_FLAG_HIDE', 0x00000002);
+
+$news_flags_hash = array(
+	NEWS_FLAG_HIDE => 'Новость скрыта',
+);
+
+$news_client_flags_hash = array(
+    NEWS_CLIENT_FLAG_SETUP_V => 'Установщик',
+    NEWS_CLIENT_FLAG_HIDE => 'Скрыта',
+);
+
+#Работа с базой данных
+function news_get($ref=false, $add='', $ex = false) {
+    global $db_path;
+    $news = common_get($db_path,TABLE_NEWS_LIST,$ref,$add);
+    if($ex){
+        $comments = news_comments_list(array('news_id' => $news['id']));
+        $news['comments'] = $comments;
+    }
+    return $news;
+}
+
+function news_list($ref=false, $add='', $ex = false) {
+    global $db_path;
+    $list = common_list($db_path,TABLE_NEWS_LIST,$ref,$add);
+    if($ex){
+        $list_hash = make_hash($list);
+        if(!$list_hash) return $list;
+        $comments = news_comments_list(array('news_id' => array_keys($list_hash)));
+        $comments_hash = make_hash($comments,'news_id', true);
+        foreach ($list_hash as $news_id=>$news){
+            if(!$comments_hash[$news_id]) continue;
+            $list_hash[$news_id]['comments'] = $comments_hash[$news_id];
+        }
+        $list = $list_hash;
+    }
+    return $list;
+}
+
+function news_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_NEWS_LIST, $ref, $add);
+}
+
+function news_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_NEWS_LIST,$param,FIELD_NEWS_LIST);
+}
+
+function news_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_NEWS_LIST,$ref,$add);
+    return true;
+}
+
+function news_comments_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_NEWS_COMMENTS_LIST,$ref,$add);
+}
+
+function news_comments_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_NEWS_COMMENTS_LIST,$ref,$add);
+}
+
+function news_comments_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_NEWS_COMMENTS_LIST, $ref, $add);
+}
+
+function news_comments_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_NEWS_COMMENTS_LIST,$param,FIELD_NEWS_LIST);
+}
+
+function news_comments_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_NEWS_COMMENTS_LIST,$ref,$add);
+    return true;
+}
+
+function news_fast_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_NEWS_FAST_LIST,$ref,$add);
+}
+
+function news_fast_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_NEWS_FAST_LIST,$ref,$add);
+}
+
+function news_fast_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_NEWS_FAST_LIST, $ref, $add);
+}
+
+function news_fast_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_NEWS_FAST_LIST,$param,FIELD_NEWS_FAST_LIST);
+}
+
+function news_fast_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_NEWS_FAST_LIST,$ref,$add);
+    return true;
+}
+
+function news_best_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_NEWS_BEST_LIST,$ref,$add);
+}
+
+function news_best_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_NEWS_BEST_LIST,$ref,$add);
+}
+
+function news_best_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_NEWS_BEST_LIST, $ref, $add);
+}
+
+function news_best_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_NEWS_BEST_LIST,$param,FIELD_NEWS_BEST_LIST);
+}
+
+function news_best_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_NEWS_BEST_LIST,$ref,$add);
+    return true;
+}
+#Работа с базой данных
+
+
+function news_client_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_NEWS_CLIENT_LIST,$ref,$add);
+}
+
+function news_client_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_NEWS_CLIENT_LIST,$ref,$add);
+}
+
+function news_client_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_NEWS_CLIENT_LIST, $ref, $add);
+}
+
+function news_client_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_NEWS_CLIENT_LIST,$param,FIELD_NEWS_CLIENT_LIST);
+}
+
+function news_client_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_NEWS_CLIENT_LIST,$ref,$add);
+    return true;
+}

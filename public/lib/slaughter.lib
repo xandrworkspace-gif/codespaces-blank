@@ -1,0 +1,91 @@
+<? # $Id: slaughter.lib,v 1.7 2009-10-27 13:46:19 s.ignatenkov Exp $
+
+define('SLAUGHTER_MIN_USER_LEVEL', 3);	// минимальный уровень персонажа для входа в бойню
+define('SLAUGHTER_MAX_FIGHTS', 10); //максимальное количество боев, которое может произойти в бойне
+
+// флаги
+define('SLAUGHTER_FLAG_ADMIN',      0x0001);	// Видимый только администраторами
+define('SLAUGHTER_FLAG_WRITE_STAT', 0x0002);	// Вести статистику по этой бойне
+
+// статусы очереди
+define('SLAUGHTER_USER_STATUS_WAITING', 0);
+define('SLAUGHTER_USER_STATUS_PENDING', 1);
+define('SLAUGHTER_USER_STATUS_LOCKED',  2);
+
+define('SLAUGHTER_REQ_TTL',       10800);	// время жизни заявки
+define('SLAUGHTER_PENDING_TTL',     300);	// время ожидания подтверждения заявки
+define('SLAUGHTER_LOCK_COOLDOWN', 10800);	// время кулдауна на вход
+define('SLAUGHTER_LOCK_ORDER',     3600);	// время штрафа за неподтверждённую заявку
+
+// Имена и поля таблиц
+define('TABLE_SLAUGHTERS','slaughters');
+define('FIELD_SLAUGHTERS','');
+define('TABLE_SLAUGHTER_USERS','slaughter_users');
+define('FIELD_SLAUGHTER_USERS','');
+
+
+function slaughter_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_SLAUGHTERS,$ref,$add);
+}
+
+function slaughter_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_SLAUGHTERS,$ref,$add);
+}
+
+function slaughter_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_SLAUGHTERS, $ref, $add);
+}
+
+function slaughter_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_SLAUGHTERS,$param,FIELD_SLAUGHTERS);
+}
+
+function slaughter_delete($ref) {
+	global $db_2;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_2,TABLE_SLAUGHTERS,$ref);
+	slaughter_user_delete(array('slaughter_id' => $ref));
+	return true;
+}
+
+function slaughter_user_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_SLAUGHTER_USERS,$ref,$add);
+}
+
+function slaughter_user_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_SLAUGHTER_USERS,$ref,$add,$field_list);
+}
+
+function slaughter_user_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_SLAUGHTER_USERS,$ref,$add);
+}
+
+function slaughter_user_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_SLAUGHTER_USERS,$param,FIELD_SLAUGHTER_USERS);
+}
+
+function slaughter_user_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_SLAUGHTER_USERS,$ref,$add);
+}
+
+function slaughter_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('SLAUGHTER_'.intval($ref),$timewait,$timelock);
+}
+
+function slaughter_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('SLAUGHTER_'.intval($ref));
+}
+?>

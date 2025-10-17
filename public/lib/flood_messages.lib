@@ -1,0 +1,65 @@
+<?php
+
+require_once('lib/artifact.lib');
+
+// Имена и поля таблиц
+define('TABLE_FLOOD_MESSAGES','flood_messages');
+define('FIELD_FLOOD_MESSAGES','');
+define('TABLE_FLOOD_MESSAGES_TYPE','flood_messages_type');
+define('FIELD_FLOOD_MESSAGES_TYPE','');
+
+// Флаги сообщений
+define('FLOOD_FLAG_NO_TARGET',			0x0001);	// у сообщения нет цели
+define('FLOOD_FLAG_NO_ARTIFACT_REMOVE', 0x0002);	// не удалять артефакт
+
+
+function flood_messages_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_FLOOD_MESSAGES,$ref,$add);
+}
+
+function flood_messages_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_FLOOD_MESSAGES,$ref,$add);
+}
+
+function flood_messages_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_FLOOD_MESSAGES,$ref,$add);
+}
+
+function flood_messages_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_FLOOD_MESSAGES,$param,FIELD_FLOOD_MESSAGES);
+}
+
+function flood_messages_delete($ref) {
+	global $db_2;
+	return common_delete($db_2,TABLE_FLOOD_MESSAGES,$ref);
+}
+
+function flood_messages_type_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_FLOOD_MESSAGES_TYPE,$ref,$add);
+}
+
+function flood_messages_type_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_FLOOD_MESSAGES_TYPE,$ref,$add);
+}
+
+function flood_messages_type_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_FLOOD_MESSAGES_TYPE,$ref,$add);
+}
+
+function flood_messages_type_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_FLOOD_MESSAGES_TYPE,$param,FIELD_FLOOD_MESSAGES_TYPE );
+}
+
+function flood_messages_type_delete($ref) {
+	global $db_2;
+	return common_delete($db_2,TABLE_FLOOD_MESSAGES_TYPE,$ref);
+}
+

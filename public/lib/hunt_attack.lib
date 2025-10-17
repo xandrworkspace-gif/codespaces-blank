@@ -1,0 +1,482 @@
+<?
+
+define("HUNT_ATTACK_WAVES_ARTIKUL_TABLE", "hunt_attack_waves_artikul");
+define("HUNT_ATTACK_WAVES_TABLE", "hunt_attack_waves");
+
+define("HUNT_ATTACK_TABLE", "hunt_attack");
+define("HUNT_ATTACK_USER_TABLE", "hunt_attack_user");
+
+define('HUNT_ATTACK_STATUS_CREATE', 0);
+define('HUNT_ATTACK_STATUS_STARTED', 1);
+define('HUNT_ATTACK_STATUS_END', 2);
+
+define('HUNT_ATTACK_USER_STATUS_CREATE', 0);
+define('HUNT_ATTACK_USER_STATUS_PENDING', 1);
+define('HUNT_ATTACK_USER_STATUS_STARDED', 2);
+define('HUNT_ATTACK_USER_STATUS_END', 3);
+
+define('HUNT_ATTACK_ARTIKUL_ID', 10346);
+define('HUNT_ATTACK_ARTIKUL_CNT', 5);
+
+define('HUNT_ATTACK_PENDING_TIME', 300);
+define('HUNT_ATTACK_PENALTY_TIME', 43200); //12 часа штраф
+define('HUNT_ATTACK_START_TIME', 60); //1 минута на подготовку!
+
+define('HUNT_ATTACK_FLAG_ACTIVE', 0x0000001);
+define('HUNT_ATTACK_FLAG_ADMIN', 0x0000002);
+
+define('HUNT_ATTACK_PART_CNT', 1); //3 Участника
+
+$hunt_attack_flags_hash = array(
+    HUNT_ATTACK_FLAG_ACTIVE => 'Активен',
+    HUNT_ATTACK_FLAG_ADMIN => 'Только для админов',
+);
+
+$hunt_attack_waves_flags_hash = array(
+
+);
+
+//Зависимости
+require_once("/home/admin/web/dwar.fun/public_html/lib/activity.lib");
+
+function hunt_attack_waves_artikul_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,HUNT_ATTACK_WAVES_ARTIKUL_TABLE,$ref,$add);
+}
+
+function hunt_attack_waves_artikul_list($ref=false, $add='') {
+    global $db;
+    return common_list($db,HUNT_ATTACK_WAVES_ARTIKUL_TABLE,$ref,$add);
+}
+
+function hunt_attack_waves_artikul_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, HUNT_ATTACK_WAVES_ARTIKUL_TABLE, $ref, $add);
+}
+
+function hunt_attack_waves_artikul_save($param) {
+    global $db;
+    return common_save($db,HUNT_ATTACK_WAVES_ARTIKUL_TABLE,$param);
+}
+
+function hunt_attack_waves_artikul_delete($ref, $add='') {
+    global $db;
+    common_delete($db,HUNT_ATTACK_WAVES_ARTIKUL_TABLE,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+
+function hunt_attack_waves_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,HUNT_ATTACK_WAVES_TABLE,$ref,$add);
+}
+
+function hunt_attack_waves_list($ref=false, $add='') {
+    global $db;
+    return common_list($db,HUNT_ATTACK_WAVES_TABLE,$ref,$add);
+}
+
+function hunt_attack_waves_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, HUNT_ATTACK_WAVES_TABLE, $ref, $add);
+}
+
+function hunt_attack_waves_save($param) {
+    global $db;
+    return common_save($db,HUNT_ATTACK_WAVES_TABLE,$param);
+}
+
+function hunt_attack_waves_delete($ref, $add='') {
+    global $db;
+    common_delete($db,HUNT_ATTACK_WAVES_TABLE,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+
+function hunt_attack_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,HUNT_ATTACK_TABLE,$ref,$add);
+}
+
+function hunt_attack_list($ref=false, $add='') {
+    global $db;
+    return common_list($db,HUNT_ATTACK_TABLE,$ref,$add);
+}
+
+function hunt_attack_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, HUNT_ATTACK_TABLE, $ref, $add);
+}
+
+function hunt_attack_save($param) {
+    global $db;
+    return common_save($db,HUNT_ATTACK_TABLE,$param);
+}
+
+function hunt_attack_delete($ref, $add='') {
+    global $db;
+    common_delete($db,HUNT_ATTACK_TABLE,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+
+function hunt_attack_user_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,HUNT_ATTACK_USER_TABLE,$ref,$add);
+}
+
+function hunt_attack_user_list($ref=false, $add='') {
+    global $db;
+    return common_list($db,HUNT_ATTACK_USER_TABLE,$ref,$add);
+}
+
+function hunt_attack_user_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, HUNT_ATTACK_USER_TABLE, $ref, $add);
+}
+
+function hunt_attack_user_save($param) {
+    global $db;
+    return common_save($db,HUNT_ATTACK_USER_TABLE,$param);
+}
+
+function hunt_attack_user_delete($ref, $add='') {
+    global $db;
+    common_delete($db,HUNT_ATTACK_USER_TABLE,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+
+function hunt_attack_cron() {
+    global $kind_info;
+    $hunt_attack_waves_arikul_hash = make_hash(hunt_attack_waves_artikul_list());
+    $hunt_attack_waves_hash = make_hash(hunt_attack_waves_list());
+    //Управление текущими охотами
+    do{
+        $hunt_attack_hash = make_hash(hunt_attack_list(array('status' => HUNT_ATTACK_STATUS_STARTED)));
+        if($hunt_attack_hash) $hunt_attack_user_hash = make_hash(hunt_attack_user_list(array('hunt_attack_id' => array_keys($hunt_attack_hash), 'status' => HUNT_ATTACK_USER_STATUS_STARDED)), 'hunt_attack_id', true);
+        foreach ($hunt_attack_hash as $hunt_attack) {
+            $hunt_attack_wave = $hunt_attack_waves_hash[$hunt_attack['wave_id']];
+            $hunt_attack_user_list = $hunt_attack_user_hash[$hunt_attack['id']];
+
+            $hunt_attack_wave_artikul = $hunt_attack_waves_arikul_hash[$hunt_attack['artikul_id']];
+
+            $user_ids = array();
+            foreach ($hunt_attack_user_list as $hunt_attack_user) $user_ids[$hunt_attack_user['user_id']] = $hunt_attack_user['user_id'];
+            if($user_ids) $user_hash = make_hash(user_list(array('id' => $user_ids)));
+
+            $users_free_from_fight = true;
+            foreach ($user_hash as $user) {
+                if($user['fight_id']) {
+                    $users_free_from_fight = false;
+                    break;
+                }
+            }
+
+            $next_wave = hunt_attack_waves_get(array('artikul_id' => $hunt_attack['artikul_id']), sql_pholder(' AND wave > ? ORDER BY wave ASC', intval($hunt_attack_wave['wave'])));
+
+            if($hunt_attack['ntime'] && $hunt_attack['wave_id'] && $users_free_from_fight) {
+                //Если быстро отбили, нужно сократить время до следующей волны.
+                if($hunt_attack['ntime'] - 60 > time_current()){
+                    $hunt_attack['ntime'] = time_current() + 60;
+                    hunt_attack_save(array(
+                        'id' => $hunt_attack['id'],
+                        'ntime' => $hunt_attack['ntime'],
+                    ));
+                    chat_msg_send_system("Следующая волна начнется через ".html_period_str(60).'!', CHAT_CHF_USER, $user_ids);
+                }elseif(time_current() > $hunt_attack['ntime'] && $hunt_attack['ntime'] - time_current() > 0 && $hunt_attack['ntime'] - time_current() <= 60){
+                    chat_msg_send_system("Следующая волна начнется через ".html_period_str($hunt_attack['ntime'] - time_current()).'!', CHAT_CHF_USER, $user_ids);
+                }
+            }
+
+            $bot_passed_fail = ($hunt_attack_wave_artikul['max_bot_passed'] && $hunt_attack['bot_passed'] >= $hunt_attack_wave_artikul['max_bot_passed']) ? true : false;
+
+            if(!$bot_passed_fail && $hunt_attack['ntime'] && time_current() > $hunt_attack['ntime']) {
+                //Время запускать следующую волну!
+                //Восскресим если мертвы) тока перед волной)
+                foreach ($user_hash as $user){
+                    if($user['flags'] & USER_FLAG_GHOST) user_resurrect($user);
+                }
+
+                if(!$next_wave){
+                    continue;
+                }else{
+                    //Пускаем следующую волну!
+                    $fight = array(
+                        'area_id' => $hunt_attack_wave_artikul['area_id'],
+                        'title' => ($next_wave['boss'] ? 'БОСС' : $next_wave['wave'].' волна').' '.$hunt_attack_wave_artikul['title'],
+                        'type' => FIGHT_TYPE_DUEL,
+                        'timeout' => 15,
+                        'level_min' => 1,
+                        'level_max' => 20,
+                        'fight_flags' => 0,
+                        'hunt_attack_id' => $hunt_attack['id'],
+                        'hunt_wave_id' => $next_wave['id'],
+                    );
+                    if($next_wave['boss']) {
+                        if(!$users_free_from_fight) continue; // Не даем фактически завершиться этой хуйне
+                        $team_hash = array();
+                        $bots = json_decode($next_wave['bots'], true);
+                        foreach ($bots as $bot) {
+                            for($i = 0; $i < $bot[1]; $i++) {
+                                $team_hash[] = array('bot_id' => bot_create($bot[0]), 'team' => 2);
+                            }
+                        }
+                        foreach ($user_hash as $user) {
+                            $team_hash[] = array('user_id' => $user['id'], 'team' => 1);
+                        }
+                        $status = fight_start($fight,$team_hash);
+                        if($status) {
+                            hunt_attack_save(array(
+                                'id' => $hunt_attack['id'],
+                                'wave_id' => $next_wave['id'],
+                                'ntime' => 0,
+                            ));
+                            if($user_hash) chat_msg_send_system('Началась последняя волна, БОСС!', CHAT_CHF_USER, array_keys($user_hash));
+                        }else{
+                            if($user_hash) chat_msg_send_system('Сообщите эту ошибку администраторам, не удалось начать бой с боссом!', CHAT_CHF_USER, array_keys($user_hash));
+                        }
+                        continue; //А это чтобы ntime не было)
+                    }else{
+                        foreach ($hunt_attack_user_list as $hunt_attack_user) {
+                            //Нападение на всех участников по отдельности.
+                            $user = $user_hash[$hunt_attack_user['user_id']];
+                            $bots = json_decode($next_wave['bots'], true);
+                            if($user['fight_id']) {
+                                foreach ($bots as $bot) {
+                                    for($i = 0; $i < $bot[1]; $i++) {
+                                        bot_attack($user, $bot[0], array('fight' => $fight,));
+                                    }
+                                }
+                            } else {
+                                $team_hash = array();
+                                foreach ($bots as $bot) {
+                                    for($i = 0; $i < $bot[1]; $i++) {
+                                        $team_hash[] = array('bot_id' => bot_create($bot[0]), 'team' => 2);
+                                    }
+                                }
+                                $team_hash[] = array('user_id' => $user['id'], 'team' => 1);
+                                fight_start($fight,$team_hash);
+                            }
+                        }
+                        if($user_hash) chat_msg_send_system('Началась '.$next_wave['wave'].' волна!', CHAT_CHF_USER, array_keys($user_hash));
+                    }
+                    hunt_attack_save(array(
+                        'id' => $hunt_attack['id'],
+                        'wave_id' => $next_wave['id'],
+                        'ntime' => time_current() + $next_wave['period'],
+                    ));
+                }
+            }
+
+            if((!$next_wave && !$hunt_attack['ntime'] && $users_free_from_fight) || $bot_passed_fail) {
+                if($bot_passed_fail) {
+                    if($user_hash) chat_msg_send_system('Монстры прорвались! Вы проиграли! ', CHAT_CHF_USER, array_keys($user_hash));
+                    foreach ($user_hash as $user){
+                        if($user['fight_id']) fight_abort($user['fight_id']);
+                    }
+                }
+                //Окончание забега!
+                hunt_attack_save(array(
+                    'id' => $hunt_attack['id'],
+                    'status' => HUNT_ATTACK_STATUS_END,
+                    'dtime' => time_current() + (84600 * 7), //Хранить ли статистику 7 дней?
+                ));
+                foreach ($hunt_attack_user_list as $hunt_attack_user) {
+                    hunt_attack_user_save(array(
+                        'id' => $hunt_attack_user['id'],
+                        'status' => HUNT_ATTACK_USER_STATUS_END,
+                        'dtime' => time_current() + $hunt_attack_wave_artikul['cooldown'],
+                    ));
+                }
+                if($user_hash) chat_msg_send_system('Поиск охоты завершен!', CHAT_CHF_USER, array_keys($user_hash));
+                foreach ($user_hash as $user){
+                    user_save(array(
+                        'id' => $user['id'],
+                        'area_id' => ($user['area_id_transfer'] ? $user['area_id_transfer'] : $kind_info[$user['kind']]['city_area_id']),
+                        'area_id_transfer' => 0,
+                    ));
+                }
+            }
+        }
+    }while(0);
+
+    //Создание новых охот
+    //$hunt_attack_waves_2hash = make_hash(hunt_attack_waves_list(), 'artikul_id', true);
+    do{
+        $hunt_attack_user_list = hunt_attack_user_list(array('hunt_attack_id' => 0, 'status' => HUNT_ATTACK_USER_STATUS_CREATE), ' ORDER BY ctime ASC');
+
+        hunt_attack_unset_unaviable($hunt_attack_user_list);
+
+        $hunt_attack_waves_arikul_id = array_rand($hunt_attack_waves_arikul_hash);
+        $hunt_attack_part = array();
+        $user_hash = array();
+        $user_ids = array();
+        foreach ($hunt_attack_user_list as $hunt_attack_user) $user_ids[$hunt_attack_user['user_id']] = $hunt_attack_user['user_id'];
+        if($user_ids) $user_hash = make_hash(user_list(array('id' => $user_ids)));
+
+        //Распределяем очередь по группам. (Заранее нам известно что в группах не может быть более 3 участников
+        foreach ($hunt_attack_user_list as $hunt_attack_user) {
+            $user = $user_hash[$hunt_attack_user['user_id']];
+            $hunt_attack_part[$user['party_id']][] = $hunt_attack_user;
+        }
+        $part_needed_user = array();
+        foreach ($hunt_attack_part as $part_id=>$_hunt_attack_user_list2) {
+            if(!$part_id) continue;
+            if(count($_hunt_attack_user_list2) < HUNT_ATTACK_PART_CNT) $part_needed_user[$part_id] = HUNT_ATTACK_PART_CNT - count($_hunt_attack_user_list2);
+        }
+        common_fldsort($hunt_attack_part[0], false, 'ctime'); //Поднимаем кто раньше встал выше! Чтобы не ждали дольше!
+        foreach ($hunt_attack_part as $part_id=>&$_hunt_attack_user_list3) {
+            if(!$part_id) continue;
+            for($i=0; $i<intval($part_needed_user[$part_id]);$i++) {
+                foreach ($hunt_attack_part[0] as $k=>$_no_party_hunt_attack_user) {
+                    $_hunt_attack_user_list3[] = $_no_party_hunt_attack_user; //Добавляем
+                    unset($hunt_attack_part[0][$k]); //Удаляем
+                    $part_needed_user[$part_id]--;
+                    break; //Обязательно выходим из данного циклка foreach
+                }
+            }
+        }
+
+        //Пересоберем все группы
+        $hunt_attack_stack = array();
+        $stack = 0;
+        $i=0;
+        foreach ($hunt_attack_part as $part_id=>$__hunt_attack_user_list) {
+            if(!$hunt_attack_part[$part_id]) continue;
+            if(count($__hunt_attack_user_list) < HUNT_ATTACK_PART_CNT) continue;
+            foreach ($__hunt_attack_user_list as $hunt_attack_user) {
+                $hunt_attack_stack[$stack][] = $hunt_attack_user;
+                if(++$i==3){ $i=0; $stack++; }
+            }
+        }
+
+        foreach ($hunt_attack_stack as $_hunt_attack_user_list4) {
+            if(count($_hunt_attack_user_list4) < HUNT_ATTACK_PART_CNT) continue;
+            //Вот тут уже можно стартовать!
+
+            $hunt_attack_waves_arikul = $hunt_attack_waves_arikul_hash[$hunt_attack_waves_arikul_id];
+            if(!($hunt_attack_waves_arikul_id && $hunt_attack_waves_arikul)) continue;
+
+            /*$start_wave = false;
+            foreach ($hunt_attack_waves_2hash[$hunt_attack_waves_arikul_id] as $wave_item) $start_wave = ($start_wave ? ($wave_item['wave'] < $start_wave['wave'] ? $wave_item : $start_wave) : $wave_item);
+            */
+            //Нахуя? $next_wave выше где управление все распределит!
+
+            $hunt_attack_id = hunt_attack_save(array(
+                'artikul_id' => $hunt_attack_waves_arikul_id,
+                'wave_id' => 0,
+                'status' => HUNT_ATTACK_STATUS_CREATE,
+                'ntime' => 0, //У игроков должно быть время перед стартом, перед изменением статуса на STARTED продумать этот момент!
+                'ctime' => time_current(),
+                'dtime' => 0, //Еще не нужно уничтожать!
+            ));
+            //Запишем в созданную хуйню и отправим приглашения
+            if($hunt_attack_id) {
+                foreach ($_hunt_attack_user_list4 as $hunt_attack_user) {
+                    hunt_attack_user_save(array(
+                        'id' => $hunt_attack_user['id'],
+                        'hunt_attack_id' => $hunt_attack_id,
+                        'dtime' => 0,
+                        'status' => HUNT_ATTACK_STATUS_CREATE, //Для рассылки приглашений.
+                    ));
+                    hunt_attack_user_send_invite($hunt_attack_user);
+                }
+            }
+        }
+    }while(0);
+
+    //Управление только что созданными охотами
+    do{
+        $hunt_attack_hash = make_hash(hunt_attack_list(array('status' => HUNT_ATTACK_STATUS_CREATE)));
+
+        if($hunt_attack_hash) $hunt_attack_user_hash = make_hash(hunt_attack_user_list(array('hunt_attack_id' => array_keys($hunt_attack_hash))), 'hunt_attack_id', true);
+        foreach ($hunt_attack_hash as $hunt_attack) {
+            $hunt_attack_user_list = $hunt_attack_user_hash[$hunt_attack['id']];
+
+            $_user_ids = $_user_hash = array();
+            foreach ($hunt_attack_user_list as $hunt_attack_user){
+                $_user_ids[$hunt_attack_user['user_id']] = $hunt_attack_user['user_id'];
+            }
+            if($_user_ids) $_user_hash = make_hash(user_list(array('id' => $_user_ids)));
+
+            //Смотрим нужно ли начинать!?
+            $hunt_attack_user_pending_cnt = 0;
+            foreach ($hunt_attack_user_list as $hunt_attack_user) if($hunt_attack_user['status'] == HUNT_ATTACK_USER_STATUS_PENDING) $hunt_attack_user_pending_cnt++;
+            if($hunt_attack_user_pending_cnt == HUNT_ATTACK_PART_CNT || $hunt_attack['ctime'] + HUNT_ATTACK_PENDING_TIME < time_current()) {
+                //Начинаем
+                hunt_attack_save(array(
+                    'id' => $hunt_attack['id'],
+                    'status' => HUNT_ATTACK_STATUS_STARTED,
+                    'ntime' => time_current() + HUNT_ATTACK_START_TIME, //Даем минутку)
+                ));
+                $uids = array();
+                foreach ($hunt_attack_user_list as $hunt_attack_user) {
+                    //Избавляем от жетонов!
+                    artifact_remove(HUNT_ATTACK_ARTIKUL_ID, HUNT_ATTACK_ARTIKUL_CNT, $hunt_attack_user['user_id']);
+                    if($hunt_attack_user['status'] == HUNT_ATTACK_USER_STATUS_PENDING) {
+                        $uids[$hunt_attack_user['user_id']] = $hunt_attack_user['user_id'];
+                        hunt_attack_user_save(array(
+                            'id' => $hunt_attack_user['id'],
+                            'status' => HUNT_ATTACK_USER_STATUS_STARDED,
+                        ));
+                        activity_user_check(ACTIVITY_STAT_HUNT_ATTACK,-1, $_user_hash[$hunt_attack_user['user_id']],false);
+                    }else{
+                        hunt_attack_user_save(array(
+                            'id' => $hunt_attack_user['id'],
+                            'status' => HUNT_ATTACK_USER_STATUS_END,
+                            'dtime' => time_current() + HUNT_ATTACK_PENALTY_TIME,
+                        ));
+                        chat_msg_send_system('Вы не подтвердили участие в поиске охоты, и были оштрафованы на '.html_period_str(HUNT_ATTACK_PENALTY_TIME), CHAT_CHF_USER, $hunt_attack_user['user_id']);
+                    }
+                }
+                if($uids) chat_msg_send_system('Поиск охоты завершен, первая волна монстров нахлынет через '.html_period_str(HUNT_ATTACK_START_TIME).', подготовьтесь!', CHAT_CHF_USER, $uids);
+            }
+        }
+    }while(0);
+
+    //Удаляем просроченные заявки
+    hunt_attack_user_delete(array('status' => HUNT_ATTACK_USER_STATUS_END), sql_pholder(' AND dtime != 0 AND dtime < ?', time_current()));
+}
+
+function hunt_attack_unset_unaviable(&$hunt_attack_user_list) {
+    global $NODE_NUMS;
+    $user_ids = get_hash($hunt_attack_user_list, 'user_id', 'user_id');
+    $session_hash = array();
+    if ($user_ids) {
+        foreach ($NODE_NUMS as $nn) {
+            if (($nn == FRIDGE_NN) || !NODE_SWITCH($nn)) continue;
+            $session_hash = array_merge($session_hash, session_list(null,null,true,sql_pholder(' AND uid IN (?@)',$user_ids),'uid',true));
+        }
+    }
+    $session_hash = get_hash($session_hash, 'uid', 'uid');
+    $delete_user_ids = array();
+    $delete_user_ids_without_penalty = array();
+    foreach ($hunt_attack_user_list as $k => $user) {
+        if (!$session_hash[$user['user_id']]) {
+            if ($user['status'] == HUNT_ATTACK_USER_STATUS_PENDING) {
+                $delete_user_ids[] = $user['user_id'];
+            } else {
+                $delete_user_ids_without_penalty[] = $user['user_id'];
+            }
+            unset($hunt_attack_user_list[$k]);
+            unset($user_ids[$user['user_id']]);
+        }
+    }
+    if ($delete_user_ids) hunt_attack_user_save(array(
+        '_add' => sql_pholder(' AND user_id IN (?@)', $delete_user_ids),
+        '_set' => sql_pholder('dtime = ?, status = ?', time_current()+HUNT_ATTACK_PENALTY_TIME, HUNT_ATTACK_USER_STATUS_END),
+    ));
+    if ($delete_user_ids_without_penalty) hunt_attack_user_delete(array('user_id' => $delete_user_ids_without_penalty));
+    return true;
+}
+
+function hunt_attack_user_send_invite($hunt_attack_user) {
+    chat_msg_send_system(sprintf(translate('<b class="redd">Для того, чтобы подтвердить свое участие в Поиске охоты, нажмите</b> <b><a href="javascript: confirm_fhunt(%s)">СЮДА</a></b><b> не позднее %s.</b>'),$hunt_attack_user['id'], date('H:i:s', time_current() + HUNT_ATTACK_PENDING_TIME)), CHAT_CHF_USER, $hunt_attack_user['user_id']);
+    chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $hunt_attack_user['user_id'], array('func' => "_top().hFrMe('dungeons');"));
+    return true;
+}

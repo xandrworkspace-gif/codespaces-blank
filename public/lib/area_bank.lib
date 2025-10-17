@@ -1,0 +1,676 @@
+<? # $Id: area_bank.lib,v 1.41 2010-01-15 09:50:10 p.knoblokh Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/area.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/punishment.lib");
+
+/*
+ Статусы состояния кредита в Террабанке
+ 0 - кредитов нет или все уже были возвращены
+ 1 - взял кредит и еще не просрочил и не исчерпал кредитный лимит
+ 2 - исчерпал кредитный лимит, но не просрочил ни одного кредита
+ 3 - просрочил один из кредитов, независимо от того исчерпан лимит или нет
+*/
+
+// Имена и поля таблиц
+define('TABLE_AREA_BANK_RATES','area_bank_rates');
+define('FIELD_AREA_BANK_RATES','');
+define('TABLE_AREA_BANK_CELLS','area_bank_cells');
+define('FIELD_AREA_BANK_CELLS','');
+define('TABLE_AREA_BANK_ADDCELLS','area_bank_addcells');
+define('FIELD_AREA_BANK_ADDCELLS','');
+define('TABLE_AREA_BANK_LOANS','area_bank_loans');
+define('FIELD_AREA_BANK_LOANS','');
+define('TABLE_AREA_BANK_BONUSES','area_bank_bonuses');
+define('FIELD_AREA_BANK_BONUSES','');
+define('TABLE_AREA_BANK_EXCHANGES','area_bank_exchanges');
+define('FIELD_AREA_BANK_EXCHANGES','');
+define('TABLE_AREA_BANK_CELL_LOGS','area_bank_cell_log');
+define('FIELD_AREA_BANK_CELL_LOGS','');
+define('TABLE_AREA_BANK_PACKS','area_bank_packs');
+define('FIELD_AREA_BANK_PACKS','');
+define('TABLE_AREA_BANK_PACK_GROUPS','area_bank_pack_groups');
+define('FIELD_AREA_BANK_PACK_GROUPS','');
+define('TABLE_AREA_BANK_PACK_USERS','area_bank_pack_users');
+define('FIELD_AREA_BANK_PACK_USERS','');
+
+define('TB_CREDIT_URL',translate('http://88.212.221.145:8082/tbank-credit/credit'));
+define('TB_ARREAR_PUNISH_ID', 22); // ID наказания, которое накладывается на игрока при просрочке платежа в террабанке (через LOAN_RETURN_PERIOD дней)
+define('TB_ARREAR2_PUNISH_ID', 36); // ID наказания, которое накладывается на игрока при просрочке платежа в террабанке (через LOAN_RETURN_PERIOD2 дней)
+define('TB_ARREAR2_PUNISH_ID', 37); // ID наказания, которое накладывается на игрока при просрочке платежа в террабанке (через LOAN_RETURN_PERIOD3 дней)
+define('TB_CREDIT_MAGIC', "IQR6cir8isfP8lhRkNdY4LB5UIOSBAYE");
+
+define('RUBBERY_STATUS_OK', 1);
+define('RUBBERY_STATUS_ERROR', 2);
+
+define('BANK_ROBBERY_TTL', 60*60*24); // сутки на один цикл ограблений;
+
+// Типы ячеек
+define('AREA_BANK_CELL_TYPE_USER', 0); // Обычная ячейка пользователя
+define('AREA_BANK_CELL_TYPE_CLAN', 1); // Клановая казна
+
+// Типы логов
+define('AREA_BANK_CELL_LOG_ITEM', 1);  // Лог вещей
+define('AREA_BANK_CELL_LOG_MONEY', 2); // Лог денег
+
+// Типы операций в логах клановых-ячеек
+define('AREA_BANK_CELL_LT_ADDITEM', 1); // Добавление вещи
+define('AREA_BANK_CELL_LT_GETITEM', 2); // Изъятие вещи
+define('AREA_BANK_CELL_LT_ADDMONEY', 3); // Добавление денег
+define('AREA_BANK_CELL_LT_GETMONEY', 4); // Изъятие денег
+define('AREA_BANK_CELL_LT_CONFISCATEITEM', 5); // Конфискация предмета
+define('AREA_BANK_CELL_LT_BUYSTORE', 6); // Покупка вещи
+
+// Статусы в таблице связей юзеров с стартпаками
+define('AREA_BANK_PACK_USER_PAID', 1); // оплачено
+
+function area_bank_rate_get($ref=false, $from_type=false, $to_type=false, $add='') {
+	global $db;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($from_type && $to_type) {
+		$ref['from_type'] = $from_type;
+		$ref['to_type'] = $to_type;
+	}
+	return common_get($db,TABLE_AREA_BANK_RATES,$ref,$add);
+}
+
+function area_bank_rate_list($from_type=false, $to_type=false, $add='') {
+	global $db;
+	$ref = false;
+	if ($from_type && $to_type) {
+		$ref['from_type'] = $from_type;
+		$ref['to_type'] = $to_type;
+	}
+	return common_list($db,TABLE_AREA_BANK_RATES,$ref,$add);
+}
+
+function area_bank_rate_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_BANK_RATES,$param,FIELD_AREA_BANK_RATES);
+}
+
+function area_bank_rate_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_AREA_BANK_RATES,$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+define('TABLE_AREA_BANK_RATES_USER','area_bank_rates_user');
+
+function area_bank_rates_user_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,TABLE_AREA_BANK_RATES_USER,$ref,$add);
+}
+
+function area_bank_rates_user_list($ref=false, $add='') {
+    global $db;
+    return common_list($db,TABLE_AREA_BANK_RATES_USER,$ref,$add);
+}
+
+function area_bank_rates_user_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, TABLE_AREA_BANK_RATES_USER, $ref, $add);
+}
+
+function area_bank_rates_user_save($param) {
+    global $db;
+    return common_save($db,TABLE_AREA_BANK_RATES_USER,$param);
+}
+
+function area_bank_rates_user_delete($ref, $add='') {
+    global $db;
+    return common_delete($db,TABLE_AREA_BANK_RATES_USER,$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+function area_bank_bonus_get($ref=false, $from_type=false, $to_type=false, $add='') {
+	global $db;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($from_type && $to_type) {
+		$ref['from_type'] = $from_type;
+		$ref['to_type'] = $to_type;
+	}
+	return common_get($db,TABLE_AREA_BANK_BONUSES,$ref,$add);
+}
+
+function area_bank_bonus_id($amount,$type=MONEY_TYPE_GOLD) {
+	$item = area_bank_bonus_list(false,sql_pholder(' AND type=? AND cnt<=? ORDER BY type ASC,cnt DESC LIMIT 1 ',$type,$amount));
+	if (!$item[0]['bonus_id']) $item[0]['bonus_id'] = 0;
+	return $item[0]['bonus_id'];
+}
+
+function area_bank_bonus_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_AREA_BANK_BONUSES,$ref,$add);
+}
+
+function area_bank_bonus_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_BANK_BONUSES,$param,FIELD_AREA_BANK_BONUSES);
+}
+
+function area_bank_bonus_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_AREA_BANK_BONUSES,$ref,$add);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function area_bank_pack_get($ref=false, $add='') {
+	global $db;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	return common_get($db,TABLE_AREA_BANK_PACKS,$ref,$add);
+}
+function area_bank_pack_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_AREA_BANK_PACKS,$ref,$add);
+}
+function area_bank_pack_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_BANK_PACKS,$param,FIELD_AREA_BANK_PACKS);
+}
+function area_bank_pack_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_AREA_BANK_PACKS,$ref,$add);
+}
+//
+function area_bank_pack_group_get($ref=false, $add='') {
+	global $db;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	return common_get($db,TABLE_AREA_BANK_PACK_GROUPS,$ref,$add);
+}
+function area_bank_pack_group_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_AREA_BANK_PACK_GROUPS,$ref,$add);
+}
+function area_bank_pack_group_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_BANK_PACK_GROUPS,$param,FIELD_AREA_BANK_PACK_GROUPS);
+}
+function area_bank_pack_group_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_AREA_BANK_PACK_GROUPS,$ref,$add);
+}
+//
+function area_bank_pack_user_get($ref=false, $add='') {
+	global $db;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	return common_get($db,TABLE_AREA_BANK_PACK_USERS,$ref,$add);
+}
+function area_bank_pack_user_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_AREA_BANK_PACK_USERS,$ref,$add);
+}
+function area_bank_pack_user_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_BANK_PACK_USERS,$param,FIELD_AREA_BANK_PACK_USERS);
+}
+function area_bank_pack_user_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_AREA_BANK_PACK_USERS,$ref,$add);
+}
+function area_bank_buy_pack($user, $pack) {
+	// лог-сервис -----------------------
+	logserv_log_action(array(
+		'act_code' => 1030,	// Покупка вещей
+	), $user);
+	// ----------------------------------
+
+	// списываем баблосики
+	$status = user_make_payment(MONEY_TYPE_GOLD, $user['id'], -$pack['price'], sprintf(translate('за покупку стартового набора "%s", %d шт'), $pack['title'], 1));
+	if (!$status) {
+		return false;
+	}
+	logserv_log_operation(array( 'money_type' => MONEY_TYPE_GOLD, 'amount' => -$pack['price'] ), $user);
+
+	// выдаем бонус
+	if ($pack['bonus_id']) {
+		$bonus_out = bonus_apply($user, $pack['bonus_id']);
+		if (!$bonus_out) {
+			return false;
+		}
+	}
+
+	return true;
+}
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function area_bank_get_actual_rates($exteneded=false) {
+	$res = array();
+	foreach (area_bank_rate_list(false, false, " AND (!time_start || time_start<='".time_current()."') AND (!time_end || time_end>='".time_current()."') AND !forbidden ORDER BY time_start DESC, time_end DESC") as $v) {
+		$k = $v['from_type'].'-'.$v['to_type'];
+		if ($exteneded) $k .= '-'.($v['time_start'] || $v['time_end']);
+		if (array_key_exists($k, $res)) continue;
+		$res[$k] = $v;
+	}
+	ksort($res);
+	return $res;
+}
+
+function area_bank_get_actual_rate($from_type, $to_type) {
+	return area_bank_rate_get(false, $from_type, $to_type, " AND (!time_start || time_start<='".time_current()."') AND (!time_end || time_end>='".time_current()."') AND !forbidden ORDER BY time_start DESC, time_end DESC");
+}
+
+function area_bank_do_robbery($area_id=false) {
+	global $db;
+	$out = array(
+		'error' => translate('У менялы не осталось больше денег!'),
+		'status' => RUBBERY_STATUS_ERROR,
+		'money' => 0.0
+	);
+
+	$names_list = array('BANK_MONEY_MAX', 'BANK_MONEY_BALANCE', 'BANK_ROBBERY_STIME');
+	$setting_hash = get_hash(area_setting_list($area_id), 'name', 'value');
+
+	if ($setting_hash['BANK_MONEY_MAX'] <= 0) // грабеж в принципе невозможен
+		return $out;
+
+	$query_add = sql_pholder(' AND area_id=?', $area_id);
+
+	if ($setting_hash['BANK_ROBBERY_STIME']+BANK_ROBBERY_TTL < time_current()) {
+		// с момента предыдущего успешного ограбления прошло больше суток,
+		// обновление счета в банке до максимума, для нового ограбления
+		$query = sql_pholder('UPDATE '.TABLE_AREA_SETTINGS.' SET value=? WHERE name="BANK_MONEY_BALANCE"', $setting_hash['BANK_MONEY_MAX']);
+		$db->execSQL($query.$query_add);
+		if ($db->affected_rows() > 0) {
+			$setting_hash['BANK_MONEY_BALANCE'] = $setting_hash['BANK_MONEY_MAX'];
+		}
+		$query = sql_pholder('UPDATE '.TABLE_AREA_SETTINGS.' SET value=? WHERE value<? AND name="BANK_ROBBERY_STIME"', time_current(), time_current() );
+		$db->execSQL($query.$query_add);
+	}
+
+	if ($setting_hash['BANK_MONEY_BALANCE'] > 0) {
+		// ограбление возможно, деньги на счете есть
+		if ((rand() % 3) == 2) { // 33% вероятность удачного ограбления
+			$money_total = floatval($setting_hash['BANK_MONEY_BALANCE']);
+			$payment = mt_rand(1,10)/100.0 * floatval($setting_hash['BANK_MONEY_MAX']);
+			$query = sql_pholder('UPDATE '.TABLE_AREA_SETTINGS.' SET value=ROUND(value-(?),2) WHERE value>=? AND name="BANK_MONEY_BALANCE"', $payment, $payment);
+			$db->execSQL($query.$query_add);
+			if ($db->affected_rows() > 0) {
+				$out['error'] = sprintf(translate('Вам удалось ограбить банк! Вы унесли %0.2f бриллиантов!'), $payment);
+				$out['money'] = $payment;
+				$out['status'] = RUBBERY_STATUS_OK;
+				// зафиксируем время успешного ограбления
+				$query = sql_pholder('UPDATE '.TABLE_AREA_SETTINGS.' SET value=? WHERE value<? AND name="BANK_ROBBERY_STIME"', time_current(), time_current() );
+				$db->execSQL($query.$query_add);
+				return $out;
+			}
+		}
+		$out['error'] = translate('Вам не удалось ограбить менялу!');
+
+	}
+	return $out;
+}
+
+////////////////////////////////////////////
+function area_bank_cell_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_AREA_BANK_CELLS,$ref,$add);
+}
+
+function area_bank_cell_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_AREA_BANK_CELLS,$ref,$add);
+}
+
+function area_bank_cell_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_BANK_CELLS,$param,FIELD_AREA_BANK_CELLS);
+}
+
+function area_bank_cell_delete($ref) {
+	global $db;
+	$cell = area_bank_cell_get($ref);
+	if ($cell) {
+		$artifact_list = area_get_artifact_list($cell['area_id'], $cell['user_id']);
+		if ($artifact_list) {
+			$area = area_get($cell['area_id']);
+			if ($area['node_num']) {
+				NODE_PUSH($area['node_num']);
+				foreach ($artifact_list as $artifact) {
+					artifact_delete($artifact);
+				}
+				NODE_POP();
+			}
+		}
+		return common_delete($db,TABLE_AREA_BANK_CELLS,$ref);
+	}
+	return false;
+}
+
+////////////////////////////////////////////
+
+function area_bank_addcell_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_AREA_BANK_ADDCELLS,$ref,$add);
+}
+
+function area_bank_addcell_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_AREA_BANK_ADDCELLS,$ref,$add);
+}
+
+function area_bank_addcell_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_BANK_ADDCELLS,$param,FIELD_AREA_BANK_ADDCELLS);
+}
+
+function area_bank_addcell_delete($ref) {
+	global $db;
+	return common_delete($db,TABLE_AREA_BANK_ADDCELLS,$ref);
+}
+///////////////////////////////////
+function area_bank_cell_log_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_AREA_BANK_CELL_LOGS,$ref,$add);
+}
+
+function area_bank_cell_log_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_AREA_BANK_CELL_LOGS,$ref,$add);
+}
+
+function area_bank_cell_log_count($ref=false, $add='') {
+	global $db;
+	return common_count($db,TABLE_AREA_BANK_CELL_LOGS,$ref,$add);
+}
+
+function area_bank_cell_log_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_BANK_CELL_LOGS,$param,FIELD_AREA_BANK_CELL_LOGS);
+}
+
+function area_bank_cell_log_delete($ref, $add='') {
+	global $db;
+	return common_delete($db,TABLE_AREA_BANK_CELL_LOGS,$ref,$add);
+}
+
+////////////////////////////////////////////
+function area_bank_loan_get($ref=false, $add='') {
+	global $db;
+	if ($ref && !is_array($ref)) $ref = array('uid' => $ref);
+	return common_get($db,TABLE_AREA_BANK_LOANS,$ref,$add,'uid');
+}
+
+function area_bank_loan_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_AREA_BANK_LOANS,$ref,$add);
+}
+
+function area_bank_loan_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_BANK_LOANS,$param,FIELD_AREA_BANK_LOANS, 'uid');
+}
+
+function area_bank_loan_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_AREA_BANK_LOANS,$ref,$add,'uid');
+}
+
+////////////////////////////////////////////
+
+function area_bank_exchange_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_AREA_BANK_EXCHANGES,$ref,$add);
+}
+
+function area_bank_exchange_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_AREA_BANK_EXCHANGES,$ref,$add);
+}
+
+function area_bank_exchange_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_BANK_EXCHANGES,$param,FIELD_AREA_BANK_EXCHANGES);
+}
+
+function area_bank_exchange_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_AREA_BANK_EXCHANGES,$ref,$add);
+}
+
+// Обработка запросов к террабанку
+function tb_generate_query($data = array()) {
+	if(!is_array($data)) {
+		return false;
+	};
+	ksort($data);
+	$query = common_build_request($data).'&';
+	$hash = md5($query.TB_CREDIT_MAGIC);
+	$query .= "hash=".$hash;
+	return $query;
+};
+
+function tb_get_answer($query = false) {
+	if(!$query) {
+		return false;
+	};
+	$time1 = getmicrotime();
+	$data = @file_get_contents(TB_CREDIT_URL.'?'.$query);
+	$time2 = getmicrotime();
+	tb_error(sprintf('tb_get_answer(): EXEC TIME=%01.6f, url=%s', $time2-$time1, TB_CREDIT_URL.'?'.$query));
+	if($data) {
+		$data_array = split("&",$data);
+		if(is_array($data_array)) {
+			foreach($data_array as $str) {
+				$values = split("=",$str);
+				$key = $values[0];
+				$value = $values[1];
+				$out[$key] = urldecode($value);
+			};
+		};
+	};
+	return $out;
+};
+
+// получение статуса кредита
+function tb_credit_check($nick) {
+	global $PARTNERS_CFG;
+	if (!$nick) return false;
+	$terrabank_id = TERRABANK_ID;
+	if ($PARTNERS_CFG) {
+		$user = user_get(false, $nick, '', true);
+		foreach($PARTNERS_CFG as $partner) {
+			if (!$partner['auth_flag']) continue;
+			if (intval($user['auth_flags']) & intval($partner['auth_flag']) && $partner['terrabank_id']) {
+				$terrabank_id = $partner['terrabank_id'];
+				break;
+			}
+		}
+	}
+	return tb_get_answer(tb_generate_query(array(
+		"operation" => "getCurrentCreditStatus",
+		"pr_id" => $terrabank_id,
+		"account" => $nick,
+		"date" => time(),
+	)));
+}
+
+// выдача кредита
+function tb_credit_get($nick, $amount) {
+	global $PARTNERS_CFG;
+	if (!$nick) return false;
+	$terrabank_id = TERRABANK_ID;
+	if ($PARTNERS_CFG) {
+		$user = user_get(false, $nick, '', true);
+		foreach($PARTNERS_CFG as $partner) {
+			if (!$partner['auth_flag']) continue;
+			if (intval($user['auth_flags']) & intval($partner['auth_flag']) && $partner['terrabank_id']) {
+				$terrabank_id = $partner['terrabank_id'];
+				break;
+			}
+		}
+	}
+	return tb_get_answer(tb_generate_query(array(
+		"operation" => "creditePlayer",
+		"pr_id" => $terrabank_id,
+		"account" => $nick,
+		"date" => time(),
+		"summ" => $amount,
+	)));
+}
+
+// погашение кредита
+function tb_credit_payoff($nick) {
+	global $PARTNERS_CFG;
+	if (!$nick) return false;
+	$terrabank_id = TERRABANK_ID;
+	if ($PARTNERS_CFG) {
+		$user = user_get(false, $nick, '', true);
+		foreach($PARTNERS_CFG as $partner) {
+			if (!$partner['auth_flag']) continue;
+			if (intval($user['auth_flags']) & intval($partner['auth_flag']) && $partner['terrabank_id']) {
+				$terrabank_id = $partner['terrabank_id'];
+				break;
+			}
+		}
+	}
+	return tb_get_answer(tb_generate_query(array(
+		"operation" => "canselCredit",
+		"pr_id" => $terrabank_id,
+		"account" => $nick,
+		"date" => time(),
+	)));
+}
+
+function tb_error($str) {
+	$bt = debug_backtrace();
+	$t = array();
+	foreach ($bt as $v) $t[] = basename($v['file']).':'.$v['line'];
+	$trace = implode(',',array_reverse($t));
+	$str = sprintf("(terrabank) %d: %s (trace: %s)",getmypid(),$str,$trace);
+	logfile(PATH_LOGS.'terrabank.log',$str);
+}
+
+function tb_credit_info_sync($user_id) {
+	global $session_user;
+	if (!$user_id) return false;
+	$user = ($user_id == $session_user['id']) ? $session_user : user_get($user_id);
+	$nick = $user['nick'];
+	if (!$nick) return false;
+	$credit_out = tb_credit_check($nick);
+	if (!$credit_out['account']) return false;
+
+	$rtime = 0;
+	if (in_array($credit_out['status'], array(1,2))) {
+		sscanf($credit_out['payoff'], '%d.%d.%d %d:%d:%d', $day, $month, $year, $hour, $minutes, $seconds);
+		$rtime = mktime($hour, $minutes, $seconds, $month, $day, $year);
+	}
+	$param = array(
+		'uid' => $user_id,
+		'status' => $credit_out['status'],
+		'amount' => round($credit_out['credit'],2),
+		'warn_num' => 0,
+		'rtime' => $rtime,
+		'_mode' => CSMODE_REPLACE,
+	);
+	return area_bank_loan_save($param);
+}
+
+// наложить наказание на игрока
+function area_bank_loan_punish_user($user, $loan, $punishment_id, $period) {
+	global $kind_info;
+	if (!$user) return false;
+	$punishment_user = punishment_user_get(array('user_id' => $user['id'], 'punishment_id' => $punishment_id));
+	if ($punishment_user) return false; // уже наказан
+	$punishment = punishment_get($punishment_id);
+	if (!$punishment) return false; // wtf!
+	punishment_user_save(array(
+		'user_id' => $user['id'],
+		'crime_id' => $punishment['crime_id'],
+		'punishment_id' => $punishment['id'],
+		'type_id' => $punishment['type_id'],
+		'money' => ($punishment['type_id'] == PUNISH_TYPE_MONEY) ? $punishment['money'] : 0,
+		'money_type' => ($punishment['type_id'] == PUNISH_TYPE_MONEY) ? $punishment['money_type'] : 0,
+		'reason_str' => $punishment['reason_str'],
+		'ftime' => ($punishment['type_id'] == PUNISH_TYPE_TIME) ? time_current()+$punishment['days_max']*60*60*24 : 0,
+	));
+	$jail_area_id = $kind_info[$user['kind']]['jail_area_id'];
+	$user_param = array(
+		'id' => $user['id'],
+		'area_id' => $jail_area_id,
+		'instance_id' => 0,
+		'raid_id' => 0,
+		'_set' => ' flags=flags|'.(USER_FLAG_JAIL | USER_FLAG_PUNISH),
+		'flags2' => $user['flags2'] & ~USER_FLAG2_IN_ESTATE,
+	);
+	//user_change_chat_channels(user_get($user['id']), $user_param);
+	user_save($user_param);
+	// лог-сервис -----------------------
+	$comment = sprintf(translate('Игрок получил %s на основании взятого кредита %.2f от %s'), $punishment['title'], $loan['loan_size'], date('Y-m-d H:i:s', $loan['return_date'] - $period*60*60*24));
+	logserv_log_operation(array(
+		'money_type' => MONEY_TYPE_GOLD,
+		'amount' => 0,
+		'comment' => $comment,
+	), $user);
+	return true;
+}
+
+// снять наказание с игрока
+function area_bank_loan_amnesty_user($user, $loan, $punishment_id, $period) {
+	if (!$user) return false;
+	$punishment_user = punishment_user_get(array('user_id' => $user['id'], 'punishment_id' => $punishment_id));
+	if (!$punishment_user) return false; // не наказан
+	$punishment = punishment_get($punishment_id);
+	if (!$punishment) return false; // wtf!
+	punishment_user_delete($punishment_user['id']);
+	punishment_user_flag_sync($punishment_user['user_id']);
+	// лог-сервис -----------------------
+	$comment = sprintf(translate('С игрока снято %s после возврата кредита %f от %s'), $punishment['title'], $loan['loan_size'], date('Y-m-d H:i:s', $loan['return_date'] - $period*60*60*24));
+	logserv_log_operation(array(
+		'money_type' => MONEY_TYPE_GOLD,
+		'amount' => 0,
+		'comment' => $comment,
+	), $user);
+	return true;
+}
+
+
+function area_bank_message_send($to_id, $force_param=array()) {
+	$param = array(
+		'from_id' => 0,
+		'to_id' => $to_id,
+		'unread' => 1,
+		'type_id' => MSG_TYPE_SYS_NORMAL,
+		'subject' => translate('Банк: напоминание'),
+		'stime' => time_current(),
+		'rtime' => time_current() + area_post_message_ttl(MSG_TYPE_SYS_NORMAL, true),
+		'flags' => POST_MSG_FLAG_ALLOW_HTML,
+	);
+	if ($force_param) {
+		$force_param['flags'] = intval($force_param['flags']) | intval($param['flags']);
+		$param = array_merge($param, $force_param);
+	}
+	area_post_message_save($param);
+	area_post_user_send_chat_notify($param['to_id']);
+};
+
+// кол-во слотов, занятое артефактами в ячейке
+function get_cell_artifact_weight($cell_artifact_hash){
+	if (!is_array($cell_artifact_hash)) {
+		return false;
+	}
+	$cell_artifact_weight = 0;
+	foreach ($cell_artifact_hash as $artifact) {
+		if ($artifact['flags'] & ARTIFACT_FLAG_WEIGHT_COLLAPSED){
+			$cell_artifact_weight += max($artifact['cnt'], 1);
+		} else {
+			++$cell_artifact_weight;
+		}
+	}
+	return $cell_artifact_weight;
+}
+
+function area_bank_rate_cron() {    
+    if(true == false) {
+        $data = area_bank_rate_list(false, false, " AND limit_amount > 0 ORDER BY from_type, to_type, time_start DESC, time_end DESC");
+        foreach ($data as $rate) {
+            if ($rate['limit_amount'] && $rate['limit_period']) {
+                area_bank_rates_user_save(array('_add' => sql_pholder(' AND rate_id = ? AND dtime < ?', $rate['id'], time_current()), '_set' => sql_pholder(' amount = 0, dtime= ?', time_current() + $rate['limit_period']),));
+            }
+        }
+    }
+    area_bank_rates_user_save(array('_add' => sql_pholder(' AND dtime > 0 AND dtime < ?', time_current()), '_set' => sql_pholder(' amount = 0, dtime= 0'),));
+}

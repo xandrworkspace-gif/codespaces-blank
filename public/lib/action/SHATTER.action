@@ -1,0 +1,71 @@
+<? # $Id: SHATTER.action,v 1.5 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "разбить предмет" (применяется к эликсирам и т.п.)
+// Параметры:
+//	$in['artifact_id'] - артефакт, который нужно разбить
+//  $in['artifact_cnt'] - количество, которое нужно разбить
+define('ACTION_SHATTER_MAX_QUANTITY', 20);
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact_cnt = intval($in['artifact_cnt']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+
+global $artifact_kind_id_shatter;
+if (!is_array($artifact_kind_id_shatter)) return;
+if (!$artifact || !in_array($artifact['kind_id'], $artifact_kind_id_shatter) || $artifact['slot_id']) { // неверный или не разбиваемый или надетый предмет
+	$out['error'] = translate('Нужно выбрать предмет!');
+	return;
+}
+if ($artifact_cnt > ACTION_SHATTER_MAX_QUANTITY || $artifact_cnt < 1) {
+	$out['error'] = sprintf(translate('За раз вы можете утилизировать от 1 до %s предметов!'), ACTION_SHATTER_MAX_QUANTITY);
+	return;
+}
+
+// fix для артефактов с нулевым количеством (склянка), их трактуем за единицу
+if ($artifact && (intval($artifact['cnt']) == 0)) $artifact['cnt'] = 1;
+
+if ($artifact['cnt'] < $artifact_cnt) {
+	$out['error'] = translate('У вас нет нужного количества этих предметов!');
+	return;
+}
+
+$bonus_id = intval($action['param1']);
+if (!$bonus_id) return;
+
+require_once("lib/bonus.lib");
+
+$shattered_artifacts = 0;
+for($i = 0; $i < $artifact_cnt; ++$i) {
+	$out_bonus = bonus_apply($subject, $bonus_id);
+	if ($out_bonus['status'] == BONUS_STATUS_OK) $shattered_artifacts++;
+}
+
+if ($shattered_artifacts < $artifact['cnt']) {
+	artifact_save(array(
+		'id' => $artifact['id'],
+		'cnt' => $artifact['cnt'] - abs($shattered_artifacts)
+	));
+} else { // разбили все артефакты
+	artifact_delete($artifact);
+}
+
+$out['status'] = ACTION_STATUS_OK;
+
+// лог-сервис -----------------------
+logserv_log_action(array(
+	'action' => $action,
+),$action_user);
+logserv_log_operation(array(
+	'artifact' => $artifact,
+	'cnt' => -max($artifact_cnt,1),
+	'comment' => ($out['status'] == ACTION_STATUS_OK ? translate('Вещи разбиты') : translate('Вещи не разбиты')),
+),$action_user);
+// ----------------------------------
+
+?>

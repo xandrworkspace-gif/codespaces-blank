@@ -1,0 +1,137 @@
+<?php
+
+define('ENERGY_TYPE_FARM', 1);
+define('ARTIFACT_ENERGY_TABLE', 'artifact_energy');
+
+$energy_type_artikul_hash = array(
+    ENERGY_TYPE_FARM => 'farm_energy',
+);
+$energy_type_artikul_title = array(
+    ENERGY_TYPE_FARM => 'Энергия добытчика',
+);
+
+//key user_id-artifact_id (тут проблема, а если артефакт передадут? можно проверять артефакт юзера так то)
+//user_id, artifact_id, type, slot_id, energy, energy_max
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function artifact_energy_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,ARTIFACT_ENERGY_TABLE,$ref,$add);
+}
+
+function artifact_energy_list($ref=false, $add='', $field_list='*') {
+    global $db;
+    return common_list($db,ARTIFACT_ENERGY_TABLE,$ref,$add,$field_list);
+}
+
+function artifact_energy_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, ARTIFACT_ENERGY_TABLE, $ref, $add);
+}
+
+function artifact_energy_save($param) {
+    global $db;
+    return common_save($db,ARTIFACT_ENERGY_TABLE,$param);
+}
+
+function artifact_energy_delete($ref, $add='') {
+    global $db;
+    if(!$ref && !$add) return false;
+    common_delete($db,ARTIFACT_ENERGY_TABLE,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function artifact_energy_user_get($user_id, $type = ENERGY_TYPE_FARM) {
+    $artifact_energy_list = artifact_energy_list(array('user_id' => $user_id, 'type' => $type), sql_pholder(' AND slot_id <> ?', ''));
+    $energy = array(
+        'current' => 0,
+        'max' => 0,
+    );
+    foreach ($artifact_energy_list as $artifact) {
+        $energy['current'] += intval($artifact['energy']);
+        $energy['max'] += intval($artifact['energy_max']);
+    }
+    return $energy;
+}
+
+function artifact_energy_slot_change($user_id, $artifact_id, $slot_id = '', $energy_max = 0, $type = ENERGY_TYPE_FARM) {
+    if(!$energy_max || !$user_id || !$artifact_id) return false;
+    $artifact_energy = artifact_energy_get(array('artifact_id' => $artifact_id));
+    if(!$artifact_energy) {
+        return artifact_energy_save(array(
+            'user_id' => $user_id,
+            'artifact_id' => $artifact_id,
+            'type' => $type,
+            'slot_id' => $slot_id,
+            'energy' => 0,
+            'energy_max' => intval($energy_max),
+        ));
+    }else{
+        return artifact_energy_save(array(
+            '_add' => sql_pholder(' AND artifact_id = ?', $artifact_id),
+            '_set' => sql_pholder(' user_id = ?, slot_id = ?, energy_max = ?', $user_id, $slot_id, intval($energy_max)),
+        ));
+    }
+}
+
+function artifact_energy_slot_charge($user_id, $energy = 1, $type = ENERGY_TYPE_FARM) {
+    if(!$user_id || !$type) return false;
+    while ($energy > 0) {
+        if(!$energy || $energy <= 0) break; //На всякий)
+        $artifact_energy = artifact_energy_get(array('user_id' => $user_id, 'type' => $type), sql_pholder(' AND slot_id <> ? AND energy < energy_max AND energy_max > 0 ORDER BY energy DESC', ''));
+        if (!$artifact_energy) return false;
+
+        $set_energy = min($energy, $artifact_energy['energy_max'] - $artifact_energy['energy']);
+        vardump('$set_energy='.$set_energy);
+        $energy -= $set_energy;
+        vardump('$energy='.$energy);
+        artifact_energy_save(array(
+            '_add' => sql_pholder(' AND user_id = ? AND artifact_id = ?', $artifact_energy['user_id'], $artifact_energy['artifact_id']),
+            '_set' => sql_pholder(' energy = energy + ?', $set_energy),
+        ));
+    }
+    return true;
+}
+
+function artifact_energy_slot_discharge($user_id, $energy = 1, $type = ENERGY_TYPE_FARM) {
+    if(!$user_id || !$type) return false;
+
+    $artifact_energy_user = artifact_energy_user_get($user_id, $type);
+    if($energy > $artifact_energy_user['current']) return false;
+
+    while ($energy > 0) {
+        if(!$energy || $energy <= 0) break; //На всякий)
+        $artifact_energy = artifact_energy_get(array('user_id' => $user_id, 'type' => $type), sql_pholder(' AND slot_id <> ? AND energy > 0 AND energy_max > 0 ORDER BY energy ASC', ''));
+        if (!$artifact_energy) return false;
+
+        $set_energy = min($energy, $artifact_energy['energy']);
+        $energy -= $set_energy;
+
+        artifact_energy_save(array(
+            '_add' => sql_pholder(' AND user_id = ? AND artifact_id = ?', $artifact_energy['user_id'], $artifact_energy['artifact_id']),
+            '_set' => sql_pholder(' energy = energy - ?', $set_energy),
+        ));
+    }
+    return true;
+}
+
+/*
+
+do{
+    break;
+    //PUT_ON.action
+    try{
+        artifact_energy_slot_change($subject['id'], $object['id'], $object['slot_id'], $artifact_artikul['farm_energy'], ENERGY_TYPE_FARM);
+    }catch (Exception $artifact_energy_exception){}
+
+    //PUT_OFF.action
+    try{
+        artifact_energy_slot_change($subject['id'], $object['id'], '', $artifact_artikul['farm_energy'], ENERGY_TYPE_FARM);
+    }catch (Exception $artifact_energy_exception){}
+
+}while(0);
+
+*/

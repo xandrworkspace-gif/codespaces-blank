@@ -1,0 +1,333 @@
+<? # $Id: xform.lib,v 1.1 2009-09-18 12:41:16 v.krutov Exp $
+
+define('XFORM_FIELD_TYPE_RADIO', 'radio');
+define('XFORM_FIELD_TYPE_SELECT', 'select');
+define('XFORM_FIELD_TYPE_CHECKBOX', 'checkbox');
+define('XFORM_FIELD_TYPE_SECRET', 'secret');
+define('XFORM_FIELD_TYPE_INPUT', 'input');
+define('XFORM_FIELD_TYPE_TEXTAREA', 'textarea');
+define('XFORM_FIELD_TYPE_HIDDEN', 'hidden');
+define('XFORM_FIELD_TYPE_PHTML', 'plain_html');
+define('XFORM_FIELD_TYPE_UHTML', 'user_html');
+define('XFORM_FIELD_TYPE_BUTTON', 'button');
+
+define('XFORM_FLAG_2COLUMNS', 0x01);
+define('XFORM_FLAG_HIDDEN', 0x02);
+define('XFORM_FLAG_EDIT_TEXAREA', 0x04);
+define('XFORM_FLAG_NOT_EDITABLE', 0x08);
+define('XFORM_FLAG_NO_SEND', 0x10);
+
+global $xform_field_info; 
+$xform_field_info = array(
+	XFORM_FIELD_TYPE_RADIO 		=> array('id' => XFORM_FIELD_TYPE_RADIO 	, 'flags' => 0),
+	XFORM_FIELD_TYPE_SELECT		=> array('id' => XFORM_FIELD_TYPE_SELECT	, 'flags' => 0),
+	XFORM_FIELD_TYPE_CHECKBOX	=> array('id' => XFORM_FIELD_TYPE_CHECKBOX	, 'flags' => 0),
+	XFORM_FIELD_TYPE_SECRET		=> array('id' => XFORM_FIELD_TYPE_SECRET	, 'flags' => 0),
+	XFORM_FIELD_TYPE_INPUT		=> array('id' => XFORM_FIELD_TYPE_INPUT		, 'flags' => 0),
+	XFORM_FIELD_TYPE_TEXTAREA	=> array('id' => XFORM_FIELD_TYPE_TEXTAREA	, 'flags' => XFORM_FLAG_EDIT_TEXAREA),
+	XFORM_FIELD_TYPE_HIDDEN		=> array('id' => XFORM_FIELD_TYPE_HIDDEN	, 'flags' => XFORM_FLAG_HIDDEN),
+	XFORM_FIELD_TYPE_PHTML		=> array('id' => XFORM_FIELD_TYPE_PHTML		, 'flags' => XFORM_FLAG_2COLUMNS | XFORM_FLAG_NOT_EDITABLE | XFORM_FLAG_NO_SEND),
+	XFORM_FIELD_TYPE_UHTML		=> array('id' => XFORM_FIELD_TYPE_UHTML		, 'flags' => XFORM_FLAG_2COLUMNS | XFORM_FLAG_EDIT_TEXAREA | XFORM_FLAG_NO_SEND),
+	XFORM_FIELD_TYPE_BUTTON		=> array('id' => XFORM_FIELD_TYPE_BUTTON	, 'flags' => XFORM_FLAG_2COLUMNS | XFORM_FLAG_NO_SEND),
+
+);
+
+function xml_parse_xform_element(&$item) {
+	$out = array('status' => false, 'error' => 'Incorrect field format');
+
+	$out['field'] = $item['attr']['ref'];
+	if (!$out['field']) {
+		$out['error'] = 'Undefined ref';
+		return $out;
+	}
+
+	switch ($item['name']) {
+	case 'select1':
+		$appearance = $item['attr']['appearance'];
+		if ($appearance == 'minimal') { // select box
+			$hash = xml_make_hash($item['child']);
+			foreach ($hash['item'] as $k=>$v) {
+				if (!$v['label']) $hash['item'][$k]['label'] = 0;
+				if (!$v['value']) $hash['item'][$k]['value'] = 0; // fix 'value' = array()
+			}
+			$out['type'] = XFORM_FIELD_TYPE_SELECT;
+			$out['label'] = $hash['label'];
+			$out['item_list'] = $hash['item'];
+		} elseif ($appearance == 'full') { // radio button
+			$hash = xml_make_hash($item['child']);
+			$out['type'] = XFORM_FIELD_TYPE_RADIO;
+			$out['label'] = $hash['label'];
+			$out['item_list'] = $hash['item'];
+		} else {
+			$out['error'] = 'Can\'t detect field type';
+			return $out;
+		}
+		if (@$out['label'] && @$out['item_list']) {
+			$out['status'] = true;
+		}
+		break;
+	case 'select':
+		$hash = xml_make_hash($item['child']);
+		$out['type'] = XFORM_FIELD_TYPE_CHECKBOX;
+		$out['label'] = $hash['label'];
+		$out['item_list'] = $hash['choices']['item'];
+		if (@$out['label'] && @$out['item_list']) {
+			$out['status'] = true;
+		}
+		break;
+	case 'secret':
+	case 'input':
+		$out['type'] = (($item['name'] == 'secret') ? XFORM_FIELD_TYPE_SECRET : XFORM_FIELD_TYPE_INPUT);
+		$out['pattern'] = xform_parse_pattern($item['attr']);
+		if ($out['pattern']) $out['pattern'] = serialize($out['pattern']);
+		else $out['pattern'] = '';
+		$hash = xml_make_hash($item['child']);
+		$out['label'] = $hash['label'];
+		if (@$out['label']) {
+			$out['status'] = true;
+		}
+		break;
+	case 'textarea':
+		$hash = xml_make_hash($item['child']);
+		$out['type'] = XFORM_FIELD_TYPE_TEXTAREA;
+		$out['label'] = $hash['label'];
+		if (@$out['label']) {
+			$out['status'] = true;
+		}
+		break;
+	case 'hidden':
+		$out['type'] = XFORM_FIELD_TYPE_HIDDEN;
+		$out['label'] = '';
+		$out['status'] = true;
+		$out['default'] = $item['attr']['default'];;
+		break;
+	case 'phtml':
+		$out['type'] = XFORM_FIELD_TYPE_PHTML;
+		$out['label'] = '';
+		$out['values'] = $item['data'];
+		$out['status'] = true;
+		break;
+	case 'uhtml':
+		$out['type'] = XFORM_FIELD_TYPE_UHTML;
+		$out['label'] = '';
+		$out['title'] = $item['data'];
+		$out['status'] = true;
+		break;
+	case 'button':
+		$out['type'] = XFORM_FIELD_TYPE_BUTTON;
+		$out['label'] = '';
+		$out['title'] = '';
+		$out['status'] = true;
+		break;
+	}
+	return $out;
+}
+
+function xform_element_with_choices($xform_type) {
+	static $with_choices = array(XFORM_FIELD_TYPE_RADIO, XFORM_FIELD_TYPE_SELECT, XFORM_FIELD_TYPE_CHECKBOX);
+	return in_array($xform_type, $with_choices);
+}
+
+function xform_parse_pattern($elem) {
+	$pattern = @$elem['pattern'];
+	$attr = @$elem['attr'];
+	$delim = @$elem['delim'];
+	$out = @$elem['out'];
+	if (!$pattern && !$attr && !$delim && !$out) return array();
+
+	$exp_list = explode('|', $pattern);
+	$attr_list = explode('|', $attr);
+	$delim_list = explode('|', $delim);
+
+	$field_list = array();
+
+	foreach ($exp_list as $k => $exp) {
+		$field_list[] = array(
+			'regexp' => $exp,
+			'attr' => @$attr_list[$k],
+			'delim' => @$delim_list[$k],
+		);
+	}
+	return array('fields' => $field_list, 'out' => ($out ? $out : '$1'));
+}
+
+/*
+function xform_pattern_print($field_name, $pattern, $value) {
+	$i=0;
+	$html = '';
+	foreach ($pattern['fields'] as $param) {
+		$i++;
+		$add = @$param['attr'];
+		$val = isset($value[$i]) ? $value[$i] : '';
+		$html .= '<input type="text" name="form['.$field_name.']['.$i.']" value="'.htmlspecialchars($val).'" style="width:auto;margin:0px 1px" '.$add.'>';
+		if (@$param['delim']) $html .= $param['delim'];
+	}
+	return $html;
+}
+
+function xform_pattern_collect($field_value, $pattern) {
+	$res = $pattern['out'];
+	for($i=1; $i<=10;$i++) {
+		$res = str_replace('$'.$i, @$field_value[$i], $res);
+	}
+	return $res;
+}
+
+function xform_pattern_check($value, $pattern, $label) {
+	$pattern = unserialize($pattern);
+	if (!$pattern) {
+		return array('status' => false, 'error' => 'Incorrect pattern!');
+	}
+
+	$i = 0;
+	foreach ($pattern['fields'] as $param) {
+		$i ++;
+		$val = isset($value[$i]) ? $value[$i] : '';
+		if (!$val) {
+			return array('status' => false, 'error' => sprintf(loc('Не заполнено поле "%s"!'), $label));
+		}
+		if (!preg_match($param['regexp'], $val)) {
+			return array('status' => false, 'error' => sprintf(loc('Не заполнено поле "%s"!'), $label));
+		}
+	}
+	return array('status' => true, 'error' => '');
+}
+
+function xform_element_to_db($element) {
+	$param = array();
+	$param['name'] = $element['field'];
+	$param['type'] = $element['type'];
+	$param['label'] = $element['label'];
+	$param['default'] = @$element['default'];
+	$param['pattern'] = @$element['pattern'];
+	$param['title'] = @$element['title'];
+	$param['values'] = array();
+
+	if (xform_element_with_choices($param['type'])) {
+		$param['values'] = get_hash($element['item_list'], 'value', 'label');
+	}
+	$param['values'] = serialize($param['values']);
+	return $param;
+}
+
+function xform_element_to_html($element, $value=null, $param=array()) {
+	global $xform_field_info;
+
+	$prefix = @$param['prefix'] ? $param['prefix'] : 'form[';
+	$add = @$param['add'];
+	if (!isset($value)) {
+		$value = $element['default'];
+	}
+	$label = $control = '';
+
+	if ($element['no_view']) {
+		if (intval($element['no_send'])) {
+			return false;
+		} else {
+			$element['type'] = XFORM_FIELD_TYPE_HIDDEN;
+		}
+	} 
+
+	switch ($element['type']) {
+	case XFORM_FIELD_TYPE_INPUT:
+		if ($element['pattern']) {
+			$element['pattern'] = unserialize($element['pattern']);
+			$control = xform_pattern_print($element['name'], $element['pattern'], $value);
+		} else {
+			$control = '<input id="'.$element['name'].'" type="text" name="'.$prefix.$element['name'].']" value="'.htmlspecialchars($value).'"'.($add ? ' '.$add:'').'>';
+		}
+		break;
+	case XFORM_FIELD_TYPE_SECRET:
+		$control = '<input id="'.$element['name'].'" type="password" name="'.$prefix.$element['name'].']" value="'.htmlspecialchars($value).'"'.($add ? ' '.$add:'').'>';
+		break;
+	case XFORM_FIELD_TYPE_HIDDEN:
+		$control = '<input id="'.$element['name'].'" type="hidden" name="'.$prefix.$element['name'].']" value="'.htmlspecialchars($value).'"'.($add ? ' '.$add:'').'>';
+		break;
+	case XFORM_FIELD_TYPE_PHTML:
+		$control = $element['values'];
+		break;
+	case XFORM_FIELD_TYPE_UHTML:
+		$control = $element['title'];
+		break;
+/*
+define('XFORM_FIELD_TYPE_RADIO', 'radio');
+define('XFORM_FIELD_TYPE_SELECT', 'select');
+define('XFORM_FIELD_TYPE_CHECKBOX', 'checkbox');
+define('XFORM_FIELD_TYPE_SECRET', 'secret');
+define('XFORM_FIELD_TYPE_TEXTAREA', 'textarea');
+define('XFORM_FIELD_TYPE_UHTML', 'user_html');
+*/
+
+//define('XFORM_FIELD_TYPE_RADIO', 'radio');
+//define('XFORM_FIELD_TYPE_CHECKBOX', 'checkbox');
+/*
+	case XFORM_FIELD_TYPE_SELECT:
+		$value_list = unserialize($element['values']);
+		$control = html_select($prefix.$element['name'].']', $value_list, ($value ? $value : -1), false, false, ' id="'.$element['name'].'"');
+		break;
+	default:
+		$control = $element['type'];
+		break;
+	}
+
+	$label = $element['title'];
+	if (!$label) {
+		$label = $element['label'];
+	}
+	return array('control'=>$control, 'label' => $label, 'name' => $element['name'], 'type' => $element['type'], 'flags' => $xform_field_info[$element['type']]['flags']);
+}
+
+function xform_element_to_html_view($element, $value=null, $param=array()) {
+	global $xform_field_info;
+
+	if (!isset($value)) {
+		$value = $element['default'];
+	}
+	$label = $control = '';
+	switch ($element['type']) {
+	case XFORM_FIELD_TYPE_INPUT:
+		if ($element['pattern'] && is_array($value)) {
+			$element['pattern'] = unserialize($element['pattern']);
+			$control = xform_pattern_collect($value, $element['pattern']);
+		} else {
+			$control = htmlspecialchars($value);
+		}
+		break;
+	case XFORM_FIELD_TYPE_HIDDEN:
+		$control = '';
+		break;
+	case XFORM_FIELD_TYPE_PHTML:
+		$control = '';
+		//$control = $element['values'];
+		break;
+	case XFORM_FIELD_TYPE_UHTML:
+		$control = '';
+		//$control = $element['title'];
+		break;
+	case XFORM_FIELD_TYPE_SECRET:
+		$control = '******';
+		//$control = $element['title'];
+		break;
+	case XFORM_FIELD_TYPE_SELECT:
+		$value_hash = unserialize($element['values']);
+		$control = $value_hash[$value];
+		break;
+/*
+define('XFORM_FIELD_TYPE_RADIO', 'radio');
+define('XFORM_FIELD_TYPE_CHECKBOX', 'checkbox');
+define('XFORM_FIELD_TYPE_SECRET', 'secret');
+define('XFORM_FIELD_TYPE_TEXTAREA', 'textarea');
+define('XFORM_FIELD_TYPE_UHTML', 'user_html');
+*/
+/*	default:
+		$control = $element['type'];
+		break;
+	}
+
+	$label = $element['title'];
+	if (!$label) {
+		$label = $element['label'];
+	}
+	return array('control'=>$control, 'label' => $label, 'name' => $element['name'], 'type' => $element['type'], 'flags' => $xform_field_info[$element['type']]['flags']);
+}
+*/

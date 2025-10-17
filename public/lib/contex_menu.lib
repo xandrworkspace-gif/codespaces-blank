@@ -1,0 +1,44 @@
+<?php
+
+define('TABLE_CONTEX_MENU_LIST','contex_menu');
+define('FIELD_CONTEX_MENU_LIST','');
+
+define('CONTEX_MENU_INFOPORTAL' , 1);
+
+define('CONTEX_MENU_VISIBLE', 0x000001);
+
+$contex_menu_type_hash = array(
+    CONTEX_MENU_INFOPORTAL => 'Кнопка инфопортала (Главное меню)',
+);
+
+$contex_menu_flags_hash = array(
+    CONTEX_MENU_VISIBLE => 'Показывать',
+);
+
+#Работа с базой данных
+function contex_menu_get($ref=false, $add='') {
+global $db_path;
+return common_get($db_path,TABLE_CONTEX_MENU_LIST,$ref,$add);;
+}
+
+function contex_menu_list($ref=false, $add='') {
+global $db_path;
+return  common_list($db_path,TABLE_CONTEX_MENU_LIST,$ref,$add);
+}
+
+function contex_menu_count($ref=false, $add='') {
+global $db_path;
+return common_count($db_path, TABLE_CONTEX_MENU_LIST, $ref, $add);
+}
+
+function contex_menu_save($param) {
+global $db_path;
+return common_save($db_path,TABLE_CONTEX_MENU_LIST,$param,FIELD_CONTEX_MENU_LIST);
+}
+
+function contex_menu_delete($ref, $add='') {
+global $db_path;
+if(!$ref)return false;
+common_delete($db_path,TABLE_CONTEX_MENU_LIST,$ref,$add);
+return true;
+}

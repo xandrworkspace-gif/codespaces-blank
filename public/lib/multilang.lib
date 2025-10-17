@@ -1,0 +1,652 @@
+<? # $Id: transcode.lib,v 1.2 2009/12/23 12:15:27 v.krutov Exp $
+
+require_once('lib/exp_imp.lib');
+require_once('lib/area.lib');
+require_once('lib/npc.lib');
+
+// поле основного языка, используется при синхронизации
+define('BASE_LANG', 'ru');
+define('BASE_FIELD', 'str_ru');
+
+// поля таблицы, которые будут выгружаться вместе с фразами
+$multilang_phrases_export_fields = array('strid', 'src_file', 'id_key', 'flash_key');
+
+// Имена и поля таблиц
+define('TABLE_MULTILANG_PHRASES','multilang_phrases');
+define('TABLE_MULTILANG_PHRASES_META','multilang_phrases_meta');
+define('TABLE_MULTILANG_PHRASES_MTIME','multilang_phrases_mtime');
+define('FIELD_MULTILANG_PHRASES','');
+
+// Флаги для переводов
+define('MULTILANG_PHRASE_FLAG_CODE',    0x0001); // Используется в коде
+define('MULTILANG_PHRASE_FLAG_CONTENT', 0x0002); // Используется в контенте
+define('MULTILANG_PHRASE_FLAG_FLASH',   0x0004); // Используется во флеше
+
+
+// кастомный контент
+define('MULTILANG_META_FLAG_CUSTOM_CONTENT', 0x0001);
+// Тип текстовки
+define('MULTILANG_META_FLAG_IS_TITLE',		 0x0002);
+
+// данные для отображения мультиланга в админке
+define ('MULTILANG_PORTION_SIZE', 5000);
+define ('MULTILANG_SORT_TAIL', MULTILANG_PORTION_SIZE);
+
+// Флаги для мета-информации (источник)
+$multilang_flags_hash = array(
+	MULTILANG_PHRASE_FLAG_CODE => 'Code',
+	MULTILANG_PHRASE_FLAG_CONTENT => 'Content',
+	MULTILANG_PHRASE_FLAG_FLASH => 'Flash',
+);
+
+// массив содержит в себе перечень таблиц с PK smallint
+// содержимое массива можно определить при помощи вызова скрипта www/private/multilang_get_smallint_pks.php
+global $multilang_content_type_smallint_pk;
+$multilang_content_type_smallint_pk = array (
+	'event_point_types',
+);
+
+// Если нужно какие-то типы сущностей поменять местами в выдаче админки мультиланга, то достаточно поменять местами 
+// элементы этого массива (пример: quests)
+global $multilang_content_type_hash_for_sorting;
+$multilang_content_type_hash_for_sorting = array (
+	1 => 'achievements',
+	'achievement_groups',
+	'actions',
+	'action_types',
+	'areas',
+	'area_settings',
+	'area_links',
+	'artifact_artikuls',
+	'artifact_cd_groups',
+	'artifact_groups',
+	'artifact_kinds',
+	'artifact_sets',
+	'artifact_types',
+	'auction_groups',
+	'bgs',
+	'bonuses',
+	'bonus_items',
+	'bonus_types',
+	'bot_artikuls',
+	'bot_groups',
+	'bot_types',
+	'castles',
+	'clan_stat_artikuls',
+	'clan_stat_artikul_levels',
+	'event_artikuls',
+	'event_points',
+	'event_point_tasks',
+	'event_point_types',
+	'farm',
+	'farm_types',
+	'flood_messages',
+	'flood_messages_type',
+	'injuries',
+	'instance_artikuls',
+	'instance_artikul_links',
+	'npcs',
+	'pet_artikuls',
+	'pet_groups',
+	'pet_types',
+	'punishments',
+	'quests',
+	'quest_points',
+	'quest_types',
+	'recipes',
+	'restrictions',
+	'skills',
+	'skill_groups',
+	'slaughters',
+	'slots',
+	'strongholds',
+	'tutorials',
+	'levelup_resources',
+);
+
+global $multilang_entities_parent;
+$multilang_entities_parent = array (
+	'quest_points' => array('parent_entity' => 'quests', 'parent_id_field' => 'quest_id'),
+	'quest_point_links' => array('parent_entity' => 'quest_points', 'parent_id_field' => 'from_point_id'),
+	'quest_targets' => array('parent_entity' => 'quests', 'parent_id_field' => 'quest_id'),
+	'quest_counters' => array('parent_entity' => 'quests', 'parent_id_field' => 'quest_id'),
+);
+
+/*
+
+ */
+
+$multilang_sort_types = array (
+	'source',
+	'id_key',
+	'flash_key',
+	'content_type',
+);
+
+
+global $multilang_filter_sort_meta;
+$multilang_filter_sort_meta = array('field', 'entity_type_sort_ord', 'entity_id', 'level_min');
+
+global $multilang_filter_sort_phrase;
+$multilang_filter_sort_phrase = array('id', 'src_file', 'id_key', 'flash_key');
+
+global $multilang_filter_sort_mtime;
+$multilang_filter_sort_mtime = array();
+
+define('MULTILANG_FIELD_PREFIX', 'str_');
+
+
+function multilang_apply_field_prefix($lang) {
+	return MULTILANG_FIELD_PREFIX.$lang;
+}
+
+function multilang_known_fields($known_langs=array()) {
+	global $known_languages;
+	if (!$known_langs || !is_array($known_langs)) $known_langs = $known_languages;
+	return array_map('multilang_apply_field_prefix', array_keys($known_langs));
+}
+
+function multilang_phrase_get($ref=false, $add='') {
+	global $db_trans;
+	return common_get($db_trans, TABLE_MULTILANG_PHRASES, $ref, $add);
+}
+
+function multilang_phrase_list($ref=false, $add='', $field_list='*', $no_sql_cache=false, $no_local_cache=false) {
+	global $db_trans;
+	return common_list($db_trans, TABLE_MULTILANG_PHRASES, $ref, $add, $field_list, $no_sql_cache, $no_local_cache);
+}
+
+function multilang_phrase_save($param) {
+	global $db_trans;
+	return common_save($db_trans, TABLE_MULTILANG_PHRASES, $param, FIELD_MULTILANG_PHRASES);
+}
+
+function multilang_phrase_delete($ref) {
+	global $db_trans;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_trans, TABLE_MULTILANG_PHRASES, $ref);
+	return true;
+}
+
+function multilang_phrase_count($ref=false, $add='') {
+	global $db_trans;
+	return common_count($db_trans, TABLE_MULTILANG_PHRASES, $ref, $add);
+}
+
+
+// ==============================================================
+// Синхронизация фраз в исходниках
+
+function multilang_syncronize_code($dir='', $exclude=null, $extension=null, $root_dir=false) {
+	if (!$dir) return;
+	if (!$root_dir) $root_dir = $dir;
+	$handle = opendir($dir);
+	while(($file = readdir($handle)) !== false) {
+		if($file == '.' || $file == '..') continue;
+		if (in_array($file, $exclude)) continue;
+
+		$path = $dir ? $dir.'/'.$file : $file;
+		if(is_file($path)) {
+			$info = pathinfo($path);
+			if (!in_array($info['extension'], $extension)) continue;
+			$phrases = multilang_syncronize_file_phrases($path);
+			foreach($phrases as $phrase) {
+				$relative_filename = mb_substr($path, mb_strlen($root_dir));
+				$phrase_id = multilang_phrase_store($phrase, MULTILANG_PHRASE_FLAG_CODE, $relative_filename);
+				multilang_phrase_meta_store($phrase_id, 0, 'from_code');
+				multilang_phrase_mtime_store($phrase_id);
+			}
+		}
+		else if (is_dir($path)) {
+			multilang_syncronize_code($path, $exclude, $extension, $root_dir);
+		}
+	}
+	closedir($handle);
+}
+
+// Парсинг конкретного файла
+function multilang_syncronize_file_phrases($path) {
+	$phrases = array();
+	$patterns = array(
+		'new_format' => 'translate\((["\'])(.*?[^\\\])\1\s*\)\s*',
+//		'old_format' => '_trans\(\'\[B\]\', \'(\d+)\', \'(.*?)\',\'\[E\]\'\)',
+	);
+	foreach ($patterns as $format => $pattern) {
+		$matches = false;
+		if (!preg_match_all("/$pattern/s", file_get_contents($path), $matches,  PREG_PATTERN_ORDER)) {
+			continue;
+		}
+		for ($i=0; $i < count($matches[0]); $i++) {
+			if (($matches[1][$i] == '"') && (strpos($matches[2][$i],'\n') !== false)) {
+		        $matches[2][$i] = str_replace('\n',"\n",$matches[2][$i]);
+		    }
+		    if (($matches[1][$i] == '"') && (strpos($matches[2][$i],'\"') !== false)) {
+		        $matches[2][$i] = str_replace('\"','"',$matches[2][$i]);
+		    }
+			if (($matches[1][$i] == "'") && (strpos($matches[2][$i],"\'") !== false)) {
+		        $matches[2][$i] = str_replace("\'","'",$matches[2][$i]);
+		    }
+		}
+		$phrases = array_merge($phrases, $matches[2]);
+	}
+	return $phrases;
+}
+
+// ==============================================================
+// Синхронизация контента
+function multilang_syncronize_content($entities) {
+	global $exp_imp_entities, $table_translate_fields, $multilang_entities_parent;
+	global $no_translate;
+	global $multilang_content_type_smallint_pk;
+	global $multilang_content_type_hash_for_sorting;
+	
+	$no_translate = true;
+	
+	// Массив, в котором будем хранить данные по родительским объектам, 
+	// необходимо для удобной выгрузки всего контента, относящегося, к примеру, к квестам
+	$parent_data = array ();
+
+	if (!$entities || !is_array($entities)) return false;
+
+	$processed = 0;
+
+	// для каждой определённой в аргументах сущности
+	foreach ($entities as $entity) {
+		if (!$exp_imp_entities[$entity]) continue; // если такое даже не экспортируется, то не обрабатываем
+		// получаем название хендлера, имя сущности
+		list($dbh_name, $entity_name, $entity_tables) = $exp_imp_entities[$entity];
+		// и составляющие её таблицы
+		$entity_tables = explode(',', $entity_tables);
+		if (!$entity_tables || !is_array($entity_tables)) {
+			// на случай если не удастся разобрать список таблиц сущности
+			admin_message(sprintf('Unknown tables "%s" for entity "%s"', implode(',', $entity_tables), $entity), true);
+			continue;
+		}
+
+		// подцепляем хендлер соединения с соответствующей БД
+		global $$dbh_name;
+		$db_obj = $$dbh_name;
+
+		$quest_points_quest_id_hash = array();
+		
+		$base_entity_type = $entity_tables[0];
+		
+		// для каждой таблицы сущности
+		foreach ($entity_tables as $key => $table_name) {
+			// если ничего неизвестно о полях для перевода, в этой таблице, то игнорируем
+			$fields = $table_translate_fields[$table_name];
+			if (!$fields || !is_array($fields)) continue;
+
+			$data = common_list($db_obj, $table_name); // получаем полную выборку данных
+			if ($key == 0) {
+				$parent_data[$entity] = make_hash($data);
+			}
+
+			if (!$data) continue;
+			// и выбираем информацию из известных полей, в которых могут быть фразы для локализации
+			foreach ($fields as $field) {
+				// проверяем наличие поля в данных
+				$test_item = reset($data);
+				// если нет такого, то не делаем лишних итераций
+				if (!isset($test_item[$field])) continue;
+
+				foreach ($data as $item) {
+					if (!isset($item[$field])) continue;
+					$phrase = $item[$field];
+					if (strval(intval($phrase)) == $phrase && intval($phrase) !== 0) continue;
+					$id_key = false;
+					$entity_params=array(
+						'parent_entity_id' => 0, 
+						'parent_entity_type'=> '', 
+						'base_entity_id' => 0, 
+						'base_entity_type'=> '', 
+						'base_entity_flags' => 0, 
+						'npc_id' => 0,
+						'level_min' => 0,
+						'level_max' => 0,
+					);
+					// устанавливаем доп. ключи для работы с переводами (пока нужно для квестов)
+					if ($entity_name == 'quests') {
+						switch ($table_name) {
+							case 'quests':
+								$id_key = $item['id'];
+								$entity_params['base_entity_id'] = $item['id'];
+								$entity_params['base_entity_flags'] = $item['flags'];
+								$entity_params['level_min'] = $item['level_min'];
+								$entity_params['level_max'] = $item['level_max'];
+								break;
+							case 'quest_points':
+								$quest_points_quest_id_hash[$item['id']] = $item['quest_id'];
+								$id_key = $item['quest_id'];
+								$entity_params['base_entity_id'] = $item['quest_id'];
+								$entity_params['base_entity_flags'] = $parent_data[$entity][$item['quest_id']]['flags'];
+								$npc_quest = npc_quest_get(array('point_id' => $item['id'], 'quest_id' => $item['quest_id']));
+								if (isset ($npc_quest['npc_id'])) {
+									$entity_params['npc_id'] = $npc_quest['npc_id'];
+								}
+								break;
+//							case 'quest_point_awards':
+//								$id_key = $quest_points_quest_id_hash[$item['point_id']];
+//								break;
+							case 'quest_targets':
+								$id_key = $item['quest_id'];
+								$entity_params['base_entity_id'] = $item['quest_id'];
+								$entity_params['base_entity_flags'] = $parent_data[$entity][$item['quest_id']]['flags'];
+								break;
+							case 'quest_point_links':
+								$id_key = $quest_points_quest_id_hash[$item['from_point_id']] ? $quest_points_quest_id_hash[$item['from_point_id']] : $quest_points_quest_id_hash[$item['to_point_id']];
+								$id_key = $id_key ? $id_key : $quest_points_quest_id_hash[$item['alt_point_id']];
+								$point = quest_point_get(array('id'=>$item['from_point_id']));
+								$entity_params['base_entity_id'] = $point['quest_id'];
+								$entity_params['base_entity_flags'] = $parent_data[$entity][$point['quest_id']]['flags'];
+								break;
+							case 'quest_counters':
+								$id_key = $item['quest_id'];
+								$entity_params['base_entity_id'] = $item['quest_id'];
+								$entity_params['base_entity_flags'] = $parent_data[$entity][$item['quest_id']]['flags'];
+								break;
+						}
+						$entity_params['entity_flags'] = $parent_data[$entity][$entity_params['base_entity_id']]['flags'];
+						$entity_params['level_min'] = $parent_data[$entity][$entity_params['base_entity_id']]['level_min'];
+						$entity_params['level_max'] = $parent_data[$entity][$entity_params['base_entity_id']]['level_max'];
+						
+					} else if ($entity_name == 'areas') {
+						if ( ($table_name == 'areas') && ($field == 'client_data') ) {
+							$client_data = area_client_data_decode($item[$field]);
+							if (!$client_data) continue;
+							
+							$phrase = array();
+							foreach ($client_data as $object) {
+								if (!isset($object['alt']) || !$object['alt']) continue;
+								$phrase[] = $object['alt'];
+							}
+						}
+						
+						// заполнение данных для сущностей
+						switch ($table_name) {
+							case 'areas':
+								$id_key = $item['id'];
+								$entity_params['base_entity_id'] = $item['id'];
+								break;
+							case 'area_links':
+								$entity_params['base_entity_id'] = $item['from_id'];
+								break;
+							case 'area_settings':
+								if ($item['name'] != 'BANK_NPC_NAME') continue 2;
+								$entity_params['base_entity_id'] = $item['area_id'];
+								break;
+						}
+						if (! empty ($parent_data[$entity][$entity_params['entity_id']]['flags'])) {
+							$entity_params['base_entity_flags'] = $parent_data[$entity][$entity_params['base_entity_id']]['flags'];
+						}
+					}
+					
+					$entity_params['base_entity_type'] = $base_entity_type;
+					
+					$entity_type = $table_name;
+					$entity_id = $item['id'];
+	
+					if (isset($multilang_entities_parent[$entity_type])) {
+						$entity_params['parent_entity_type'] = $multilang_entities_parent[$entity_type]['parent_entity'];
+						$entity_params['parent_entity_id'] = $item[$multilang_entities_parent[$entity_type]['parent_id_field']];
+					}
+					
+					$flags = 0;
+					if (multilang_phrase_content_is_glossary($table_name, $field)) {
+						$flags |= MULTILANG_META_FLAG_IS_TITLE;
+					}
+					
+					if (in_array ($entity_type, $multilang_content_type_smallint_pk) && $entity_id >= CUSTOM_CONTENT_START_PK_SMALLINT
+						|| $entity_id >= CUSTOM_CONTENT_START_PK_INT) {
+						$flags |= MULTILANG_META_FLAG_CUSTOM_CONTENT;
+					}
+					
+					if (is_array($phrase)) {
+						foreach ($phrase as $phr) {
+							$phrase_id = multilang_phrase_store($phr, MULTILANG_PHRASE_FLAG_CONTENT, $entity_type, $id_key);
+							if ($phrase_id) {
+								multilang_phrase_meta_store($phrase_id, $entity_type, $entity_id, $entity_params, $field, $flags);
+								multilang_phrase_mtime_store($phrase_id);
+								$processed++;
+							}
+						}
+					} else { 
+						$phrase_id = multilang_phrase_store($phrase, MULTILANG_PHRASE_FLAG_CONTENT, $entity_type, $id_key);
+						if ($phrase_id) {
+							multilang_phrase_meta_store($phrase_id, $entity_type, $entity_id, $entity_params, $field, $flags);
+							multilang_phrase_mtime_store($phrase_id);
+							$processed++;
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	$multilang_content_type_hash_for_sorting_flipped = array_flip($multilang_content_type_hash_for_sorting);
+	foreach ($multilang_content_type_hash_for_sorting_flipped as $entity_type => $val) {
+		multilang_phrase_meta_save (array('_set' => 'entity_type_sort_ord='.$val, '_add' => ' AND entity_type="'.$entity_type.'"'));
+	}
+	
+	$no_translate = false;
+	return $processed;
+}
+
+function multilang_phrase_store($phrase, $flags, $src_file, $id_key=false) {
+	if (!$phrase || !(int)$flags) return false;
+
+	$phrase = strval($phrase);
+	$src_file = strval($src_file);
+	$id_key = strval($id_key);
+	$flags = (int)$flags;
+
+	$multiphrase = array(
+		'_mode'    => CSMODE_INSERT,
+		'strid'    => md5($phrase),
+		BASE_FIELD => $phrase,
+		'src_file' => $src_file,
+		'id_key'   => $id_key,
+		'flags'    => $flags,
+		'_on_duplicate' => sql_pholder(BASE_FIELD.' = VALUES('.BASE_FIELD.'),
+			flags = flags | ?, 
+			id_key = ?,
+			src_file = IF(src_file LIKE ?, src_file, IF(src_file = "", ?, CONCAT_WS(",", src_file, ?)) )',
+			$flags,
+			$id_key,
+			'%'.$src_file.'%',
+			$src_file, $src_file
+		),
+	);
+	
+	return multilang_phrase_save($multiphrase);
+}
+
+function multilang_flash_config() {
+	$multilang_flash_phrases = multilang_phrase_list(false, sql_pholder(' AND flags & ?', MULTILANG_PHRASE_FLAG_FLASH));
+
+	$result = array();
+
+	foreach ($multilang_flash_phrases as $phrase) {
+		$result[$phrase['strid']] = array($phrase['flash_key'], translate($phrase[BASE_FIELD]));
+	}
+
+	return array('multilang_flash_phrases' => $result);
+}
+
+
+// META information for multilang
+function multilang_phrase_meta_get($ref=false, $add='') {
+	global $db_trans;
+	return common_get($db_trans, TABLE_MULTILANG_PHRASES_META, $ref, $add);
+}
+
+function multilang_phrase_meta_list($ref=false, $add='', $field_list='*') {
+	global $db_trans;
+	return common_list($db_trans, TABLE_MULTILANG_PHRASES_META, $ref, $add, $field_list);
+}
+
+function multilang_phrase_meta_save($param) {
+	global $db_trans;
+	return common_save($db_trans, TABLE_MULTILANG_PHRASES_META, $param, FIELD_MULTILANG_PHRASES);
+}
+
+function multilang_phrase_meta_delete($ref) {
+	global $db_trans;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_trans, TABLE_MULTILANG_PHRASES_META, $ref);
+	return true;
+}
+
+function multilang_phrase_meta_count($ref=false, $add='') {
+	global $db_trans;
+	return common_count($db_trans, TABLE_MULTILANG_PHRASES_META, $ref, $add);
+}
+
+function multilang_phrase_meta_store($phrase_id, $entity_type='', $entity_id=0, $parent_entity_params=array(), $field='', $flags = 0) {
+	if (!$phrase_id) return false;
+
+	$phrase_id = intval($phrase_id);
+	$content_flag = intval($content_flag);
+	$entity_id = intval($entity_id);
+	$flags = (int)$flags;
+	$parent_entity_params['parent_entity_type'] = strval($parent_entity_params['parent_entity_type']);
+	$parent_entity_params['parent_entity_id'] = intval($parent_entity_params['parent_entity_id']);
+	$parent_entity_params['base_entity_type'] = strval($parent_entity_params['base_entity_type']);
+	$parent_entity_params['base_entity_id'] = intval($parent_entity_params['base_entity_id']);
+	$parent_entity_params['base_entity_flags'] = intval($parent_entity_params['base_entity_flags']);
+	$parent_entity_params['npc_id'] = intval($parent_entity_params['npc_id']);
+	$parent_entity_params['level_min'] = intval($parent_entity_params['level_min']);
+	$parent_entity_params['level_max'] = intval($parent_entity_params['level_max']);
+
+	$multiphrase_meta = array(
+		'_mode'    => CSMODE_INSERT,
+		'multilang_phrase_id' => $phrase_id,
+		'flags' => $flags,
+		'entity_type' => $entity_type,
+		'entity_id' => $entity_id,
+		'base_entity_type' => $parent_entity_params['base_entity_type'],
+		'base_entity_id' => $parent_entity_params['base_entity_id'],
+		'base_entity_flags' => $parent_entity_params['base_entity_flags'],
+		'parent_entity_type' => $parent_entity_params['parent_entity_type'],
+		'parent_entity_id' => $parent_entity_params['parent_entity_id'],
+		'level_min' => $parent_entity_params['level_min'],
+		'level_max' => $parent_entity_params['level_max'],
+		'npc_id' => $parent_entity_params['npc_id'],
+		'field' => $field,
+		'_on_duplicate' => sql_pholder('flags = ?,
+			parent_entity_id = ?,
+			parent_entity_type = ?,
+			base_entity_id = ?,
+			base_entity_type = ?,
+			base_entity_flags = ?,
+			level_min = ?,
+			level_max = ?,
+			npc_id = ?,
+			field = ?',
+			$flags,
+			$parent_entity_params['parent_entity_id'],
+			$parent_entity_params['parent_entity_type'],
+			$parent_entity_params['base_entity_id'],
+			$parent_entity_params['base_entity_type'],
+			$parent_entity_params['base_entity_flags'],
+			$parent_entity_params['level_min'],
+			$parent_entity_params['level_max'],
+			$parent_entity_params['npc_id'],
+			$field
+		),
+	);
+	
+	return multilang_phrase_meta_save($multiphrase_meta);
+}
+
+function multilang_phrase_content_is_glossary ($table_name, $field) {
+	$especial_titles = array(
+		'bot_artikuls' => 'nick',
+	); 
+	if (isset ($especial_titles[$table_name])) {
+		$in_glossary = ($field == $especial_titles[$table_name]);	
+	} else {
+		$in_glossary = ($field == 'title');
+	}
+	return $in_glossary;
+}
+
+function parse_string_to_numbers ($str) {
+	$ids = array();
+	if (! is_numeric($str) && ((strpos($str, ',') !== false) || (strpos($str, '-') !== false))) {
+		$ids = explode(',', $str);
+		foreach ($ids as $key => $id) {
+			if (strpos($id, '-') !== false) {
+				unset($ids[$key]);
+				list($val1, $val2) = explode('-', $id);
+				$val1 = intval($val1);
+				$val2 = intval($val2);
+				if ($val2 > $val1) {
+					$i = $val1;
+					while ($i <= $val2) {
+						$ids[] = $i;
+						$i ++;
+					}
+				}
+			} else {
+				$ids[$key] = intval($ids[$key]);
+			}
+		}
+	} else {
+		$ids = intval($str) > 0 ? array(intval($str)) : array();
+	}
+	return $ids;
+}
+
+// Last modification time information for multilang
+function multilang_phrase_mtime_get($ref=false, $add='') {
+	global $db_trans;
+	return common_get($db_trans, TABLE_MULTILANG_PHRASES_MTIME, $ref, $add);
+}
+
+function multilang_phrase_mtime_list($ref=false, $add='', $field_list='*') {
+	global $db_trans;
+	return common_list($db_trans, TABLE_MULTILANG_PHRASES_MTIME, $ref, $add, $field_list);
+}
+
+function multilang_phrase_mtime_save($param) {
+	global $db_trans;
+	return common_save($db_trans, TABLE_MULTILANG_PHRASES_MTIME, $param, FIELD_MULTILANG_PHRASES);
+}
+
+function multilang_phrase_mtime_delete($ref) {
+	global $db_trans;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_trans, TABLE_MULTILANG_PHRASES_MTIME, $ref);
+	return true;
+}
+
+function multilang_phrase_mtime_count($ref=false, $add='') {
+	global $db_trans;
+	return common_count($db_trans, TABLE_MULTILANG_PHRASES_MTIME, $ref, $add);
+}
+
+function multilang_phrase_mtime_store($phrase_id, $lang='ru', $time = -1) {
+	if (!$phrase_id) return false;
+	
+	$mtime_field = 'str_'.$lang.'_mtime';
+
+	$phrase_id = intval($phrase_id);
+	
+	if ($lang != 'ru') {
+		$on_duplicate = sql_pholder($mtime_field.' = ?', time_current());
+	} else {
+		$on_duplicate = sql_pholder($mtime_field.' = '.$mtime_field);
+	}
+	
+	$time = ($time > -1) ? $time : time_current();
+
+	$multiphrase_mtime = array(
+		'_mode'    => CSMODE_INSERT,
+		'multilang_phrase_id' => $phrase_id,
+		$mtime_field => $time,
+		'_on_duplicate' => $on_duplicate,
+	);
+	
+	return multilang_phrase_mtime_save($multiphrase_mtime);
+}

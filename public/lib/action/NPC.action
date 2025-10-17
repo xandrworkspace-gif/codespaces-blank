@@ -1,0 +1,12 @@
+<? # $Id: NPC.action,v 1.2 2009-09-04 10:24:12 k.martynenko Exp $
+
+require_once("include/common.inc");
+require_once("lib/session.lib");
+global $session;
+
+$key = $session_user['area_id'].'-'.$session['sid'];
+$url = secure_url($key, 'npc.php?global_npc=1&area_id=0&f_id=0&quest_id='.$action['param2'].'&npc_id='.$action['param1']);
+$out['param_success'] = array('url_close'=> $url);
+$out['status'] = ACTION_STATUS_OK;
+//chat_msg_send_special(CODE_REDIRECT, CHAT_CHF_USER, $session_user['id'], array('url'=>$url));
+chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $session_user['id'], array('func' => 'tProcessMenu("b06", {"force": true, "url": "'.$url.'"});'));

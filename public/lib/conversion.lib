@@ -1,0 +1,57 @@
+<?php
+// Имена и поля таблиц
+define('TABLE_CONVERSIONS','conversions');
+define('FIELD_CONVERSIONS','');
+
+
+
+function conversion_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CONVERSIONS,$ref,$add);
+}
+
+function conversion_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CONVERSIONS,$ref,$add);
+}
+
+function conversion_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CONVERSIONS,$param, FIELD_CONVERSIONS);
+}
+
+function conversion_delete($ref=false, $add='') {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if (!$ref) return false;
+	$data = common_list($db_2,TABLE_CONVERSIONS,$ref);
+	foreach ($data as $k=>$item) $data[$k]['object_class'] = OBJECT_CLASS_CONVERSION;
+	restriction_objects_list($data);
+	foreach ($data as $item) {
+		foreach ($item['object_restrictions'] as $restriction) restriction_delete($restriction['id']);
+	}
+	return common_delete($db_2,TABLE_CONVERSIONS,$ref,$add);
+}
+
+function conversion_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_CONVERSIONS,$ref,$add);
+}
+
+function conversion_copy($param) {
+	require_once("lib/restriction.lib");
+	$old_id = $param['id'];
+	unset($param['id']);
+	$new_id = conversion_save($param);
+	if (!$new_id) return false;
+
+	$restrictions = restriction_list(OBJECT_CLASS_CONVERSION, $old_id);
+	foreach($restrictions as $restriction) {
+		restriction_copy($restriction, $new_id);
+	}
+
+	return $new_id;
+}
+
+
+?>

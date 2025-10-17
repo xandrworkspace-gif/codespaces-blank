@@ -1,0 +1,296 @@
+<? # $Id: area_post.lib,v 1.20 2010-01-15 09:50:10 p.knoblokh Exp $
+
+// Имена и поля таблиц
+define('TABLE_AREA_POST_MESSAGES','area_post_messages');
+define('FIELD_AREA_POST_MESSAGES','');
+
+define('TABLE_AREA_POST_MESSAGES_LOG','area_post_messages_log');
+define('FIELD_AREA_POST_MESSAGES_LOG','');
+
+define('TABLE_AREA_POST_BLOCK', 'area_post_block');
+define('FIELD_AREA_POST_BLOCK','');
+
+define('TABLE_AREA_POST_TASK', 'area_post_task');
+define('FIELD_AREA_POST_TASK','');
+
+define('TABLE_AREA_POST_TASK_USER', 'area_post_task_user');
+define('FIELD_AREA_POST_TASK_USER','');
+
+define('POST_UNREAD_MESSAGE_TTL', 30*24*3600);
+define('POST_READ_MESSAGE_TTL', 3*24*3600);
+
+define('POST_MESSAGE_MAX', 20);
+
+define('POST_COMMISSION', 1); // 1 письмо = 1 серебра
+
+define('POST_RATE_NORMAL', 1.0);
+define('POST_RATE_COD', 1.5);
+
+define('MSG_TYPE_NORMAL', 1);     // обыкновенное отправление
+define('MSG_TYPE_COD', 2);        // наложенный платеж
+define('MSG_TYPE_SYS_NORMAL', 3); // системное сообщение, обыкновенное отправление
+define('MSG_TYPE_SYS_COD', 4);    // системное сообщение, наложенный платеж
+define('MSG_TYPE_SYS_LONG', 5);    // системное сообщение, живет 30 дней
+
+// Флаги отправлений
+define('POST_MSG_FLAG_NOLOG', 0x0001); // Не логировать
+define('POST_MSG_FLAG_ALLOW_HTML', 0x0002); // Разрешить html теги. Для системных сообщений.
+define('POST_MSG_FLAG_ADMIN', 0x0004); // Сообщение отправлено из админки, поэтому любой может забрать из него деньги и артефакт
+define('POST_MSG_FLAG_HIDDEN',		0x0008); // Сообщение содержит в себе спам, поэтому не показывается адресату
+define('POST_MSG_FLAG_FORCE_LOG',	0x0010); // Форсированное логирование забора ценностей
+define('POST_MSG_FLAG_PUNISHMENT_ALLOW', 0x0020); // Письмо доступное для игрока с проклятьем менялы
+
+define('POST_NOTIFY_READ_MSG', 1); // прочитанно последнее из непрочитанных писем
+define('POST_NOTIFY_NEW_MSG', 2); // получено новое письмо
+
+function area_post_message_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_AREA_POST_MESSAGES,$ref,$add);
+}
+
+function area_post_message_list($ref=false, $add='',$field_list='*') {
+	global $db;
+	return common_list($db,TABLE_AREA_POST_MESSAGES,$ref,$add,$field_list);
+}
+
+function area_post_message_count($ref=false, $add='') {
+	global $db;
+	return common_count($db,TABLE_AREA_POST_MESSAGES,$ref,$add);
+}
+
+function area_post_message_save($param) {
+	global $db;
+	if (!$param['id'] && $param['to_id'] && !($param['flags'] & POST_MSG_FLAG_HIDDEN)) { // новое письмо
+		area_post_user_send_game_agent_notify($param['to_id'], POST_NOTIFY_NEW_MSG);
+	}
+	return common_save($db,TABLE_AREA_POST_MESSAGES,$param,FIELD_AREA_POST_MESSAGES);
+}
+
+function area_post_message_delete($ref) {
+	global $db;
+	// прикрепленный к письму артефакт не удаляеся НАМЕРЕННО :)
+	return common_delete($db,TABLE_AREA_POST_MESSAGES,$ref);
+}
+
+///////////////////////////////
+
+function area_post_block_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_AREA_POST_BLOCK,$ref,$add);
+}
+
+function area_post_block_list($ref=false, $add='',$field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_AREA_POST_BLOCK,$ref,$add,$field_list);
+}
+
+function area_post_block_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path,TABLE_AREA_POST_BLOCK,$ref,$add);
+}
+
+function area_post_block_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_AREA_POST_BLOCK,$param,FIELD_AREA_POST_BLOCK);
+}
+
+function area_post_block_delete($ref) {
+    global $db_path;
+    return common_delete($db_path,TABLE_AREA_POST_BLOCK,$ref);
+}
+
+///////////////////////////////
+
+function area_post_message_log_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,TABLE_AREA_POST_MESSAGES_LOG,$ref,$add);
+}
+
+function area_post_message_log_list($ref=false, $add='',$field_list='*') {
+    global $db;
+    return common_list($db,TABLE_AREA_POST_MESSAGES_LOG,$ref,$add,$field_list);
+}
+
+function area_post_message_log_count($ref=false, $add='') {
+    global $db;
+    return common_count($db,TABLE_AREA_POST_MESSAGES_LOG,$ref,$add);
+}
+
+function area_post_message_log_save($param) {
+    global $db;
+    return common_save($db,TABLE_AREA_POST_MESSAGES_LOG,$param,FIELD_AREA_POST_MESSAGES_LOG);
+}
+
+function area_post_message_log_delete($ref) {
+    global $db;
+    // прикрепленный к письму артефакт не удаляеся НАМЕРЕННО :)
+    return common_delete($db,TABLE_AREA_POST_MESSAGES_LOG,$ref);
+}
+
+///////////////////////////////
+
+function area_post_commission($x) {
+	return pow(0.5, log($x,10)+2)*$x;
+}
+
+// возвращает оставшийся ttl письма
+function area_post_message_ttl($type_id, $unread, $retract=false) {
+	$days_expire = false;
+	switch ($type_id) {
+	case MSG_TYPE_NORMAL:
+		$days_expire = ($unread) ? 30 : 3;
+		break;
+	case MSG_TYPE_COD:
+		if ($retract) { // возврат ценностей отправителю
+			$days_expire = 14;
+		} else {
+			$days_expire = 1;
+		}
+		break;
+	case MSG_TYPE_SYS_NORMAL:
+		$days_expire = ($unread) ? 14 : 3;
+		break;
+	case MSG_TYPE_SYS_COD:
+		$days_expire = ($unread) ? 14 : 3;
+		break;
+	case MSG_TYPE_SYS_LONG :
+		$days_expire = ($unread) ? 30 : 7;
+		break;
+	default:
+		return false;
+	}
+	return $days_expire*24*3600 - 1;
+}
+
+function area_post_logserv_note(&$message, $artifact=false) {
+	global $session_user;
+	$type_hash = array(
+		MSG_TYPE_NORMAL => translate('Обычное письмо'),
+		MSG_TYPE_COD => translate('Наложенный платеж'),
+		MSG_TYPE_SYS_NORMAL => translate('Системное обычное письмо'),
+		MSG_TYPE_SYS_COD => translate('Системный наложенный платеж'),
+		MSG_TYPE_SYS_LONG => translate('Системное письмо, живет 30 дней'),
+	);
+
+	$note = '';
+	$user_from = ($message['from_id'] == $session_user['id']) ? $session_user : user_get($message['from_id']);
+	$user_to = ($message['to_id'] == $session_user['id']) ? $session_user : user_get($message['to_id']);
+	if ($user_from) $note .= sprintf(translate('От: %s'), $user_from['nick'])."\n";
+	if ($user_to) $note .= sprintf(translate('Кому: %s'), $user_to['nick'])."\n";
+
+	$note .= sprintf(translate('Тип: %s')."\n".translate('Тема: "%s"'), $type_hash[$message['type_id']], $message['subject']);
+	if ($message['text']) $note .= "\n".sprintf(translate('Текст: "%s"'), $message['text']);
+	if (floatval($message['money'])) $note .= "\n".sprintf("%s: %s", (in_array($message['type_id'], array(MSG_TYPE_NORMAL, MSG_TYPE_SYS_NORMAL, MSG_TYPE_SYS_LONG)) ? translate('Пересылаемая сумма') : translate('Сумма платежа')), $message['money']);
+	if ($message['artifact_id']) {
+		if (!$artifact) $artifact = artifact_get_safe($message['artifact_id']);
+		artifact_artikul_get_title($artifact);
+		$note .= "\n".sprintf(translate('Пересылаемая вещь: %s, %d шт. ARTIFACT_ID=%d'), $artifact['title'], $message['n'], $artifact['id']);
+		if ($artifact['time_expire']) {
+			$note .= ' '.sprintf(translate('(вещь имеет срок жизни до %s)'), date('Y-m-d H:i:s', $artifact['time_expire']));
+		}
+	}
+	return $note;
+}
+
+function area_post_user_send_chat_notify($user_id) {
+	if (!$user_id) return false;
+	chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user_id, array('func' => "updateSwf({'items_right':''})"));
+}
+
+// оповещения "пользователь прочел почту", "появилось новое почтовое сообщение для пользователя"
+function area_post_user_send_game_agent_notify($user_id, $notify) {
+	// коммуникатор ---------------------
+	require_once('lib/game_agent.lib');
+	if ($notify == POST_NOTIFY_READ_MSG) { // оповещение "пользователь прочел почту",
+		sendGameAgent(array(
+			'uid' => $user_id,
+			'command' => 'maildone',
+		));
+
+		user_info_set_button($user_id, 'right', GUI_RIGHT_BUTTON_MAIL, 0);
+	} elseif ($notify == POST_NOTIFY_NEW_MSG) { // оповещение "появилось новое почтовое сообщение для пользователей",
+		sendGameAgent(array(
+			'uids' => serializeBag(array($user_id)),
+			'command' => 'mailpending',
+		));
+        $count = area_post_message_count(array(
+            'to_id' => $user_id,
+            'unread' => 1,
+        ));
+        if($count) user_info_set_button($user_id, 'right', GUI_RIGHT_BUTTON_MAIL, $count);
+	}
+	// ----------------------------------
+}
+
+function area_post_check_spam_words($msg) {
+	if (preg_match('/^.*('. translate('(.*((dr(a|а)(k|к|c|с)(o|o|0))|(д(p|р)(a|а)(k|к)(o|о|0)))[\s .]*[ruруф]+.*)|(.*"Драконы".*)').').*$/mi', $msg)) {
+		return true;
+	} else return false;
+}
+
+///////////////////////////////
+
+function area_post_task_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,TABLE_AREA_POST_TASK,$ref,$add);
+}
+
+function area_post_task_list($ref=false, $add='',$field_list='*') {
+    global $db;
+    return common_list($db,TABLE_AREA_POST_TASK,$ref,$add,$field_list);
+}
+
+function area_post_task_count($ref=false, $add='') {
+    global $db;
+    return common_count($db,TABLE_AREA_POST_TASK,$ref,$add);
+}
+
+function area_post_task_save($param) {
+    global $db;
+    return common_save($db,TABLE_AREA_POST_TASK,$param,FIELD_AREA_POST_TASK);
+}
+
+function area_post_task_delete($ref) {
+    global $db;
+    area_post_task_user_delete(array('task_id' => $ref));
+    return common_delete($db,TABLE_AREA_POST_TASK,$ref);
+}
+
+function area_post_task_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('AREA_POST_TASK_'.intval($ref),$timewait,$timelock);
+}
+
+function area_post_task_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('AREA_POST_TASK_'.intval($ref));
+}
+
+function area_post_task_user_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,TABLE_AREA_POST_TASK_USER,$ref,$add);
+}
+
+function area_post_task_user_list($ref=false, $add='',$field_list='*') {
+    global $db;
+    return common_list($db,TABLE_AREA_POST_TASK_USER,$ref,$add,$field_list);
+}
+
+function area_post_task_user_count($ref=false, $add='') {
+    global $db;
+    return common_count($db,TABLE_AREA_POST_TASK_USER,$ref,$add);
+}
+
+function area_post_task_user_save($param) {
+    global $db;
+    return common_save($db,TABLE_AREA_POST_TASK_USER,$param,FIELD_AREA_POST_TASK_USER);
+}
+
+function area_post_task_user_delete($ref) {
+    global $db;
+    return common_delete($db,TABLE_AREA_POST_TASK_USER,$ref);
+}
+
+//////////////////////////////

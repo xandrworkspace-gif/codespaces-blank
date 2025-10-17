@@ -1,0 +1,55 @@
+<? # $Id: PET_RENAME.action,v 1.2 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "Переименовать питомца"
+// Параметры:
+//	$in['ref'] - пет
+//	$in['name'] - имя пета
+require_once('lib/pet.lib');
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+
+$new_name = $in['name'];
+$pet_id = $in['ref'];
+
+if (!$new_name) {
+	$out['error'] = translate('Не указано имя!');
+	return;
+} elseif (mb_strlen($new_name) > 12) {
+	$out['error'] = translate('Слишком длинное имя!');
+	return;
+} elseif (!pet_name_is_correct($new_name)) {
+	$out['error'] = translate('Некорректное имя (можно использовать только русские и латинские буквы)!');
+	return;
+}
+	
+$pet = pet_get(array('id' => $pet_id, 'user_id' => $subject['id']));
+	
+if ($pet) {
+	if (defined('PET_RENAME_COST') && (PET_RENAME_COST > 0) && ($pet['flags'] & PET_FLAG_NAME_CHANGED)) {
+		
+		if (PET_RENAME_COST > user_get_money_amount(MONEY_TYPE_GAME, $subject['id'])) {
+			$out['error'] = translate('У Вас недостаточно денег!');
+			return;
+		}
+		
+		$comment = sprintf(translate('Вторичное переименовывание питомца "%s" -> "%s"'), $pet['name'], $new_name);
+		$operations = array(MONEY_STAT_OPERATION_LOST,MONEY_STAT_OPERATION_PURE_LOST);
+		if (!user_make_payment(MONEY_TYPE_GAME, $subject['id'], -PET_RENAME_COST, $comment,false, $operations)) {
+			$out['error'] = translate('Ошибка при оплате!');
+			return;
+		}
+		
+	}
+	
+	pet_save(array(
+		'id' => $pet_id,
+		'_mode' => CSMODE_UPDATE,
+		'_set' => sql_pholder('flags = flags | ?#PET_FLAG_NAME_CHANGED'),
+		'title' => $new_name,
+	));
+	
+	$out['status'] = ACTION_STATUS_OK;
+} else {
+	$out['error'] = translate('Нельзя поменять имя чужого питомца!');
+	return;
+}?>

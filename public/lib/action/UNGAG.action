@@ -1,0 +1,43 @@
+<? # $Id: UNGAG.action,v 1.5 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "снять кляп"
+// Параметры:
+//	$in['nick'] - ник
+
+require_once("lib/gag.lib");
+require_once("lib/guard_awards.lib");
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+$user = user_get(false,$in['nick']);
+if (!$user) {
+	$out['error'] = translate('Пользователь не найден!');
+	return;
+}
+if ($user['gag_time'] < time_current()) {
+	$out['error'] = translate('На этого пользователя не наложено проклятие молчания!');
+	return;
+}
+user_save(array(
+	'id' => $user['id'],
+	'gag_time' => 0,
+	'gag_reason_str' => '',
+));
+$get_last_gag = gag_user_get(array(
+		'user_id' => $user['id'],
+		), sql_pholder(' AND ftime > ? ORDER BY ctime DESC', time_current()));
+if ($get_last_gag)
+	gag_user_delete($get_last_gag['id']);
+chat_msg_send_system(sprintf(translate('Вы сняли проклятие молчания с игрока %s.'),user_is_invisible($user) ? translate('Невидимка') : html_user_info($user)),CHAT_CHF_USER,$subject['id']);
+chat_msg_send_system(sprintf(translate('Игрок %s снял с Вас проклятие молчания.'),user_is_invisible($subject) ? translate('Невидимка') : html_user_info($subject)),CHAT_CHF_USER,$user['id']);
+$out['status'] = ACTION_STATUS_OK;
+
+// лог-сервис -----------------------
+logserv_log_action(array(
+	'action' => $action,
+),$action_user,$user);
+// ----------------------------------
+
+// Логирование
+$log['user_id2'] = $user['id'];
+
+guard_awards_stat_add($subject['id'], GUARD_AWARD_TYPE_UNMUTE, array('param1' => $user['id']));
+?>

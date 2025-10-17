@@ -1,0 +1,152 @@
+<?php
+
+define('TABLE_ADV_AUTO_USE_LIST','adv_auto_use');
+define('FIELD_ADV_AUTO_USE_LIST','');
+
+define('ADV_AUTO_USE_MAX_USE', 1);
+define('ADV_AUTO_USE_MAX_USE_BUY', 4);
+define('ADV_AUTO_USE_MAX_CNT', 8);
+
+define("ADV_AUTO_USER_MONEY_AMOUNT", 500);
+define('ADV_AUTO_USER_SKILL', 'ADD_AAUS_SLOT');
+
+//Зависимости
+require_once("lib/action.lib");
+require_once("lib/session.lib");
+require_once("lib/restriction.lib");
+
+#Работа с базой данных
+function adv_auto_use_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_AUTO_USE_LIST,$ref,$add);
+}
+
+function adv_auto_use_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_AUTO_USE_LIST,$ref,$add);
+}
+
+function adv_auto_use_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_AUTO_USE_LIST, $ref, $add);
+}
+
+function adv_auto_use_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_AUTO_USE_LIST,$param,FIELD_ADV_AUTO_USE_LIST);
+}
+
+function adv_auto_use_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_AUTO_USE_LIST,$ref,$add);
+    return true;
+}
+
+#Работа с базой данных
+
+//Единичное поедание
+function adv_auto_use_check($user){
+    if(!$user) return false;
+    $adv_food = adv_food_get(array('user_id' => $user['id']));
+    if(!$adv_food) return false;
+    $food = json_decode($adv_food['food'],true);
+    foreach ($food as $fd){
+        if(!$fd['id']) continue;
+        adv_food_eat_it($user, $fd['id'], $adv_food);
+    }
+}
+
+//Поедание всех игроков
+function adv_auto_use_check_all($user_hash){
+    if(!$user_hash) return false;
+    foreach ($user_hash as $k=>$user){
+        if($user['fight_id'] || $user['flags'] & USER_FLAG_GHOST) unset($user_hash[$k]);
+    }
+    if(!$user_hash) return false;
+    $adv_food_list = adv_food_list(array('user_id' => array_keys($user_hash)));
+    if(!$adv_food_list) return false;
+    foreach ($adv_food_list as $adv_food){
+        $food = json_decode($adv_food['food'],true);
+        foreach ($food as $fd){
+            if(!$fd['id']) continue;
+
+            $out = adv_food_eat_it($user_hash[$adv_food['user_id']], $fd['id'], $adv_food);
+            //logfile(DEBUG_FILE_LOG_DEV, print_r($out,true));
+        }
+    }
+}
+
+//Функция съесть это xD
+function adv_auto_use_eat_it($user, $artifact_id, $adv_food = array()){
+    $out = array();
+    if(!$user || !$artifact_id) {$out['status'] = false; $out['error'] = 'Не указан объект или субъект'; return $out;}
+    $user_id = $user['id'];
+    NODE_SWITCH(false, $user_id);
+    $session = session_get($user_id);
+
+    $object = artifact_get(array('user_id' => $user_id, 'id' => $artifact_id));
+    if(!$object) { //Функция очищения.
+        $food = json_decode($adv_food['food'],true);
+        foreach ($food as $k=>$fd){
+            if(!$fd['id']) continue;
+            if($fd['id'] != $artifact_id) continue;
+            unset($food[$k]);
+            if(!$food){
+                adv_food_delete(array('user_id' => $user_id));
+            }else{
+                adv_food_save(array('id' => $adv_food['id'], 'user_id' => $user_id, 'food' => json_encode($food)));
+            }
+            break;
+        }
+    }
+    if(!$object)  {$out['status'] = false; $out['error'] = 'Не найден объект'; return $out;}
+    $object_class = $object['object_class'];
+    $object_id = $object['id'];
+    $action_id = false;
+    $action = ($object_class && $object_id) ? action_object_get($object_class,$object_id,$action_id,'',true) : false;
+
+    if(!$action['id']) {$out['status'] = false; $out['error'] = 'Не задано действие'; return $out;}
+
+    if(!$action) {$out['status'] = false; $out['error'] = 'Не задано действие'; return $out;}
+
+    if ($action['flags'] & ACTION_FLAG_CONFIRM) {	// требуется подтверждение цели
+        {$out['status'] = false; $out['error'] = 'Требуется подтверждение'; return $out;}
+    } elseif ($action['ltime']) {
+        if ($session['action_id'] == $action['id']) {
+            if ($session['ltime'] > time_current()) {
+                {$out['status'] = false; $out['error'] = 'Нужно подождать'; return $out;}
+            }
+        } else {
+            // Проверяем ограничения на длительном действии, чтобы игрок зря не ждал
+            if ($action['flags'] & ACTION_FLAG_RESTRICTION_CHECK_ONSTART) {
+                $restriction_object_list = array();
+                restriction_get_dependent($subject, $restriction_object_list);
+                if ($object) restriction_get_dependent($object,$restriction_object_list);
+                $out_restriction = restriction_check($action, $restriction_object_list, $restriction_object_list);
+                if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) {
+                    {$out['status'] = false; $out['error'] = 'Ограничение'; return $out;}
+                }
+            }
+            session_save(array(
+                'uid' => $session['uid'],
+                'action_id' => $action['id'],
+                'ltime' => time_current() + $action['ltime'],
+                'stime' => time_current(),
+            ));
+        }
+    }
+
+    if ($session['ltime'] || $session['action_id']) {
+        session_save(array(
+            'uid' => $session['uid'],
+            'ltime' => 0,
+            'action_id' => 0,
+            'stime' => time_current(),
+        ));
+    }
+    // Выполняем действие
+    $out['tesa'] = action_do($action,$user,$object);
+    $out['status'] = true;
+    return $out;
+}

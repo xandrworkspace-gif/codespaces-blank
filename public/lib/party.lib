@@ -1,0 +1,1018 @@
+<?
+
+define('LOOP_TYPE_RAND', 1); // Random (Шмот рандомно одному из пати)
+define('LOOP_TYPE_ML',   2); // Master Loot (Шмот ложится в отстойник и раздается когда захочет лидер party)
+
+$loot_type_info = array (
+	LOOP_TYPE_RAND => array('id' => LOOP_TYPE_RAND, 'title' => translate('случайно')),
+	LOOP_TYPE_ML => array('id' => LOOP_TYPE_ML, 'title' => translate('раздает лидер')),
+);
+
+define('PARTY_LIVE_ARTIFACTS_TIME', 86400); //По умолчанию 3*3600
+
+// Флаги пользователя
+define('PARTY_FLAG_NEWLOOT', 0x0001); // Запустить выдачу лута
+define('PARTY_FLAG_NOCHAT',  0x0002); // Не Отображать Сообщения в Чате
+define('PARTY_FLAG_10MAX',   0x0004); // Группа на 10 человек
+define('PARTY_FLAG_ROLLING', 0x0008); // Роллить предметы
+define('PARTY_FLAG_DUNGEON', 0x0010); // Группа подземелья
+
+// Статусы
+define('PM_STATUS_NONE',    0);		// --
+define('PM_STATUS_INVITED', 1);		// приглашен
+define('PM_STATUS_ACTIVE',  2);		// активный
+
+// Имена и поля таблиц
+define('TABLE_PARTIES','parties');
+define('FIELD_PARTIES','');
+define('TABLE_PARTY_MEMBERS','party_members');
+define('FIELD_PARTY_MEMBERS','');
+define('TABLE_PARTY_ARTIKULS','party_artikuls');
+define('FIELD_PARTY_ARTIKULS','');
+define('TABLE_PARTY_REQUESTS','party_requests');
+define('FIELD_PARTY_REQUESTS','');
+
+define('PARTY_MEMBER_MAX_DEFAULT', 5);
+
+define('PARTY_REQUESTS_TYPE_USER', 1);
+define('PARTY_REQUESTS_TYPE_GROUP', 2);
+define('PARTY_REQUESTS_TYPE_QUEST', 10);
+define('PARTY_REQUESTS_TYPE_BOT', 11);
+define('PARTY_REQUESTS_TYPE_INSTANCE', 12);
+define('PARTY_REQUESTS_TYPE_BG', 13);
+define('PARTY_REQUESTS_TYPE_EVENT', 14);
+
+define('PARTY_MEMBER_MAX', 5);
+define('PARTY_MEMBER_10MAX', 10);
+
+//Зависимости
+require_once("/home/admin/web/dwar.fun/public_html/lib/instance.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/dungeons.lib");
+
+function party_get($ref=false, $leader_id=false, $add='') {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($leader_id) $ref['leader_id'] = $leader_id;
+	$party = common_get($db_2,TABLE_PARTIES,$ref,$add);
+	if ($party) {
+		$party['object_class'] = OBJECT_CLASS_PARTY;
+	}
+	return $party;
+}
+
+function party_list($ref, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_PARTIES,$ref,$add);
+}
+
+function party_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_PARTIES,$param,FIELD_PARTIES);
+}
+
+function party_delete($ref) {
+	global $db_2;
+	$party = party_get($ref);
+	if (common_delete($db_2,TABLE_PARTIES,$ref)) {
+		party_member_delete(false,$ref);
+		party_member_sync($party);
+		party_artikul_delete(array('party_id' => $ref));
+		require_once("lib/instance.lib");
+		instance_save(array(
+			'party_id' => 0,
+			'_add' => ' AND party_id='.intval($ref),
+		));
+		return true;
+	}
+	return false;
+}
+
+function party_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('PARTY_'.intval($ref),$timewait,$timelock);
+}
+
+function party_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('PARTY_'.intval($ref));
+}
+
+//////////////////////////////////////////////////////
+
+function party_member_get($ref=false, $user_id=false, $add='') {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($user_id) $ref['user_id'] = $user_id;
+	return common_get($db_2,TABLE_PARTY_MEMBERS,$ref,$add);
+}
+
+function party_member_list($party_id, $status=null, $add='') {
+	global $db_2;
+	if (!$party_id && !$add) return false;
+	$ref = false;
+	if ($party_id) $ref['party_id'] = $party_id;
+	if (isset($status)) $ref['status'] = $status;
+	return common_list($db_2,TABLE_PARTY_MEMBERS,$ref,$add);
+}
+
+function party_member_count($party_id, $status=null, $add='') {
+	global $db_2;
+	if (!$party_id && !$add) return false;
+	$ref = false;
+	if ($party_id) $ref['party_id'] = $party_id;
+	if (isset($status)) $ref['status'] = $status;
+	return common_count($db_2,TABLE_PARTY_MEMBERS,$ref,$add);
+}
+
+function party_member_save($param) {
+	global $db_2;
+	if (!$param['id'] && !$param['party_id']) return false;
+	return common_save($db_2,TABLE_PARTY_MEMBERS,$param,FIELD_PARTY_MEMBERS);
+}
+
+function party_member_delete($ref=false, $party_id=false, $add='') {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($party_id) $ref['party_id'] = $party_id;
+	return common_delete($db_2,TABLE_PARTY_MEMBERS,$ref,$add);
+}
+
+function party_member_update($user_ids, $field, $value='', $value_old=null, $add='') {
+	global $db_2;
+	if (!common_bulk_update($db_2,TABLE_PARTY_MEMBERS,$user_ids,$field,$value,$value_old,$add)) return false;
+	return true;
+}
+
+function party_member_sync($party_id) {
+	if (!$party_id) return;
+	$party = is_array($party_id) && $party_id['id'] ? $party_id : party_get($party_id);
+    $party_id = (intval($party['id']) ? intval($party['id']) : $party_id); //FIX для случаев когда невозможно party_get
+	$user_hash = make_hash(user_list(array('party_id' => $party_id)));
+	$old_user_ids = array_keys($user_hash);
+	$new_user_ids = get_hash(party_member_list($party_id,PM_STATUS_ACTIVE),'user_id','user_id');
+	$all_user_ids = array_unique(array_merge($old_user_ids,$new_user_ids));
+	$uids = array_diff($all_user_ids,$new_user_ids);
+	user_bulk_update($uids,'party_id',0);
+	
+	$iuids = array();
+	foreach ($uids as $uid) {
+		$user_params = array('party_id' => 0);
+		if ($user_hash[$uid]['instance_id'] && !$user_hash[$uid]['raid_id']) {
+			$iuids[] = $uid;
+			$user_params['instance_id'] = 0;
+		}
+		//user_change_chat_channels(array('id' => $uid, 'party_id' => $party_id), $user_params);
+	}
+	user_bulk_update($iuids,'instance_id',0);	// выкидываем из инстанса, но не из БГ
+	if ($new_user_ids) {
+		$uids = array_diff($all_user_ids,$old_user_ids);
+		
+		foreach ($uids as $uid) {
+			//user_change_chat_channels(array('id' => $uid), array('party_id' => $party_id));
+		}
+		
+		user_bulk_update($uids,'party_id',$party_id);
+		// обновим уровни и кол-во игроков
+		$user_list = user_list(array('id' => $new_user_ids));
+		$level_min = $level_max = $user_list[0]['level'];
+		foreach ($user_list as $user) {
+			$level_max = max($level_max, $user['level']);
+			$level_min = min($level_min, $user['level']);
+		}
+		party_save(array(
+			'id' => $party_id,
+			'level_max' => $level_max,
+			'level_min' => $level_min,
+			'member_num' => sizeof($user_list),
+		));
+	}
+}
+
+/////////////////////////////////////////////
+
+function party_artikul_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_PARTY_ARTIKULS,$ref,$add);
+}
+
+function party_artikul_list($party_id=false, $add='') {
+	global $db_2;
+	$ref = false;
+	if ($party_id) $ref['party_id'] = $party_id;
+	$data = common_list($db_2,TABLE_PARTY_ARTIKULS,$ref,$add);
+	if ($data) {
+		$artifact_artikul_ids = array();
+		foreach ($data as $item) $artifact_artikul_ids[$item['artikul_id']] = 1;
+		$artifact_artikuls = count($artifact_artikul_ids) ? make_hash(artifact_artikul_list(array('id' => array_keys($artifact_artikul_ids)))) : array();
+		if ($artifact_artikuls) {
+			foreach ($data as $k=>$item) $data[$k] = array_merge($artifact_artikuls[$item['artikul_id']],$item);
+		}
+	}
+	return $data;
+}
+
+function party_artikul_count($party_id=false, $add='') {
+	global $db_2;
+	if (!$party_id && !$add) return false;
+	$ref = false;
+	if ($party_id) $ref = array('party_id' => $party_id);
+	return common_count($db_2,TABLE_PARTY_ARTIKULS,$ref,$add);;
+}
+
+function party_artikul_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_PARTY_ARTIKULS,$param,FIELD_PARTY_ARTIKULS);
+}
+
+function party_artikul_delete($ref=false, $add='') {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	return common_delete($db_2,TABLE_PARTY_ARTIKULS,$ref,$add);
+}
+
+
+function party_loot_give($party_id) {
+	$party = party_get($party_id);
+	if (!($party['flags'] & PARTY_FLAG_NEWLOOT)) {
+		return false;
+	}
+	$party_member_list = party_member_list($party_id, PM_STATUS_ACTIVE);
+	$leader_user = user_get($party['leader_id']);
+	$user_hash = array();
+	foreach ($party_member_list as $k => $member) {
+		// контроль местоположения, прибивает тех, кто не рядом с лидером группы
+		$user = user_get($member['user_id']);
+		$user_hash[$member['user_id']] = $user;
+		if (!user_is_near($user,$leader_user)) unset($party_member_list[$k]);
+	}
+	$party_member_total = sizeof($party_member_list);
+
+	if ($party['money'] > 0) { // раздача бабла
+		$money_amount = $party['money'] / $party_member_total;
+		if ($money_amount >= 0.01) {
+			party_save(array(
+				'id' => $party_id,
+				'money' => 0,
+			));
+			foreach ($party_member_list as $member) {
+				$operations = array(MONEY_STAT_OPERATION_RECEIVE, MONEY_STAT_OPERATION_PURE_RECEIVE);
+				user_make_payment(MONEY_TYPE_GAME, $member['user_id'], $money_amount, sprintf(translate('раздача лута - деньги, party_id=%d'),$party_id), false, $operations);
+				chat_msg_send_system(sprintf(translate('Вы получили: %s'), html_money_str(MONEY_TYPE_GAME,$money_amount)), CHAT_CHF_USER, $member['user_id']);
+
+				// собираем статистику
+				require_once('lib/user_stat.lib');
+				user_stat_update($member['user_id'], USER_STAT_TYPE_MONEY, USER_STAT_OBJECT_BOT_MONEY, intval($money_amount * 100));
+			}
+		}
+	}
+	$party_artikul_list = party_artikul_list($party_id, " ORDER BY stime DESC");
+	if ($party_artikul_list && ($party['loot_rules_id'] == LOOP_TYPE_RAND)) { // раздача вещей
+		$party_stack_artikul_ids = get_hash(artifact_artikul_list(false, sql_pholder(' AND id IN (?@) AND cnt > 0', get_hash($party_artikul_list,'id','artikul_id'))), 'id','id');
+		$user_data = array();
+		foreach ($party_member_list as $member) {
+			$user_id = $member['user_id'];
+			NODE_PUSH(null,$user_id);
+			$user_data[$user_id] = array (
+				'weight_left' => user_get_artifact_amount_max($user_id) - user_get_artifact_amount($user_id),
+				'stack_artfacts' => ($party_stack_artikul_ids) ? make_hash(user_get_artifact_list($user_id,'', sql_pholder(' AND artikul_id IN (?@)', $party_stack_artikul_ids)), 'artikul_id') : array(),
+				'give' => array(),
+			);
+			NODE_POP();
+		}
+		foreach ($party_artikul_list as $k => $artikul) {
+			$artikul_id = $artikul['artikul_id'];
+			$party_artikul_list[$k]['rest'] = $artikul['n'];
+			$is_stack_artikul = isset($party_stack_artikul_ids[$artikul_id]);
+
+			$can_hold_ids = array();
+			foreach ($user_data as $user_id => $entry) {
+				if (($entry['weight_left'] > 0) || ($is_stack_artikul && isset($entry['stack_artfacts'][$artikul_id]))) {
+					$can_hold_ids[] = $user_id;
+				}
+			}
+			if (sizeof($can_hold_ids) <= 0) continue;
+
+			if ($is_stack_artikul) {
+				for ($i = 0; $i < $artikul['n']; $i++) {
+					$user_num = rand(0, sizeof($can_hold_ids)-1);
+					$user_id = $can_hold_ids[$user_num];
+					if (!isset($user_data[$user_id]['stack_artfacts'][$artikul_id])) {
+						$user_data[$user_id]['weight_left'] --;
+					}
+					$user_data[$user_id]['give'][$artikul['id']]++;
+					$party_artikul_list[$k]['rest'] --;
+				}
+			} else {
+				for ($i = 0; $i < $artikul['n']; $i++) {
+					if (sizeof($can_hold_ids) <= 0) continue 2;
+					$user_num = rand(0, sizeof($can_hold_ids)-1);
+					$user_id = $can_hold_ids[$user_num];
+
+					$user_data[$user_id]['give'][$artikul['id']]++;
+					$user_data[$user_id]['weight_left']--;
+					if ($user_data[$user_id]['weight_left'] <= 0) {
+						unset($can_hold_ids[$user_num]);
+						$can_hold_ids = array_values($can_hold_ids);
+					}
+					$party_artikul_list[$k]['rest'] --;
+				}
+			}
+		}
+		foreach ($party_artikul_list as $artikul) {
+			$drop = $artikul['n'] - $artikul['rest'];
+			if ($drop == $artikul['n']) {
+				party_artikul_delete($artikul['id']);
+			} else {
+				party_artikul_save(array(
+					'id' => $artikul['id'],
+					'_set' => 'n=n-('.$drop.')',
+				));
+			}
+		}
+
+		$party_artikul_hash = make_hash($party_artikul_list, 'id');
+
+		foreach ($user_data as $user_id => $entry) {
+			$t = array();
+			foreach ($entry['give'] as $item_id => $amount) {
+				$force_param = array('flags' => intval($party_artikul_hash[$item_id]['force_flags']));
+				NODE_PUSH(null,$user_id);
+				artifact_create($party_artikul_hash[$item_id]['artikul_id'],$amount,$user_id,false,false,false,$force_param);
+				NODE_POP();
+				$t[] = sprintf(translate('<a href="#" onClick="showArtifactInfo(false,%d);return false;">%s</a> <b>%d шт</b>'),$party_artikul_hash[$item_id]['artikul_id'],$party_artikul_hash[$item_id]['title'],$amount);
+				// лог-сервис -----------------------
+				logserv_log_operation(array(
+					'artikul' => $party_artikul_hash[$item_id]['artikul_id'],
+					'force_flags' => $party_artikul_hash[$item_id]['force_flags'],
+					'cnt' => $amount,
+				),$user_hash[$member['user_id']]);
+				// ----------------------------------
+			}
+			if ($t) {
+				chat_msg_send_system(sprintf(translate('Вы получили вещи %s'), implode($t,', ')), CHAT_CHF_USER, $user_id);
+			}
+		}
+	}
+		$param = array(
+			'id' => $party_id,
+			'stime' => time_current(),
+			'_set' => "flags=(flags & ~".PARTY_FLAG_NEWLOOT.')',
+		);
+	party_save($param);
+	party_member_sync($party); // обновление уровней игроков
+	return true;
+}
+
+function party_artikuls_give($user_id, $artikuls=array()) {
+	if (!$user_id) return false;
+
+	$user = user_get($user_id);
+	if (!$user || !$user['party_id']) return false;
+	$party = party_get($user['party_id']);
+	$party_artikul_hash = make_hash(party_artikul_list($user['party_id']), 'id');
+	foreach ($artikuls as $item_id => $item) {
+		$artikul = $party_artikul_hash[$item_id];
+		$force_param = array('flags' => $artikul['force_flags']);
+		if($artikul['artikul_validity'] != -1) $force_param['time_expire'] = (intval($artikul['artikul_validity']) > 0 ? time_current() + intval($artikul['artikul_validity']) : 0);
+		$artikul_id = $artikul['artikul_id'];
+		if ($item['cnt'] == $artikul['n']) {
+			if (party_artikul_delete($item_id)) artifact_add($artikul_id, $item['cnt'], $user['id'], false, false, $force_param);
+		} elseif ($item['cnt'] < $artikul['n']) {
+			party_artikul_save(array(
+				'id' => $item_id,
+				'_set' => 'n=n-('.intval($item['cnt']).')',
+			));
+			artifact_add($artikul_id, $item['cnt'], $user['id'], false, false, $force_param);
+		}
+		$t[] = sprintf(translate('<a href="#" onClick="showArtifactInfo(false,%d);return false;">%s</a> <b>%d шт</b>'),$artikul_id,$party_artikul_hash[$item_id]['title'],$item['cnt']);
+		// лог-сервис -----------------------
+		logserv_log_operation(array(
+			'artikul' => $artikul,
+			'force_flags' => $artikul['force_flags'],
+			'cnt' => $item['cnt'],
+		),$user);
+		// ----------------------------------
+	}
+	if ($t) {
+		chat_msg_send_system(sprintf(translate('Вам переданы вещи %s'), implode($t,', ')), CHAT_CHF_USER, $user['id']);
+		$party_member_list = party_member_list($party['id'], PM_STATUS_ACTIVE);
+		$leader_user = user_get($party['leader_id']);
+		$msg_txt = sprintf(translate('%s отдал %s игроку %s'), html_user_info($leader_user), implode($t,', '), html_user_info($user));
+		chat_msg_send_system($msg_txt, CHAT_CHF_USER, get_hash($party_member_list, 'user_id', 'user_id'));
+	}
+}
+
+/**
+ * Находит похожиет запросы.
+ * На вход принимает массив с фильтарами
+ * 		'filter_type1'
+ * 		'filter_val1'
+ * 		'filter_type2'
+ * 		'filter_val2'
+ * 		'filter_type3'
+ * 		'filter_val3'
+ * @param array $params
+ * @return array
+ */
+function party_request_find_same($user, $params, $page_number = 0, $page_size = 15) {
+	$add = sql_pholder(' AND kind=? AND ? <= level AND level <= ? ', $user['kind'], $user['level'] - 1, $user['level'] + 1);
+	$add .= ' AND ( ';
+	$condition = array();
+	$query_bit = '
+		(filter_type1 = ? and filter_val1 = ?)
+		OR (filter_type2 = ? and filter_val2 = ?)
+	';
+	$query_bit_note = '
+		(filter_type1 = ? and filter_val1 = ? and filter_note1 like ?)
+		OR (filter_type2 = ? and filter_val2 = ? and filter_note2 like ?)
+	';
+	for ($i = 1; $i <= 3; ++$i) {
+		$type = ($params["filter_type$i"]);
+		$val = intval($params["filter_val$i"]);
+		$note = '%'.$params["filter_note$i"].'%';
+		if (!($type && $val)) continue;
+		if ($note) {
+			$condition[] = sql_pholder($query_bit_note, $type, $val, $note, $type, $val, $note);
+		} else {
+			$condition[] = sql_pholder($query_bit, $type, $val, $type, $val);
+		}
+	}
+	if (!$condition) return false;
+	$add .= implode(' OR ', $condition) . ' ) ';
+	$add .= ' ORDER BY id DESC ';
+//	$add .= ' LIMIT ' . intval($page_number * $page_size) . ' , ' .  intval($page_size);
+	return party_requests_list(false, $add);
+}
+
+function party_requests_get($ref, $add = '') {
+	global $db_2;
+	return common_get($db_2,TABLE_PARTY_REQUESTS,$ref,$add);
+}
+
+function party_requests_list($ref, $add = '') {
+	global $db_2;
+	return common_list($db_2,TABLE_PARTY_REQUESTS,$ref,$add);
+}
+
+function party_requests_save($params) {
+	global $db_2;
+	if (!$params['expired_time'])
+		$params['expired_time'] = time_current() + 3600;
+	return common_save($db_2,TABLE_PARTY_REQUESTS,$params,FIELD_PARTY_REQUESTS);
+}
+
+function party_requests_delete($ref, $add = '') {
+	global $db_2;
+	return common_delete($db_2,TABLE_PARTY_REQUESTS,$ref,$add);
+}
+
+
+/**
+ * Создает группу.
+ * @param array $user - создающий группу юзер.
+ * @param string $error - текст ошибки
+ * @return int - id созданной группы
+ */
+function party_create($user, &$error, $params = array()) {
+	if (!$user['id']) {
+		$error = translate('Пользователь не задан!');
+		return false;
+	}
+	$error = '';
+	if(!$params['in_dungeon_cron']) {
+        if (dungeon_queue_get(array('user_id' => $user['id']))) {
+            $error = translate('Нельзя создать группу находясь в очереди на подземелье!');
+            return false;
+        }
+    }
+	if ($user['party_id']) {
+		$error = translate('Вы уже находитесь в группе!');
+		return false;
+	}
+    if(!$params['in_dungeon_cron']) {
+        $is_punishment = punishment_user_get(array('user_id' => $user['id']), true);
+        if ($is_punishment) {
+            $error = translate('Вы не можете попроситься в группу, на Вас наложено проклятие!');
+            return false;
+        }
+    }
+	
+	$flags = 0;
+	if ($params['for_inst']) {
+		if (bg_user_get(array('user_id' => $user['id'], 'status' => array(BG_USER_STATUS_WAITING,BG_USER_STATUS_PENDING)))) {
+			$error = translate('Нельзя создать такую группу, находясь в очереди на поля битв!');
+			return false;
+		}
+		$flags |= PARTY_FLAG_10MAX;
+	} 
+	
+	if (!session_lock($user['id'])) {	// блокировка
+		$error = translate('Не удалось создать группу!');
+		return false;
+	}
+	
+	$party_id = party_save(array(
+		'leader_id' => $user['id'],	
+		'loot_rules_id' => LOOP_TYPE_RAND,
+		'kind' => $user['kind'],
+		'stime' => time_current(),
+		'flags' => $flags,
+	));
+	if ($party_id) {
+		party_member_save(array(
+			'user_id' => $user['id'],
+			'party_id' => $party_id,
+			'stime' => time_current(),
+			'status' => PM_STATUS_ACTIVE,
+		));
+		party_member_sync($party_id);
+	}
+	session_unlock($user['id']);
+
+	// проапдейтим заявки на "поиск друзей", если были.
+	$party_request = party_requests_get(array('user_id' => $user['id']));
+	if ($party_request) {
+		$party_request['party_id'] = $party_id;
+		party_requests_save($party_request);
+	}
+	party_requests_delete(array('user_id' => $user['id']));
+
+	return $party_id;
+}
+
+/**
+ * Расформировывает группу.
+ * @param array $user - расформировывающий группу юзер.
+ * @param string $error - текст ошибки
+ * @return bool - результат операции
+ */
+function party_disband($user, &$error) {
+	$party_id = $user['party_id'];
+	if (!$party_id) {
+		$error = translate('Вы не входите в состав группы!');
+		return false;
+	}
+	if (!party_lock($party_id)) {	// блокировка
+		$error = translate('Не удалось расформировать группу!');
+		return false;
+	}
+	$error = '';
+	do {
+		$party = party_get($party_id);
+		if ($party['leader_id'] != $user['id'] && !($party['flags'] & PARTY_FLAG_DUNGEON)) {
+			$error = translate('Только лидер может расформировать группу!');
+			break;
+		}
+        if(hunt_attack_user_get(array('user_id' => $user['id'], 'status' => array(HUNT_ATTACK_USER_STATUS_CREATE, HUNT_ATTACK_USER_STATUS_PENDING, HUNT_ATTACK_USER_STATUS_STARDED)))) {
+            $error = translate('Вы не можете расформировать группу, так как находитесь в поиске охоты!');
+            break;
+        }
+		if($party['flags'] & PARTY_FLAG_DUNGEON) {
+		    NODE_SWITCH(false, $user['id']);
+		    $instance_dungeon = instance_get(array('party_id' => $party_id, 'dun_active' => 1));
+            if($instance_dungeon) $instance_artikul = instance_artikul_get($instance_dungeon['artikul_id']);
+		    $user_ids = get_hash(instance_user_list(array('instance_id' => $instance_dungeon['id']), false, 'user_id'),'user_id','user_id');
+		    $dun_user_cnt = 0;
+		    if($user_ids) $user_hash = make_hash(user_list(array('id' => $user_ids), sql_pholder(' AND instance_id > 0'), false, 'id, instance_id'));
+		    $instance_ids = array();
+		    foreach ($user_hash as $user) {
+		        if($user['instance_id']) $instance_ids[$user['instance_id']] = $user['instance_id'];
+            }
+		    if($instance_ids) $instance_list = instance_list(array('id' => $instance_ids));
+		    $instance_roots = array();
+		    foreach ($instance_ids as $instance_id){
+                $instance_roots[$instance_id] = instance_get_root($instance_id);
+            }
+            foreach ($user_hash as $user) {
+                if($instance_roots[$user['instance_id']]['artikul_id'] == $instance_artikul['id']) $dun_user_cnt++;
+            }
+            if($dun_user_cnt > 0) {
+                $error = translate('Невозможно расформировать группу, пока есть участники находящиеся в подземелье! ' . $dun_user_cnt . ' ' . format_by_count($dun_user_cnt, 'участник', 'участника', 'участников') . ' в подзмелье!');
+                break;
+            }
+        }
+		$members_in_fight = user_list(array('party_id' => $party_id), ' and fight_id > 0 ', false, 'id, nick');
+		if ( sizeof($members_in_fight) > 0 ) {
+			$error = translate('Ваша группа не может быть расформирована, пока хоть один из ее участников находится в бою!');
+			$error .= "\n\n" . translate('Сейчас в бою: ');
+			foreach($members_in_fight as $member_user) {
+				$error .= "\n[b][u]" . $member_user['nick']."[/u][/b]";
+			}
+			break;
+		}
+		$party_artikul_hash = make_hash(party_artikul_list($party['id']), 'id');
+		foreach ($party_artikul_hash as $k => $party_artikul) {
+			$party_artikul_hash[$k]['cnt'] = $party_artikul['n'];
+		}
+		party_artikuls_give($user['id'], $party_artikul_hash);
+
+		$member_list = party_member_list($party_id, PM_STATUS_ACTIVE);
+		$success = party_delete($party_id);
+		if ($success) {
+			$msg_txt = sprintf(translate('Игрок %s расформировал группу.'), html_user_info($user));
+			chat_msg_send_system($msg_txt, CHAT_CHF_USER, get_hash($member_list, 'user_id', 'user_id'));
+            chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,get_hash($member_list, 'user_id', 'user_id'),array(
+                'func' => 'chat_update_party(true)',
+            ));
+			// удалим заявки на "поиск друзей", если были.
+			party_requests_delete(array('user_id' => $user['id']));
+		}
+	} while (false);
+
+	party_unlock($party_id);
+
+	return $error == '';
+}
+
+/**
+ * Приглашает игрока в группу.
+ * @param array $user - выполняющий действие юзер.
+ * @param array $target - игрок, которого приглашают
+ * @param string $error - текст ошибки
+ * @return bool - результат операции
+ */
+function party_member_invite($user, $target, &$error) {
+	$error = '';
+	if (!$user['id']) {
+		$error = translate('Пользователь не задан!');		
+		return false;
+	}
+	$party_id = $user['party_id'];
+	$party = party_get($party_id);
+    if($party['flags'] & PARTY_FLAG_DUNGEON) {
+        $error = translate('Невозможно пригласить игрока группу подземелья!');
+        return false;
+    }
+	if (!$party_id || !$party || !($party['leader_id'] == $user['id'])) {
+		$error = translate('Вы не можете приглашать игроков в группу!');		
+		return false;
+	}
+	$punishment_user_list = get_hash(punishment_user_list(array('user_id' => array($user['id'], $target['id'])), true), 'user_id', 'user_id');
+	if ($punishment_user_list[$user['id']]) {
+		$error = translate('Вы не можете приглашать игроков в группу, на Вас наложено проклятие!');
+		return false;
+	}
+	if ($punishment_user_list[$target['id']]) {
+		$error = translate('Вы не можете приглашать игрока в группу, на него наложено проклятие!');
+		return false;
+	}
+	
+	if (!$target) {
+		$error = translate('Персонаж не найден!');
+		return false;
+	} elseif ($target['kind'] != $user['kind']) {
+		$error = translate('Вы не можете пригласить в группу персонажа чужой расы!');
+		return false;
+	} elseif ($target['id'] == $user['id']) {
+		$error = translate('Вы не можете пригласить сами себя!');
+		return false;
+	} elseif ($target['party_id']) {
+		$error = translate('Нельзя пригласить этого персонажа в группу, он уже находится в другой группе!');
+		return false;
+	} elseif (!(($user['level'] == $target['level']) || (($user['level'] - $target['level']) == 1))) {
+		$error = translate('Нельзя пригласить этого персонажа в группу, он не подходит по уровню!');
+		return false;
+	}
+	
+	if (($party['flags'] & PARTY_FLAG_10MAX) && ($target['level'] < 16)) {
+		$error = translate('Нельзя пригласить персонажа 15 уровня в группу для десяти воинов!');
+		return false;
+	}
+	
+	if (($target['flags'] & USER_FLAG_PUNISH) && user_get_punishment_state($target['id'], array(CRIME_FINANCE,CRIME_FREEDOM))) {
+		$error = translate('Вы не можете пригласить этого персонажа в группу, так как на него наложено проклятие!');
+		return false;
+	}
+	if (!party_lock($party_id)) {	// блокировка
+		$error = translate('Не удалось пригласить игрока в группу!');
+		return false;
+	}
+	$party_member_ids = get_hash(party_member_list($party_id, PM_STATUS_ACTIVE),'user_id','user_id');
+	
+	$max_members = ($party['flags'] & PARTY_FLAG_10MAX) ? PARTY_MEMBER_10MAX : PARTY_MEMBER_MAX;
+
+	do {
+		if (count($party_member_ids) >= $max_members) {
+			$error = translate('Вы не можете пригласить в группу игроков, набрано максимальное количество игроков!');
+			break;
+		}
+		if (party_artikul_count($party_id) > 0) {
+			$error = translate('Вы не можете отправить приглашение, пока у Вашей группы есть нераспределенные предметы!');
+			break;
+		}
+
+		if (bg_user_count(array('user_id' => $party_member_ids, 'status' => array(BG_USER_STATUS_WAITING,BG_USER_STATUS_PENDING)))) {
+			$error = translate('Вы не можете выполнить это действие пока члены вашей группы находятся в очереди на участие в полях битв!');
+			break;
+		}
+		if (bg_user_count(array('user_id' => $target['id'], 'status' => array(BG_USER_STATUS_WAITING,BG_USER_STATUS_PENDING)))) {
+			$error = translate('Вы не можете принять персонажа, который находится в очереди на Поле Битвы!');
+			break;
+		}
+		require_once('lib/slaughter.lib');
+		if (slaughter_user_count(array('user_id' => $target['id'], 'status' => array(SLAUGHTER_USER_STATUS_WAITING,SLAUGHTER_USER_STATUS_PENDING)))) {
+			$error = translate('Вы не можете принять персонажа, который находится в очереди на Бойню!');
+			break;
+		}
+		
+		if(hunt_attack_user_get(array('user_id' => $user['id'], 'status' => array(HUNT_ATTACK_USER_STATUS_PENDING, HUNT_ATTACK_USER_STATUS_STARDED)))) {
+            $error = translate('Вы не можете принимать участников в группу, так как находитесь в поиске охоты!');
+            break;
+        }
+        if (hunt_attack_user_get(array('user_id' => $user['id'], 'status' => HUNT_ATTACK_USER_STATUS_CREATE)) &&
+        party_member_count($party_id) >= 3) {
+            $error = translate('Вы не можете принять 4 персонажа в поиске охоты!');
+            break;
+        }
+		
+		global $tq;
+		if (!$tq->capture('INVITE_LOCK_'.$target['id'], 0, 30, 0, true)) {
+			$error = translate('Сейчас нельзя пригласить этого персонажа, попробуйте через 30 секунд!');
+			break;
+		}
+		
+		$member = party_member_get(false, $target['id'], sql_pholder(' AND party_id = ?', $party_id));
+		if ($member && ($member['status'] == PM_STATUS_ACTIVE)) {
+			$error = translate('Игрок уже в вашей группе!');
+		} else {
+			$success = party_member_save(array(
+				'id' => $member['id'] ? $member['id'] : '',
+				'user_id' => $target['id'],
+				'party_id' => $party_id,
+				'stime' => time_current(),
+				'status' => PM_STATUS_INVITED,	
+			));
+			if ($success) {
+				$invite_url = "party_iframe.php?action=confirm_invite&party_id=".$party['id'];
+				chat_msg_send_system(sprintf(translate('Игрок %s пригласил Вас в группу. Нажмите <b class="redd"><a target="chat_user" href="%s">сюда</a></b>, чтобы вступить в группу. '),
+					html_user_info($user), $invite_url, $party['id']), CHAT_CHF_USER, $target['id']);
+
+				chat_msg_send_system(sprintf(translate('Вы пригласили игрока %s в группу.'), html_user_info($target)), CHAT_CHF_USER, $user['id']);
+			}
+		}
+	} while (false);
+
+	party_unlock($party_id);
+
+	return $error == '';
+}
+
+/**
+ * Подтверждает пришедшее приглашение в группу.
+ * @param array $user - подтверждающий юзер.
+ * @param int party_id - группа, в которую приглашли
+ * @param string $error - текст ошибки
+ * @return bool - результат операции
+ */
+function party_member_confirm_invite($user, $party_id, &$error) {
+	if (!$party_id) {
+		$error = translate('Вы не можете принять приглашение от этой группы!');
+		return false;
+	}
+	if ($user['party_id']) {
+		$error = translate('Вы не можете принять это приглашение, Вы уже находитесь в группе!');
+		return false;
+	}
+	
+	$party = party_get($party_id);
+	if (($party['flags'] & PARTY_FLAG_10MAX) && ($user['level'] < 16)) {
+		$error = translate('Вы не можете принять приглашение от этой группы!');
+		return false;
+	}
+	
+	if (bg_user_get(array('user_id' => $user['id'], 'status' => array(BG_USER_STATUS_WAITING,BG_USER_STATUS_PENDING)))) {
+		$error = translate('Нельзя вступить в группу, находясь в очереди на поля битв!');
+		return false;
+	}
+	
+	$is_punishment = punishment_user_get(array('user_id' => $user['id']), true);
+	if ($is_punishment) {
+		$error = translate('Вы не можете попроситься в группу, на Вас наложено проклятие!');
+		return false;
+	}
+
+	if (!party_lock($party_id)) {	// блокировка
+		$error = translate('Вы не можете принять приглашение сейчас!');
+		return false;
+	}
+	$error == '';
+	
+	$max_members = ($party['flags'] & PARTY_FLAG_10MAX) ? PARTY_MEMBER_10MAX : PARTY_MEMBER_MAX;
+	
+	do {
+		if (!$party) {
+			$error = translate('Вы не можете принять приглашение от этой группы!');
+			break;
+		}
+		$party_leader = user_get($party['leader_id']);
+		if ($party_leader['kind'] != $user['kind']) {
+			$error = translate('Вы не можете вступить в группу чужой расы!');
+			break;
+		}
+		$member = party_member_get(false, $user['id'], sql_pholder(' AND party_id = ?', $party_id));
+		if (!$member) {
+			$error = translate('Вы не можете принять это приглашение, оно недействительно!');		
+			break;
+		}
+		if ($member['status'] == PM_STATUS_ACTIVE) {
+			$error = translate('Вы не можете принять приглашение, Вы уже в этой группе!');
+			break;
+		}
+		if ($member['status'] != PM_STATUS_INVITED) {
+			$error = translate('Вы не можете принять это приглашение, оно недействительно!');
+			break;
+		}
+		if (!(($party_leader['level'] == $user['level']) || (($party_leader['level'] - $user['level']) == 1))) {
+			$error = translate('Нельзя принять приглашение этой группы, Вы не подходите по уровню!');
+			break;
+		}
+		if (party_artikul_count($party_id) > 0) {
+			$error = translate('Вы не можете принять приглашение, пока у этой группы есть нераспределенные предметы!');
+			break;
+		}
+		
+		$member_list = party_member_list($party_id, PM_STATUS_ACTIVE);
+	    foreach($member_list as $party_member) {
+	        $party_member_info = user_get(array('id'=>$party_member['user_id']));
+	        if ($party_member_info['clan_id'] && $party_member_info['clan_id']!=$user['clan_id']) {
+	            //есть участник из другого клана. надо проверить если ли у того клана активные инстансы
+	            global $NODE_NUMS;
+	            foreach ($NODE_NUMS as $nn) {
+		            NODE_SWITCH($nn);
+	                $clan_instance = instance_get(array('clan_id' => $party_member_info['clan_id']));
+	                //если есть - то нельзя принимать в группу
+    	            if ($clan_instance) {
+	                    $error = translate('Вы не можете принять приглашение, пока в группе есть участники чужих клановых инстансов!');
+	                    break;
+	                }
+	            }
+	        }
+	    }
+	    if ($error) break;
+	    
+		$member_count = party_member_count($party_id, PM_STATUS_ACTIVE);
+		if ($member_count >= $max_members) {
+			$error = translate('Вы не можете принять приглашение, уже набрано максимальное количество игроков!');
+			break;
+		}
+		$status = party_member_save(array(
+			'id' => $member['id'],
+			'status' => PM_STATUS_ACTIVE,
+		));
+		if ($status) {
+			$error = translate('Вы успешно приняты в группу!');
+			party_member_sync($party);
+			party_save(array(
+				'id' => $party_id,
+				'stime' => time_current(),
+			));
+			
+			$member_list = party_member_list($party_id, PM_STATUS_ACTIVE);
+			foreach($member_list as $party_member) {
+				if ($party_member['user_id'] == $user['id']) continue;
+				chat_msg_send_system(sprintf(translate('Игрок %s вступил в вашу группу.'), html_user_info($user)), CHAT_CHF_USER, $party_member['user_id']);
+				chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $party_member['user_id'], array('func' => "top.frames['chat'].chatRefreshPartyFrame()"));
+				chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $party_member['user_id'], array('func' => "top.frames['chat'].chatTurnOnChannel(".CHAT_CHF_PARTY.")"));
+				chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user['id'], array('func' => "top.frames['chat'].chatTurnOnChannel(".CHAT_CHF_PARTY.")"));
+			}
+			
+			// удалим заявки на "поиск друзей", если были.
+			party_requests_delete(array('user_id' => $user['id']));
+		}
+	} while (false);
+
+	party_unlock($party_id);
+
+	return (bool)$status;
+}
+
+/**
+ * Игрок просится в группу.
+ * @param array $user - выполняющий действие юзер.
+ * @param int party_id - игрок, которого приглашают
+ * @param string $error - текст ошибки
+ * @return bool - результат операции
+ */
+function party_member_request($user, $party_id, &$error) {
+	$error = '';
+	$area_url = 'party_iframe.php?';
+	if (!$user['id']) {
+		$error = translate('Пользователь не задан!');		
+		return false;
+	}
+	$party_id = intval($party_id);
+	$party = party_get($party_id);
+	if (!$party_id || !$party || !($party['leader_id'])) {
+		$error = translate('Вы не можете попроситься в эту группу!');		
+		return false;
+	}
+	$is_punishment = punishment_user_get(array('user_id' => $user['id']), true);
+	if ($is_punishment) {
+		$error = translate('Вы не можете попроситься в группу, на Вас наложено проклятие!');
+		return false;
+	}
+	if ($party['kind'] != $user['kind']) {
+		$error = translate('Вы не можете попроситься в группу чужой расы!');
+		return false;
+	} elseif ($user['party_id']) {
+		$error = translate('Вы не можете попроситься в группу, пока сами состоите в группе!');
+		return false;
+	} elseif (!(($user['level'] == $party['level_max']) || (($party['level_max'] - $user['level']) == 1))) {
+		$error = translate('Нельзя попроситься в эту группу, она не подходит по уровню!');
+		return false;
+	}
+	if (($user['flags'] & USER_FLAG_PUNISH) && user_get_punishment_state($user['id'], array(CRIME_FINANCE,CRIME_FREEDOM))) {
+		$error = translate('Вы не можете попроситься в группу, так как на вас наложено проклятие!');
+		return false;
+	}
+	$party_member_ids = get_hash(party_member_list($party_id, PM_STATUS_ACTIVE),'user_id','user_id');
+
+	$max_members = ($party['flags'] & PARTY_FLAG_10MAX) ? PARTY_MEMBER_10MAX : PARTY_MEMBER_MAX;
+	
+	if (count($party_member_ids) >= $max_members) {
+		$error = translate('Вы не можете попроситься в группу игроков, набрано максимальное количество игроков!');
+	} else {
+		$invite_url = $area_url."&action=invite&nick=".$user['nick'];
+		chat_msg_send_system(sprintf(translate('Игрок %s хочет вступить в Вашу группу. Нажмите <b class="redd"><a target="chat_user" href="%s">сюда</a></b>, чтобы отправить ему приглашение. '),
+			html_user_info($user), $invite_url, $party['id']), CHAT_CHF_USER, $party['leader_id']);
+
+		chat_msg_send_system(sprintf(translate('Вы отправили просьбу о вступлении в группу игроку %s.'), html_user_info(user_get($party['leader_id']))), CHAT_CHF_USER, $user['id']);
+		}
+
+	return $error == '';
+}
+
+function party_cleanup() {
+	$last_id = 0;
+	do {
+		$parties = party_list(false, sql_pholder(' AND id > ? ORDER BY id LIMIT 4096', $last_id));
+		if (!$parties) {
+			break;
+		}
+
+		$last_party = end($parties);
+		$last_id = $last_party['id'];
+
+		foreach ($parties as $party) {
+			if (!party_lock($party['id'])) {
+				error_log(sprintf('[cron_party]: Cannot lock Party [%s]', $party['id']));
+				continue;
+			}
+
+			// за одно подчистим старые приглашения в группы
+			party_member_delete(array('status' => array(PM_STATUS_INVITED, PM_STATUS_NONE)), $party['id']);
+
+			$party_member_hash = make_hash(party_member_list($party['id'], PM_STATUS_ACTIVE), 'user_id');
+			$user_ids = array_keys($party_member_hash);
+
+			$user_hash = $user_ids ? make_hash(user_list(array('id' => $user_ids))) : array();
+
+			if (count($user_hash) != count($party_member_hash)) {
+				error_log(sprintf('[cron_party]: Cannot find Users [%s] in Party [%s]', implode(', ', array_diff(array_keys($party_member_hash), array_keys($user_hash))), $party['id']));
+			}
+
+			$leader = $user_hash[$party['leader_id']];
+
+			// получение уровнего промежутка
+			$levels = get_hash($user_hash, 'level', 'level');
+			ksort($levels);
+			$level_min = reset($levels);
+			$level_max = end($levels);
+
+			if ($level_min != $level_max) {
+				// если есть хотя бы один персонаж ниже лидера по уровню, то в группу
+				// могут входить игроки ниже лидера на один уровень или равные уровню лидера
+				// иначе могут входить игроки выше лидера на один уровень или равные
+				// уровню лидера
+				if ($level_min < $leader['level']) {
+					$level_min = $leader['level'] - 1;
+					$level_max = $leader['level'];
+				} else {
+					$level_min = $leader['level'];
+					$level_max = $leader['level'] + 1;
+				}
+				$valid_level_range = range($level_min, $level_max);
+
+				$delete_party_member_ids = array();
+				foreach ($party_member_hash as $user_id => $party_member) {
+					$user = $user_hash[$user_id];
+
+					if (!in_array($user['level'], $valid_level_range)) {
+						$delete_party_member_ids[] = $party_member['id'];
+					}
+				}
+
+				// удаляем не подходящих нам по уровню и синхронизируем группу
+				if ($delete_party_member_ids) {
+					party_member_delete(array('id' => $delete_party_member_ids), $party['id']);
+					party_member_sync($party);
+				}
+			}
+
+			party_unlock($party['id']);
+		}
+
+	} while (1);
+}

@@ -1,0 +1,159 @@
+<?php
+
+define('GUARD_AWARD_STATUS_WAIT', 0);
+define('GUARD_AWARD_STATUS_TAKE', 1);
+
+$guard_award_status_hash = array(
+    GUARD_AWARD_STATUS_WAIT => 'Ожидается получение',
+    GUARD_AWARD_STATUS_TAKE => 'Взято',
+);
+
+define('GUARD_USER_NEW', 1); //Исп. срок
+define('GUARD_USER_MODER', 2); //Модератор чата
+define('GUARD_USER_CUSTODIAN', 3); //Страж
+
+$guard_user_type_hash = array(
+    GUARD_USER_NEW => 'Исп. срок',
+    GUARD_USER_MODER => 'Модератор чата',
+    GUARD_USER_CUSTODIAN => 'Страж',
+);
+
+define('GUARD_AWARD_TYPE_MUTE', 1);
+define('GUARD_AWARD_TYPE_BAN', 2);
+define('GUARD_AWARD_TYPE_HELP', 3);
+define('GUARD_AWARD_TYPE_UNMUTE', 4);
+define('GUARD_AWARD_TYPE_UNBAN', 5);
+
+$guard_award_type_hash = array(
+    GUARD_AWARD_TYPE_MUTE => 'Мут',
+    GUARD_AWARD_TYPE_BAN => 'Бан',
+    GUARD_AWARD_TYPE_HELP => 'Помощь',
+    GUARD_AWARD_TYPE_UNMUTE => 'Размут',
+    GUARD_AWARD_TYPE_UNBAN => 'Разбан',
+);
+
+define('TABLE_GUARD_AWARDS_AWARD', 'guard_awards');
+define('FIELD_GUARD_AWARDS_AWARD', '');
+define('TABLE_GUARD_AWARDS_USER','guard_awards_user');
+define('FIELD_GUARD_AWARDS_USER','');
+define('TABLE_GUARD_AWARDS_STAT','guard_awards_stat');
+define('FIELD_GUARD_AWARDS_STAT','');
+
+define('GUARD_AWARD_FLAG_ACTIVE', 0x000001); //Отображаться в поле менторы онлайн
+
+$guard_award_flag_hash = array(
+    GUARD_AWARD_FLAG_ACTIVE => 'Отображаться в поле менторы онлайн',
+);
+
+#Работа с базой данных
+function guard_awards_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_GUARD_AWARDS_AWARD,$ref,$add);
+}
+
+function guard_awards_list($ref=false, $add='', $ex = false) {
+    global $db_path;
+    return common_list($db_path,TABLE_GUARD_AWARDS_AWARD,$ref,$add);
+}
+
+function guard_awards_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_GUARD_AWARDS_AWARD, $ref, $add);
+}
+
+function guard_awards_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_GUARD_AWARDS_AWARD,$param,FIELD_GUARD_AWARDS_AWARD);
+}
+
+function guard_awards_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_GUARD_AWARDS_AWARD,$ref,$add);
+    return true;
+}
+////////////////////////////////////////
+
+#Работа с базой данных
+function guard_awards_user_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_GUARD_AWARDS_USER,$ref,$add);
+}
+
+function guard_awards_user_list($ref=false, $add='', $ex = false) {
+    global $db_path;
+    return common_list($db_path,TABLE_GUARD_AWARDS_USER,$ref,$add);
+}
+
+function guard_awards_user_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_GUARD_AWARDS_USER, $ref, $add);
+}
+
+function guard_awards_user_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_GUARD_AWARDS_USER,$param,FIELD_GUARD_AWARDS_USER);
+}
+
+function guard_awards_user_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_GUARD_AWARDS_USER,$ref,$add);
+    return true;
+}
+////////////////////////////////////////
+
+#Работа с базой данных
+function guard_awards_stat_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_GUARD_AWARDS_STAT,$ref,$add);
+}
+
+function guard_awards_stat_list($ref=false, $add='', $ex = false) {
+    global $db_path;
+    return common_list($db_path,TABLE_GUARD_AWARDS_STAT,$ref,$add);
+}
+
+function guard_awards_stat_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_GUARD_AWARDS_STAT, $ref, $add);
+}
+
+function guard_awards_stat_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_GUARD_AWARDS_STAT,$param,FIELD_GUARD_AWARDS_STAT);
+}
+
+function guard_awards_stat_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_GUARD_AWARDS_STAT,$ref,$add);
+    return true;
+}
+////////////////////////////////////////
+
+
+function guard_awards_stat_add($user_id, $type_id, $param = array()){
+    if(!$user_id || !$type_id) return false;
+    $guard_user = guard_awards_user_get(array('user_id' => $user_id));
+    if(!$guard_user) return false;
+
+    guard_awards_stat_save(array(
+        'user_id' => $user_id,
+        'type_id' => $type_id,
+        'ctime' => time_current(),
+        'param1' => intval($param['param1']),
+        'param2' => intval($param['param2']),
+    ));
+}
+
+function guard_awards_user_hash($update = false){
+    $guard_user_hash = new Cache(md5('GUARD_AWARDS_USER_HASH'));
+    if (!$guard_user_hash->get() || $update) {// Проверим кеш
+        $g_a_u_h = make_hash(guard_awards_user_list(), 'user_id');
+        $guard_user_hash->update($g_a_u_h,60);
+        return $g_a_u_h;
+    }else{
+        return $guard_user_hash->get();
+    }
+}

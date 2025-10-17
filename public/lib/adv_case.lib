@@ -1,0 +1,156 @@
+<?
+
+define('TABLE_ADV_CASE', 'adv_case');
+define('TABLE_ADV_CASE_USER', 'adv_case_user');
+
+define('ADV_CASE_FLAG_ACTIVE', 0x00000001); //Награда активна
+
+define('ADV_CASE_ARTIKUL_ID', 8415); //Артикул 5 дневки
+
+$adv_case_flags_hash = array(
+    ADV_CASE_FLAG_ACTIVE => 'Награда активна',
+);
+
+$adv_cs_days = array(
+    1 => array(
+        'case' => 2,
+        'prob_min' => 65,
+        'prob_max' => 100,
+    ),
+    2 => array(
+        'case' => 2,
+        'prob_min' => 65,
+        'prob_max' => 100,
+    ),
+    3 => array(
+        'case' => 2,
+        'prob_min' => 50,
+        'prob_max' => 100,
+    ),
+    4 => array(
+        'case' => 2,
+        'prob_min' => 45,
+        'prob_max' => 100,
+    ),
+    5 => array(
+        'case' => 2,
+        'prob_min' => 35,
+        'prob_max' => 100,
+    ),
+    6 => array(
+        'case' => 2,
+        'prob_min' => 20,
+        'prob_max' => 100,
+    ),
+    7 => array(
+        'case' => 2,
+        'prob_min' => 10,
+        'prob_max' => 100,
+    ),
+    8 => array(
+        'case' => 2,
+        'prob_min' => 5,
+        'prob_max' => 100,
+    ),
+    9 => array(
+        'case' => 2,
+        'prob_min' => 1,
+        'prob_max' => 100,
+    ),
+);
+
+$adv_case_prob_hash = array(
+    1 => 1,
+    5 => 5,
+    10 => 10,
+    20 => 20,
+    35 => 35,
+    45 => 45,
+    50 => 50,
+    65 => 65,
+    100 => 100,
+);
+
+#Работа с базой данных
+function adv_case_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_CASE,$ref,$add);
+}
+
+function adv_case_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_CASE,$ref,$add);
+}
+
+function adv_case_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_CASE, $ref, $add);
+}
+
+function adv_case_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_CASE,$param);
+}
+
+function adv_case_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_CASE,$ref,$add);
+    return true;
+}
+
+//////////////////////////////////////
+
+function adv_case_user_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_CASE_USER,$ref,$add);
+}
+
+function adv_case_user_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_CASE_USER,$ref,$add);
+}
+
+function adv_case_user_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_CASE_USER, $ref, $add);
+}
+
+function adv_case_user_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_CASE_USER,$param);
+}
+
+function adv_case_user_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_CASE_USER,$ref,$add);
+    return true;
+}
+
+function calculate_chanse_cs($chanse = -1, $prob = 100) {
+    if($prob == 100) $prob = 100; //Ставим глобал проб
+    $rand = mt_rand(0,$prob);
+    if($rand <= $chanse){return true;}
+    return false;
+}
+
+function adv_case_cron(){
+    //Сбрасывает тем кто не сыграл в одном из дней (Сбрасывает к 1 дню!)
+    adv_case_user_save(array(
+        '_add' => sql_pholder(' AND dtime < ? AND game_over = 0',time_current()),
+        '_set' => sql_pholder(' day = 1, cur_game = \'\', dtime = ?, game_over = 0, gift_get = 0',(mktime(23,59,59) + 1)),
+    ));
+
+    //Сбрасывает тем кто отыграл 5 дней (Сбрасывает к 1 дню!)
+    adv_case_user_save(array(
+        '_add' => sql_pholder(' AND dtime < ? AND day = 9',time_current()),
+        '_set' => sql_pholder(' day = 1, cur_game = \'\', dtime = ?, game_over = 0, gift_get = 0',(mktime(23,59,59) + 1)),
+    ));
+
+    //Сбрасывает тем кто отыграл и нужно повысить день (Повышает день +1)
+    adv_case_user_save(array(
+        '_add' => sql_pholder(' AND dtime < ? AND day < 9',time_current()),
+        '_set' => sql_pholder(' day = day + 1, cur_game = \'\', dtime = ?, game_over = 0',(mktime(23,59,59) + 1)),
+    ));
+}

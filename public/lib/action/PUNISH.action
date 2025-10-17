@@ -1,0 +1,141 @@
+<? # $Id: PUNISH.action,v 1.10 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "наказать"
+// Параметры:
+//	$in['nick'] - ник
+//	$in['crime_id'] - тип преступления
+//	$in['type_id'] - мера пресечения (срок, деньги...)
+//	$in['days'] - срок: количество дней наказания
+//	$in['money'] - штраф: количество денег
+//	$in['money_type'] - штраф: тип денег
+//	$in['punishment_id'] - id артикула наказания
+//	$in['reason_str'] - текстовка причины
+
+require_once("lib/punishment.lib");
+require_once("lib/guard_awards.lib");
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+$user = user_get(false,$in['nick']);
+if (!$user) {
+	$out['error'] = translate('Пользователь не найден!');
+	return;
+}
+
+$user_auth = auth_get($user['id']);
+if (!$user_auth) {
+	$out['error'] = translate('Пользователь не найден!');
+	return;
+}
+if (($in['crime_id'] == CRIME_FREEDOM) && ($user_auth['server_id'] != SERVER_ID)) {
+	$out['error'] = translate('Нельзя посадить пользователя из другого мира!');
+	return;
+}
+
+$t = explode(',',$action['param2']);
+$ignore_kind = intval($t[4]); // $action_param['ignore_kind']
+if (!$ignore_kind && ($subject['kind'] != $user['kind'])) {
+	$out['error'] = translate('Наказывать можно только игроков своей расы!');
+	return;
+}
+if ($subject['id'] == $user['id']) {
+	$out['error'] = translate('Нельзя наказать самого себя!');
+	return;
+}
+global $crime_type_info;
+$t = array('reason_str' => strval($in['reason_str']), 'money' => floatval($in['money']));
+$in = array_merge(array_map('intval', $in), $t);
+$out_punish = punishment_validate_param($action, $in);
+if (!$out_punish['status']) {
+	$out['error'] = $out_punish['error'];
+	return;
+}
+if (($in['crime_id'] == CRIME_FREEDOM) && $user['fight_id']) {
+	$out['error'] = translate('Вы не можете посадить игрока в тюрьму, пока он находится в бою!');
+	return;
+}
+$crime = $crime_type_info[$in['crime_id']];
+if ($in['type_id'] == PUNISH_TYPE_TIME) {
+	$user_msg_text = sprintf(translate('На Вас наложено "%s" на срок %sд.'),$crime['title2'], $in['days']);
+	$subject_msg_text = sprintf(translate('Вы наложили "%s" на %sд на персонажа %s'), $crime['title2'], $in['days'], user_is_invisible($user) ? translate('Невидимка') : html_user_info($user));
+	$msg_text = sprintf(translate('На игрока %s наложено "%s" длительностью %sд'), user_is_invisible($user) ? translate('Невидимка') : html_user_info($user), $crime['title2'], $in['days']);
+	$log_comment = sprintf(translate('%s, %sд, причина: %s'), $crime['title2'], $in['days'], $in['reason_str']);
+} else {
+	$user_msg_text = sprintf(translate('На Вас наложено вечное "%s".'),$crime['title2']);
+	$subject_msg_text = sprintf(translate('Вы наложили вечное "%s" на персонажа %s. Стоимость снятия &nbsp;%s'), $crime['title2'], user_is_invisible($user) ? translate('Невидимка') : html_user_info($user), html_money_str($in['money_type'], $in['money']));
+	$msg_text = sprintf(translate('На игрока %s наложено вечное "%s"'), user_is_invisible($user) ? translate('Невидимка') : html_user_info($user), $crime['title2']);
+	$log_comment = sprintf(translate('Вечное %s, причина: %s, стоимость снятия: %s'), $crime['title2'], $in['reason_str'], $in['money'].' '.$money_type_info[$in['money_type']]['title']);
+}
+chat_msg_send_system($user_msg_text,CHAT_CHF_USER,$user['id']);
+chat_msg_send_system($subject_msg_text,CHAT_CHF_USER,$subject['id']);
+chat_msg_send_system($msg_text,CHAT_CHF_AREA,$user['area_id'], true);
+
+$in['user_id'] = $user['id'];
+$in['activator_id'] = $subject['id'];
+$in['stime'] = time_current();
+unset($in['days']);
+punishment_user_save($in);
+if ($in['crime_id'] == CRIME_FREEDOM) { // посадить в тюрьму
+	$user_param = array(
+		'id' => $user['id'],
+		'area_id' => $kind_info[$user['kind']]['jail_area_id'],
+		'instance_id' => 0,
+		'raid_id' => 0,
+		'_set' => ' flags=flags|'.(USER_FLAG_JAIL | USER_FLAG_PUNISH).', flags2=flags2 &~'.USER_FLAG2_IN_ESTATE,
+	);
+	user_save($user_param);
+	//user_change_chat_channels($user, $user_param);
+} else {
+	user_save(array(
+		'id' => $user['id'],
+		'_set' => ' flags=flags|'.(USER_FLAG_PUNISH).', marks=marks &~'.(USER_MARK_GUARD|USER_MARK_FOOL),
+	));
+}
+
+// изгнать из пати, если он глава пати - разогнать пати
+if (($in['crime_id'] == CRIME_FREEDOM) && $user['party_id']) {
+	require_once('lib/party.lib');
+	if (party_lock($user['party_id'])) {	// блокировка
+		$party = party_get($user['party_id']);
+		if ($user['id'] == $party['leader_id']) { // глава группы
+			party_delete($party['id']);
+		} else {
+			$member = party_member_get(array('party_id' => $party['id']), $user['id']);
+			if ($member) {
+				party_member_delete($member['id']);
+				party_save(array(
+					'id' => $party['id'],
+					'stime' => time_current(),
+				));
+			}
+		}
+		party_member_sync($party);
+		party_unlock($user['party_id']);
+	}
+}
+
+// выгнать из заявки на бой, если один в заявке - удалить заявку
+if ($in['crime_id'] == CRIME_FREEDOM) {
+	require_once('lib/fight.lib');
+	$request_user = fight_request_user_get(false,$user['id']);
+	if ($request_user && fight_request_lock($request_user['request_id'])) {
+		$request = fight_request_get($request_user['request_id']);
+		if ($request['user_id'] == $user['id']) fight_request_delete($request['id']);
+		else fight_request_user_delete($request_user['id']);
+		fight_request_lock($request_user['request_id']);
+	}
+}
+$out['status'] = ACTION_STATUS_OK;
+
+// лог-сервис -----------------------
+logserv_log_action(array(
+	'action' => $action,
+	'comment' => $log_comment,
+),$action_user,$user);
+// ----------------------------------
+
+// Логирование
+$log['user_id2'] = $user['id'];
+$log['comment'] = $log_comment;
+
+guard_awards_stat_add($subject['id'], GUARD_AWARD_TYPE_BAN, array('param1' => $user['id']));
+
+?>

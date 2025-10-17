@@ -1,0 +1,222 @@
+<? # $Id: bonus_cache.lib,v 1.11 2009-10-17 15:32:00 i.hrustalev Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/bonus.lib");
+define('TABLE_BONUS_CACHE','bonus_cache');
+define('FIELD_BONUS_CACHE','');
+// Внимание: Если вы собираете добавить новый тип бонуса в switch в фунции bonus_cache_apply, который
+// будет добалять действие в цепочку выдачи бонусов $bonus_chain,
+// не забудте добавить новый тип бонуса в $bonus_cache_chain_types в bonus_cache.lib
+// иначе будут неприятные баги -) 
+global $bonus_cache_chain_types;
+$bonus_cache_chain_types = array('BONUS', 'BONUS_PARTY', 'BONUS_INSTANCE', 'BONUS_CLAN');
+
+//Возвращает бонус со всеми депенденсами (фактически тоже что и bonus_cache_serialize_get) 
+function bonus_cache_get($id) {
+	global $db_2;
+	$res =common_get($db_2,TABLE_BONUS_CACHE, $id, '', 'bonus_id' );
+	if ($res) {
+		$tmp = unserialize($res['data']);
+		if ($tmp === false ) {
+			error_log("Bonus cahce [$id] is unserializeable :".var_export($res , 1) );
+		}
+		$res = $tmp; 
+		
+	}
+	return $res;
+}
+
+function bonus_cache_save($bonus_data) {
+	global $db_2;
+	$bonus_id = $bonus_data[0]['id'];
+	$param = array( 
+		'bonus_id' => $bonus_id,
+		'data' => serialize($bonus_data),
+		'_mode' => CSMODE_REPLACE,
+	);
+	return common_save($db_2,TABLE_BONUS_CACHE,$param,FIELD_BONUS_CACHE, 'bonus_id');
+}
+
+function bonus_cache_delete($id) {
+	global $db_2;
+	if(!$id)
+		return false;
+	common_delete($db_2,TABLE_BONUS_CACHE, array('bonus_id'=>$id) );
+	return true;
+}
+
+function bonus_cache_truncate() {
+	global $db_2;
+	common_truncate($db_2, TABLE_BONUS_CACHE);
+}
+
+// Сериальзует бонус в одну записть - в результате получается массив
+// спроектирована для задачи `23048 Оптимизация bonuses`, нужно хранить в базе всю инфу о бонусе
+//  bonus = array(id=>5, ...., 'bonus_item_list' => array(), 'embedded_bonuses' => array of `bonus` )
+// 'bonus_item_list' = array('id',...., 'restriction_list' => array of 'restriction' );
+// 'restriction' = array('id', ...., 'restriction_item_list' => array of 'restriction_item')
+// 'restriction_item' = array(id, ....)
+ 
+function bonus_cache_serialize_get($bonus_id) {
+	$embedded_hash = array();
+	$bonus = bonus_cache_serialize_get_recursion($bonus_id, $embedded_hash);
+	return array($bonus, $embedded_hash);
+}	
+
+function bonus_cache_serialize_get_recursion($bonus_id, &$embedded_hash) {
+ 	global $bonus_cache_chain_types;
+	no_translate_push(1);
+	$bonus = bonus_get($bonus_id);
+	if (!$bonus) {
+		no_translate_pop();
+		return false;
+	}
+	$bonus_item_list = bonus_item_list( $bonus_id );
+	common_fldsort($bonus_item_list);
+	foreach($bonus_item_list as $bi=>$bonus_item ) {
+		$restriction_list = restriction_list(OBJECT_CLASS_BONUS_ITEM, $bonus_item['id']);
+		foreach($restriction_list as $i=>$restriction) {
+			$restriction_item_list = restriction_item_list($restriction['id']); 
+			$restriction_list[$i]['restriction_item_list'] = $restriction_item_list;
+		}
+		$bonus_item_list[$bi]['restriction_list'] = $restriction_list; 
+	}
+	$bonus['bonus_item_list'] = $bonus_item_list;
+	
+	foreach($bonus_item_list as $bonus_item ) {
+		if ( in_array($bonus_item['type'], $bonus_cache_chain_types) ) {
+			$embedded_id = $bonus_item['field'];
+			// Проверяем нет ли вложенного бонуса уже в кэше
+			if ( !isset($embedded_hash[$embedded_id]) )
+				$embedded_hash[$embedded_id] = bonus_cache_serialize_get_recursion($embedded_id, $embedded_hash); 
+		}
+	}
+	no_translate_pop();
+	return $bonus; 
+}
+
+// bonus_section придуманы чтобы не делать апдайт кэша моментально
+// полезно когда нужно совершить много действий с бонусом
+// множественный вызов пар start, finish - не поддерживается, тк нет смысла усложнять код
+// bonus_cache_section_start();
+// for($i=0; $i<10; ++$i)
+//   bonus_save(array('id' => '100', 'status' => $i)); 
+// bonus_cache_section_finish();
+$_bonus_cache_section;
+$_bonus_cache_section_ref_counter = 0;
+function bonus_cache_section_start() {
+	global $_bonus_cache_section, $_bonus_cache_section_ref_counter;
+	if ($_bonus_cache_section_ref_counter == 0) {
+		$_bonus_cache_section = array();
+	}
+	++$_bonus_cache_section_ref_counter;
+}
+
+
+function bonus_cache_section_finish() {
+	global $_bonus_cache_section, $_bonus_cache_section_ref_counter;
+	if ($_bonus_cache_section_ref_counter > 0) {
+		--$_bonus_cache_section_ref_counter;
+		if ($_bonus_cache_section_ref_counter == 0) {
+			$tmp = array_unique($_bonus_cache_section);
+			$_bonus_cache_section = false;
+			foreach($tmp as $bonus_id)
+				bonus_set_for_cache_update($bonus_id);
+		}
+	}
+}
+
+function bonus_cache_update_with_dependence($bonus_id, $exclude = false ) {
+	global $bonus_cache_chain_types;
+	global $_bonus_cache_section, $db_2, $_bonus_cache_section_ref_counter;
+	//no_translate_push(1);
+	if (!$exclude)
+		$exclude = array();
+	$result = array();
+	if (array_search($bonus_id, $exclude) !== false)
+		return $result;
+
+	if ($_bonus_cache_section_ref_counter > 0) {
+		$_bonus_cache_section[] = $bonus_id;
+		return $result;
+	}
+
+    echo 'update '.$bonus_id.'';
+
+	$exclude[] = $bonus_id;
+	$result[] = $bonus_id;
+	$bonus = bonus_cache_serialize_get($bonus_id);
+	$bonus_exists = $bonus ? $bonus[0]['id'] : 0;
+	if ($bonus_exists)
+		bonus_cache_save($bonus);
+	else
+		bonus_cache_delete($bonus_id);
+
+	$parent_list = common_list($db_2, TABLE_BONUS_ITEMS, array('type' => $bonus_cache_chain_types, 'field'=>$bonus_id), '');
+	foreach($parent_list as $parent ) {
+		$result = array_merge($result, bonus_cache_update_with_dependence($parent['bonus_id'], $exclude));
+	}
+	//no_translate_pop();
+	return $result;
+}
+
+function bonus_cache_update_as() {
+    no_translate_push(1);
+    $last_id = 0;
+    while (1) {
+        $list = bonus_list(false, sql_pholder(' AND id>? AND needs_update = 1 ORDER BY id ASC LIMIT 1000', $last_id));
+        if (empty($list)) {
+            break;
+        }
+        foreach ($list as $bonus) {
+            $last_id = $bonus['id'];
+            $bonus = bonus_cache_serialize_get($bonus['id']);
+            $bonus_exists = $bonus ? $bonus[0]['id'] : 0;
+            if ($bonus_exists) {
+                bonus_cache_save($bonus);
+            } else {
+                bonus_cache_delete($bonus['id']);
+            }
+        }
+    }
+    no_translate_pop();
+    if($last_id) return true;
+}
+
+function bonus_cache_update_all() {
+	no_translate_push(1);
+	$last_id = 0;
+	while (1) {
+		$list = bonus_list(false, sql_pholder(' AND id>? ORDER BY id ASC LIMIT 100', $last_id));
+		if (empty($list)) {
+			break;
+		}
+		foreach ($list as $bonus) {
+			$last_id = $bonus['id'];
+			$bonus = bonus_cache_serialize_get($bonus['id']);
+			$bonus_exists = $bonus ? $bonus[0]['id'] : 0;
+			if ($bonus_exists) {
+				bonus_cache_save($bonus);
+			} else {
+				bonus_cache_delete($bonus['id']);
+			}
+			echo $last_id.' COMPLETE'.PHP_EOL;
+		}
+	}
+	no_translate_pop();
+}
+
+function bonus_cache_update_mngr() {
+    global $db_2;
+    if (defined('BONUS_CACHE_UPDATE_ALL') && BONUS_CACHE_UPDATE_ALL) {
+        common_save_settings(array('BONUS_CACHE_UPDATE_ALL' => 0));
+        bonus_cache_update_all();
+        common_save($db_2, TABLE_BONUSES, array('_set' => 'needs_update = 0', '_add' => ' AND needs_update = 1'));
+    } else {
+        $upd = bonus_cache_update_as();
+        if($upd){
+            common_save($db_2, TABLE_BONUSES, array('_set' => 'needs_update = 0', '_add' => ' AND needs_update = 1'));
+        }
+    }
+}
+
+?>

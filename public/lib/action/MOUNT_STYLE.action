@@ -1,0 +1,39 @@
+<? # $Id: ENCHANT.action,v 1.10 2010-02-02 11:08:36 p.knoblokh Exp $
+
+// действие "наложить руну"
+// Параметры:
+//	$in['artifact_id'] - артефакт на который нужно наложить руну
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+$artikul = artifact_artikul_get($artifact['artikul_id']);
+
+if (!$artifact || $artifact['type_id'] != ARTIFACT_TYPE_ID_MOUNT) { // неверный или одетый предмет
+    $out['error'] = translate('Нужно выбрать ездового!');
+    return;
+}
+
+$enchant = artifact_artikul_get($object['artikul_id']);
+if (!$enchant || !($enchant['param1'] == -1 || $enchant['param1'] > 0)) {
+    $out['error'] = translate('Невозможно выполнить действие!');
+    return;
+}
+
+artifact_save(array(
+    'id' => $artifact['id'],
+    'packet_id' => ($enchant['param1'] == -1 ? 0 : $enchant['param1']),
+));
+$out['status'] = ACTION_STATUS_OK;
+
+if($enchant['param1'] == -1) {
+    chat_msg_send_system('Образ ездовому "'.$artikul['title'].'" убран!', CHAT_CHF_USER, $subject['id']);
+}else{
+    chat_msg_send_system('Установлен новый образ ездовому "'.$artikul['title'].'"!', CHAT_CHF_USER, $subject['id']);
+}
+?>

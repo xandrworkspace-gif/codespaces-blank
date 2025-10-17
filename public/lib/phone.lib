@@ -1,0 +1,296 @@
+<?
+
+require_once("include/smpp.inc");
+require_once("lib/user_info.lib");
+require_once("lib/friend.lib");
+
+define('TABLE_PHONE_QUEUE','phone_queue');
+define('FIELD_PHONE_QUEUE','');
+define('TABLE_PHONE_REQUESTS','phone_requests');
+define('FIELD_PHONE_REQUESTS','');
+define('TABLE_PHONE_LOGS','phone_log');
+define('FIELD_PHONE_LOGS','');
+
+define('MAX_SMS_LENGTH', 70);
+
+define('SMS_PRICE', 0.2);
+define('CLAN_SMS_PRICE', 0.1);
+
+define('PHONE_PRICE_TYPE', 1);
+define('PHONE_PRICE_TYPE_CLAN', 2);
+
+define('PHONE_LOG_SOURCE_POST', 1);
+define('PHONE_LOG_SOURCE_ADMIN', 2);
+define('PHONE_LOG_SOURCE_JAIL', 3);
+define('PHONE_LOG_SOURCE_PASS', 4);
+define('PHONE_LOG_SOURCE_INIT', 5);
+
+define('SMS_TIMEOUT', 300); //Через 5 минут возможно повторная отправка смс с кодом подтверждения
+
+$phone_price_info = array(
+	PHONE_PRICE_TYPE        => translate('Пользовательские'),
+	PHONE_PRICE_TYPE_CLAN   => translate('Клановые'),
+);
+
+// список стран с телефонными кодами
+$phone_country_info = array(
+	'ae' => array('title' => translate('ОАЭ'),               'iso_code' => 971),
+	'ar' => array('title' => translate('Аргентина'),         'iso_code' => 54),
+	'at' => array('title' => translate('Австрия'),           'iso_code' => 43),
+	'au' => array('title' => translate('Австралия'),         'iso_code' => 61),
+	'be' => array('title' => translate('Бельгия'),           'iso_code' => 32),
+	'br' => array('title' => translate('Бразилия'),          'iso_code' => 55),
+	'ca' => array('title' => translate('Канада'),            'iso_code' => 1),
+	'ch' => array('title' => translate('Швейцария'),         'iso_code' => 41),
+	'cl' => array('title' => translate('Чили'),              'iso_code' => 56),
+	'co' => array('title' => translate('Колумбия'),          'iso_code' => 57),
+	'cy' => array('title' => translate('Кипр'),              'iso_code' => 357),
+	'de' => array('title' => translate('Германия'),          'iso_code' => 49,  'priority' => 1),
+	'en' => array('title' => translate('Великобритания'),    'iso_code' => 44),
+	'es' => array('title' => translate('Испания'),           'iso_code' => 34),
+	'fr' => array('title' => translate('Франция'),           'iso_code' => 33),
+	'ie' => array('title' => translate('Ирландия'),          'iso_code' => 353),
+	'in' => array('title' => translate('Индия'),             'iso_code' => 91),
+	'it' => array('title' => translate('Италия'),            'iso_code' => 39),
+	'kz' => array('title' => translate('Казахстан'),         'iso_code' => 7),
+	'lu' => array('title' => translate('Люксембург'),        'iso_code' => 352),
+	'mx' => array('title' => translate('Мексика'),           'iso_code' => 52),
+	'nz' => array('title' => translate('Новая зеландия'),    'iso_code' => 64),
+	'pe' => array('title' => translate('Перу'),              'iso_code' => 51),
+	'pl' => array('title' => translate('Польша'),            'iso_code' => 48),
+	'pt' => array('title' => translate('Португалия'),        'iso_code' => 351),
+	'ru' => array('title' => translate('Россия'),            'iso_code' => 7,   'priority' => 3),
+	'sa' => array('title' => translate('Саудовская аравия'), 'iso_code' => 966),
+	'sg' => array('title' => translate('Сингапур'),          'iso_code' => 65),
+	'tr' => array('title' => translate('Турция'),            'iso_code' => 90),
+	'ua' => array('title' => translate('Украина'),           'iso_code' => 380, 'priority' => 2),
+	'us' => array('title' => translate('США'),               'iso_code' => 1),
+	've' => array('title' => translate('Венесуэла'),         'iso_code' => 58),
+	'za' => array('title' => translate('ЮАР'),               'iso_code' => 27),
+	''   => array('title' => translate('Другое'),            'iso_code' => '', 'priority' => -1),
+);
+
+function phone_request_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_PHONE_REQUESTS,$ref,$add);
+}
+
+function phone_request_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_PHONE_REQUESTS,$ref,$add,$field_list);
+}
+
+function phone_request_save($param) {
+	global $db_2;
+	$ref_name = 'id';
+	if (isset($param['_ref_name'])) { $ref_name = $param['_ref_name']; unset($param['_ref_name']); }
+	return common_save($db_2,TABLE_PHONE_REQUESTS,$param,FIELD_PHONE_REQUESTS, $ref_name);
+}
+
+function phone_request_delete($ref, $add='') {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	return common_delete($db_2,TABLE_PHONE_REQUESTS,$ref,$add);
+}
+
+function phone_request_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_PHONE_REQUESTS,$ref,$add);
+}
+
+// user logs
+function phone_log_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_PHONE_LOGS,$ref,$add);
+}
+
+function phone_log_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_PHONE_LOGS,$ref,$add,$field_list);
+}
+
+function phone_log_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_PHONE_LOGS,$param,FIELD_PHONE_LOGS);
+}
+
+function phone_log_delete($ref) {
+	global $db_2;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_2,TABLE_PHONE_LOGS,$ref);
+	return true;
+}
+
+function phone_log_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_PHONE_LOGS,$ref,$add);
+}
+
+// messages queue
+function phone_queue_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_PHONE_QUEUE,$ref,$add);
+}
+
+function phone_queue_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_PHONE_QUEUE,$ref,$add,$field_list);
+}
+
+function phone_queue_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_PHONE_QUEUE,$param,FIELD_PHONE_QUEUE);
+}
+
+function phone_queue_delete($ref, $add='') {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	return common_delete($db_2,TABLE_PHONE_QUEUE,$ref,$add);
+}
+
+function phone_queue_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_PHONE_QUEUE,$ref,$add);
+}
+
+////
+function phone_queue_key($from_id, $phone, $text, $time) {
+	return(md5("ATQ-".$from_id."-PH-".$phone."-MSG-".$time."-AT-".$time));
+}
+
+function phone_queue_sms($phone, $text, $from_id = 0) {
+	$time = time();
+	
+	return( phone_queue_save(array(
+			'from_id'    => (int)$from_id,
+			'phone'      => (string)$phone,
+			'message'    => (string)$text,
+		    'key'        => phone_queue_key($from_id, $phone, $text, $time),
+		    'stime'      => $time,
+		))>0);
+}
+
+function phone_send_sms($phone, $text, $log_info = null) {
+	global $tq;
+	
+	$lock_result = $tq->capture('SEND_SMS',$timewait,$timelock);
+	if (!$lock_result) {
+		logfile(PATH_LOGS.'sms.log','ERR: BAD LOCK try: '.$phone.' - '.$text);
+		return false;
+	}
+	
+	$system_type = "smpp";
+	$from = translate('dwar.ru');
+	$smpp = new SMPPClass();
+	$smpp->SetSender($from);
+	
+	$result = false;
+	do {
+		$smpp->Start(SMS_SENDER_HOST, SMS_SENDER_PORT, SMS_SENDER_SYSTEM_ID, SMS_SENDER_PASS, $system_type);
+		if ($smpp->error) break;
+		$smpp->Send(str_replace('+','',$phone), mb_convert_encoding($text,'ISO-10646-UCS-2',charset_code()));
+		if ($smpp->error) break;
+	} while(0);
+	
+	if($smpp->error) 
+		logfile(PATH_LOGS.'sms.log','ERR: '.$smpp->error.' try: '.$phone.' - '.$text);
+	else {
+		if( $log_info) $text .= " [".$log_info."]";
+		logfile(PATH_LOGS.'sms.log',$phone." - ".$text);
+		$result = true;
+	}
+	
+	$smpp->End();
+	$tq->release('SEND_SMS');
+
+	return $result;
+}
+
+function check_phone_permission($user_from, $user_to) {
+	// проверка можно ли отсылать сообщение
+	// 0 - получать от всех
+	// 1 - получать от всех кроме врагов
+	// 2 - получать только от друзей
+	// 3 - не получать
+	// 4 - от друзей и клана
+	$skill = skill_object_get(OBJECT_CLASS_USER,$user_to,array('skill_id'=>'SMS_RECIEVE'));
+	switch ($skill['value']) {
+		case '0':
+			$allow = true;
+			break;
+		case '1':
+			$gays = make_hash(friend_list(array('user_id' => $user_to['id'], 'status' => FRIEND_STATUS_OPPONENT)),'friend_id');
+			$allow = !in_array($user_from['id'], array_keys($gays));
+			break;
+		case '2':
+			$friends = make_hash(friend_list(array('user_id' => $user_to['id'], 'status' => FRIEND_STATUS_FRIEND)),'friend_id');
+			$allow = in_array($user_from['id'], array_keys($friends));
+			break;
+		case '3':
+			$allow = false;
+			break;
+		case '4':
+			$friends = make_hash(friend_list(array('user_id' => $user_to['id'], 'status' => FRIEND_STATUS_FRIEND)),'friend_id');
+			$allow = in_array($user_from['id'], array_keys($friends)) || ($user_to['clan_id'] && $user_from['clan_id'] == $user_to['clan_id']);
+			break;
+		default:
+			$allow = false;
+	}
+	if (!$allow) {
+		return array('error' => translate('Настройки получения СМС этого пользователя не позволяют вам отправлять ему сообщения'));
+	}
+	return true;
+}
+
+function user_send_sms($user_from, $user_to, $text, $price, $price_type) {
+	global $session;
+	$text = $user_from['nick'].': '.$text;
+	if (mb_strlen($text) > MAX_SMS_LENGTH) {
+		return array('error' => translate('Слишком длинное сообщение'));
+	}
+	if (user_get_money_amount(MONEY_TYPE_GOLD, $user_from['id']) < $price) {
+		return array('error' => translate('У Вас недостаточно средств'));
+	}
+
+	require_once("lib/user_info.lib");
+	$receiver_info = user_info_get($user_to['id']);
+
+	if (!$receiver_info) {
+		return array('error' => translate('Не найден пользователь'));
+	}
+
+	if (!$receiver_info['phone']) {
+		return array('error' => translate('У этого игрока не указан телефон'));
+	}
+	////////
+	$perm = check_phone_permission($user_from, $user_to);
+	if ($perm['error']) {
+		return $perm;
+	}
+	if (!session_lock($session['uid'])) { // блокировка
+		return array('error' => translate('Не удалось выполнить операцию'));
+	}
+	if (!user_make_payment(MONEY_TYPE_GOLD, $user_from['id'],-$price)) {
+		session_unlock($session['uid']);
+		return array('error' => translate('Ошибка при списании'));
+	}
+	$result = phone_send_sms($receiver_info['phone'], $text);
+	session_unlock($session['uid']);
+	
+	if ($result) {
+		// по логу можно делать ограничения на флуд если нужно будет
+		phone_log_save(array(
+			'user_id_from' => $user_from['id'],
+			'user_id_to'   => $user_to['id'],
+			'stime'        => time_current(),
+			'text'         => $text,
+			'price'        => $price,
+			'price_type'   => $price_type,
+			'source'       => PHONE_LOG_SOURCE_POST,
+		));
+	} else {
+		return array('error' => translate('Ошибка при отправке сообщения'));
+	}
+	
+	return true;
+}

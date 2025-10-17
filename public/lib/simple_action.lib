@@ -1,0 +1,188 @@
+<?php
+
+define('TABLE_SIMPLE_ACTION','simple_action');
+define('FIELD_SIMPLE_ACTION','');
+
+define('TABLE_SIMPLE_ACTION_STAT','simple_action_stat');
+define('FIELD_SIMPLE_ACTION_STAT','');
+
+define('SIMPLE_ACTION_FLAG_ADMIN', 0x000001); //Может использовать только админ
+define('SIMPLE_ACTION_FLAG_DTIME_DAY', 0x000002); //Обнуление ровно в полночь 00:00
+define('SIMPLE_ACTION_FLAG_ONETIME', 0x000004); //Можно использовать только раз в жизни xD
+define('SIMPLE_ACTION_NO_INSTANCE', 0x000008); //Нельзя использовать находясь в инстансе
+define('SIMPLE_ACTION_NO_FIGHT', 0x000010); //Нельзя использовать во время боя
+define('SIMPLE_ACTION_NO_LOCATION', 0x000020); //Нельзя использовать на определенных локациях
+define('SIMPLE_ACTION_NO_CHAOT_LOC', 0x000040); //Нельзя использовать на хаотических локациях
+define('SIMPLE_ACTION_COPY_CHAOT_RESTR', 0x000080); //Подбирать ограничения хаотических битв
+
+$simple_action_flags_hash = array(
+    SIMPLE_ACTION_FLAG_ADMIN => 'Может использовать только админ',
+    SIMPLE_ACTION_FLAG_DTIME_DAY => 'Обнуление ровно в полночь 00:00',
+    SIMPLE_ACTION_FLAG_ONETIME => 'Можно использовать только раз в жизни xD',
+    SIMPLE_ACTION_NO_INSTANCE => 'Нельзя использовать находясь в инстансе',
+    SIMPLE_ACTION_NO_FIGHT => 'Нельзя использовать во время боя',
+    SIMPLE_ACTION_NO_LOCATION => 'Нельзя использовать на определенных локациях',
+    SIMPLE_ACTION_NO_CHAOT_LOC => 'Нельзя использовать на хаотичных локациях',
+    SIMPLE_ACTION_COPY_CHAOT_RESTR => 'Подбирать ограничения хаотичных битв',
+);
+
+#Работа с базой данных
+function simple_action_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_SIMPLE_ACTION,$ref,$add);
+}
+
+function simple_action_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_SIMPLE_ACTION,$ref,$add);
+}
+
+function simple_action_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_SIMPLE_ACTION, $ref, $add);
+}
+
+function simple_action_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_SIMPLE_ACTION,$param,FIELD_SIMPLE_ACTION);
+}
+
+function simple_action_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_SIMPLE_ACTION,$ref,$add);
+    return true;
+}
+
+function simple_action_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('SIMPLE_ACTION_'.intval($ref),$timewait,$timelock);
+}
+
+function simple_action_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('SIMPLE_ACTION_'.intval($ref));
+}
+
+#Работа с базой данных
+function simple_action_stat_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_SIMPLE_ACTION_STAT,$ref,$add);
+}
+
+function simple_action_stat_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_SIMPLE_ACTION_STAT,$ref,$add);
+}
+
+function simple_action_stat_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_SIMPLE_ACTION_STAT, $ref, $add);
+}
+
+function simple_action_stat_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_SIMPLE_ACTION_STAT,$param,FIELD_SIMPLE_ACTION_STAT);
+}
+
+function simple_action_stat_delete($ref, $add='') {
+    global $db_path;
+    common_delete($db_path,TABLE_SIMPLE_ACTION_STAT,$ref,$add);
+    return true;
+}
+
+
+function simple_action_do($user = array(), $action_id = false){
+    if(!$action_id || !$user) return false;
+    $simple_action = simple_action_get($action_id);
+    if(!$simple_action) return false;
+
+    $simple_action_stat = simple_action_stat_get(array(
+        'simple_action_id' => $simple_action['id'],
+        'user_id' => $user['id'],
+    ));
+
+    $out = array();
+
+    if($user['instance_id'] && $simple_action['flags'] & SIMPLE_ACTION_NO_INSTANCE){
+        $out['error'] = "Запрещено в инстансах";
+        return $out;
+    }
+
+    if($user['fight_id'] && $simple_action['flags'] & SIMPLE_ACTION_NO_FIGHT){
+        $out['error'] = "Запрещено находясь в бою";
+        return $out;
+    }
+
+    if($user['flags'] & USER_FLAG_JAIL){
+        $out['error'] = "Запрещено находясь в тюрьме";
+        return $out;
+    }
+
+    $area = area_get($user['area_id']);
+    if($simple_action['flags'] & SIMPLE_ACTION_NO_CHAOT_LOC && $area['flags2'] & AREA_FLAG2_CHAOT_LOCATION){
+        $out['error'] = "Запрещено на локациях Хаотичных битв!";
+        return $out;
+    }
+
+    if($simple_action['flags'] & SIMPLE_ACTION_COPY_CHAOT_RESTR && $area['flags2'] & AREA_FLAG2_NO_CHAOT_TELEPORT){
+        $out['error'] = "Запрещено на текущей локации!";
+        return $out;
+    }
+
+    $restrictions = json_decode($simple_action['restrictions']);
+    if($simple_action['flags'] & SIMPLE_ACTION_NO_LOCATION){
+        $zapret = false;
+        $area_ids = $restrictions['area_ids'];
+        foreach ($area_ids as $area_id){
+            if($area['id'] == $area_id){
+                $zapret = true;
+            }
+        }
+        if($zapret){
+            $out['error'] = "Запрещено на текущей локации!";
+            return $out;
+        }
+    }
+
+    if($simple_action['flags'] & SIMPLE_ACTION_FLAG_ADMIN && !($user['flags'] & USER_FLAG_ADMIN)){
+        $out['error'] = "Действие только для админов";
+        return $out;
+    }
+
+    if($simple_action_stat['ctime'] > time_current()){
+        $time_wait = $simple_action_stat['ctime'] - time_current();
+        $out['error'] = "Повторное использование возможно через ".html_period_str($time_wait);
+
+        if($simple_action['flags'] & SIMPLE_ACTION_FLAG_DTIME_DAY && $simple_action_stat['dtime']){
+            $out['error'] = "Повторное использование возможно после 00:00";
+        }
+
+        return $out;
+    }
+
+    if($simple_action['bonus_id']){
+        bonus_apply($user, $simple_action['bonus_id']);
+    }
+
+    $simple_action_stat_save = array();
+
+    if($simple_action_stat) $simple_action_stat_save['id'] = $simple_action_stat['id'];
+
+    if($simple_action['flags'] & SIMPLE_ACTION_FLAG_DTIME_DAY){
+        $simple_action_stat_save['dtime'] = mktime(23,59,59) + 1;
+    }
+    $simple_action_stat_save['simple_action_id'] = $simple_action['id'];
+    $simple_action_stat_save['user_id'] = $user['id'];
+    $simple_action_stat_save['ctime'] = time_current() + ($simple_action['ctime'] ? $simple_action['ctime'] : 86400);
+
+    simple_action_stat_save($simple_action_stat_save);
+
+
+}
+
+function simple_action_cron(){
+    simple_action_stat_delete(false, ' AND dtime != 0 AND dtime < '.time_current());
+}

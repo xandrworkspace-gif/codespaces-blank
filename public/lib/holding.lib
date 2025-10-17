@@ -1,0 +1,126 @@
+<?
+
+define('TABLE_HOLDING_USER', 'holding_user');
+define('TABLE_HOLDING_MONEY_BOX_USER', 'holding_money_box_user');
+
+///////////////////////////////////////////
+
+function holding_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_HOLDING_USER,$ref,$add);
+}
+
+function holding_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_HOLDING_USER,$ref,$add);
+}
+
+function holding_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_HOLDING_USER,$ref,$add,true);
+}
+
+function holding_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_HOLDING_USER,$param);
+}
+
+function holding_user_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_HOLDING_USER,$ref,$add);
+}
+
+///////////////////////////////////////////
+
+function holding_money_box_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_HOLDING_MONEY_BOX_USER,$ref,$add);
+}
+
+function holding_money_box_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_HOLDING_MONEY_BOX_USER,$ref,$add);
+}
+
+function holding_money_box_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_HOLDING_MONEY_BOX_USER,$ref,$add,true);
+}
+
+function holding_money_box_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_HOLDING_MONEY_BOX_USER,$param);
+}
+
+function holding_money_box_user_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_HOLDING_MONEY_BOX_USER,$ref,$add);
+}
+
+
+//TODO: Переместить holding_info в constant.inc
+$holding_info = array(
+    1 => array( 'id' => 1, 'title' => 'Двухнедельный', 'days' => 14, 'percent' => 0.02, 'min' => 1000, 'max' => 10000, 'money_type' => MONEY_TYPE_GAME),
+    2 => array( 'id' => 2, 'title' => 'На 30 дней', 'days' => 30, 'percent' => 0.03, 'min' => 1000, 'max' => 50000, 'money_type' => MONEY_TYPE_GAME),
+    3 => array( 'id' => 3, 'title' => 'На 60 дней', 'days' => 60, 'percent' => 0.04, 'min' => 1000, 'max' => 50000, 'money_type' => MONEY_TYPE_GAME),
+    4 => array( 'id' => 4, 'title' => 'На 90 дней', 'days' => 90, 'percent' => 0.05, 'min' => 1000, 'max' => 50000, 'money_type' => MONEY_TYPE_GAME),
+);
+
+define('HOLDING_MONEY_BOX_PRICE', 100);
+define('HOLDING_MONEY_BOX_PRICE_BEFORE', 100);
+
+define('HOLDING_MONEY_BOX_MAX_ADD', 99900);
+define('HOLDING_MONEY_BOX_MIN', 1000);
+define('HOLDING_MONEY_BOX_MAX', 500000);
+
+define('HOLDING_MONEY_BOX_COUNT', 3);
+define('HOLDING_DEPOSIT_COUNT', 3);
+
+define('HOLDING_MONEY_BOX_MAX_TIME', 15552000); //6 месяцев
+
+function holding_user_store($user = array(), $send_msg = false){
+    global $holding_info;
+    if(!$user || !$user['id']) return false;
+
+    $holding_user_list = holding_user_list(array('user_id' => $user['id']), sql_pholder(' AND last_day < ? AND dtime > ?', time_current(), time_current()));
+    if(!$holding_user_list) return false;
+
+    $msg = '';
+    $_cnt = 0;
+    foreach ($holding_user_list as $holding_user){
+        //Расчет процентов
+        if($holding_user['last_day'] + 1 > time_current()) continue; // + 1 для безопасности!
+        if(time_current() > $holding_user['dtime']) continue; //Вклад окончен!
+        $holding_item = $holding_info[$holding_user['holding_id']];
+        if(!$holding_item) continue; //Что за неполадки?
+
+        $money_day = 0;
+        if($holding_item['money_type'] == MONEY_TYPE_GAME){
+            $money_day = ($holding_user['money'] * $holding_item['percent']) / 100;
+        }else{
+            $money_day = ($holding_user['money'] * $holding_item['percent']);
+        }
+        if($money_day > $holding_item['max']) continue; //Че ебнулся блять!?
+        holding_user_save(array(
+            'id' => $holding_user['id'],
+            '_set' => sql_pholder(' last_day = ?, money_stored = money_stored + ?', mktime(23, 59, 59) + 1, $money_day),
+        )); //Начилсяем процент!
+        $_cnt++;
+        if($money_day) $msg .= '<b>"'.$holding_item['title'].'" + '.html_money_str($holding_item['money_type'], $money_day).'</b> ';
+    }
+    if($send_msg && $msg) chat_msg_send_system('<b class="grnn">Начисление процентов по '.($_cnt == 1 ? 'вкладу' : 'вкладам').':</b> '.$msg, CHAT_CHF_USER, $user['id']);
+    return true;
+}
+
+define('HOLDING_LOG_TYPE_OPEN_DEPOSIT', 1);
+define('HOLDING_LOG_TYPE_CLOSE_DEPOSIT', 2);
+define('HOLDING_LOG_TYPE_CAPITAL_DEPOSIT', 3);
+define('HOLDING_LOG_TYPE_OPEN_MONEY_BOX', 4);
+define('HOLDING_LOG_TYPE_CLOSE_MONEY_BOX', 5);
+define('HOLDING_LOG_TYPE_CAPITAL_MONEY_BOX', 6);
+define('HOLDING_LOG_TYPE_CAPITAL_PAY_DEPOSIT', 7);
+
+function holding_log($log_type, $user_id, $info, $holding_id = false, $money_type = 0, $money = 0){
+    $log = array('type' => $log_type, 'user_id' => $user_id, 'money_type' => $money_type, 'money' => $money, 'holding' => $holding_id, 'info' => $info);
+    logfile(HOLDING_USER_LOG, serialize($log));
+}

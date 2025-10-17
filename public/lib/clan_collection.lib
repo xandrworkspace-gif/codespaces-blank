@@ -1,0 +1,184 @@
+<?
+require_once("lib/common.lib");
+define('TABLE_clan_collection_LIST','clan_collection');
+define('FIELD_clan_collection_LIST','');
+define('TABLE_clan_collection_GROUP','clan_collection_group');
+define('FIELD_clan_collection_GROUP','');
+define('TABLE_clan_collection_STAT','clan_collection_stat');
+define('FIELD_clan_collection_STAT','');
+define('TABLE_clan_collection_FAVARITE', 'clan_collection_favarite');
+define('FIELD_clan_collection_FAVARITE','');
+
+define('clan_collection_CNT', 7); //Кол-во мест в коллекции
+define('clan_collection_CNT_ADD', 4); //Кол-во мест во второй маленькой
+
+define('FLAG_clan_collection_ADMIN', 	0x00001); //Видна только администратору
+define('FLAG_clan_collection_NOTUSE', 	0x00002); //Нельзя использовать
+define('FLAG_clan_collection_NOT_ARTIFACT', 	0x00004); //Не выдавать артефакт
+
+define('FILTER_FLAG_COLL_SELECT',	0x00001); //Избранность
+define('FILTER_FLAG_COLL_ACTIVE',	0x00002); //Собранность
+define('FILTER_FLAG_COLL_USEFULL',  0x00004); //Доступность
+
+$filter_flags = array(
+    FILTER_FLAG_COLL_SELECT => 'Избранность',
+    FILTER_FLAG_COLL_ACTIVE => 'Собранность',
+    FILTER_FLAG_COLL_USEFULL => 'Доступность',
+);
+
+define('FILTE_COLL_TITLE', 1);
+define('FILTE_COLL_ACTIVE', 2);
+
+$filter_sort = array(
+    FILTE_COLL_TITLE => 'по названию',
+    FILTE_COLL_ACTIVE => 'по собранности',
+);
+
+define('FLAG_clan_collection_GROUP_HIDE', 0x00001); //Скрывать группу
+
+#Работа с базой данных коллекций
+function clan_collection_get($ref=false, $add='') {
+    global $db_path;
+    $clan_collection = common_get($db_path,TABLE_clan_collection_LIST,$ref,$add);
+    return $clan_collection;
+}
+
+function clan_collection_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_clan_collection_LIST,$ref,$add,$field_list);
+}
+
+function clan_collection_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_clan_collection_LIST, $ref, $add);
+}
+
+function clan_collection_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_clan_collection_LIST,$param,FIELD_clan_collection_LIST);
+}
+
+function clan_collection_delete($ref, $add = '') {
+    global $db_path;
+    if (is_array($ref)) return false;
+    if($ref){
+        $clan_collection = clan_collection_get($ref);
+        if(!$clan_collection){
+            return false;
+        }
+    }
+    common_delete($db_path,TABLE_clan_collection_LIST,$ref,$add);
+    return true;
+}
+#Работа с базой данных коллекций завершена
+#Работа с базой групп коллекций данных
+function clan_collection_group_get($ref=false, $add='') {
+    global $db_path;
+    $clan_collection_group = common_get($db_path,TABLE_clan_collection_GROUP,$ref,$add);
+    return $clan_collection_group;
+}
+
+function clan_collection_group_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_clan_collection_GROUP,$ref,$add,$field_list);
+}
+
+function clan_collection_group_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_clan_collection_GROUP, $ref, $add);
+}
+
+function clan_collection_group_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_clan_collection_GROUP,$param,FIELD_clan_collection_GROUP);
+}
+
+function clan_collection_group_delete($ref, $add = '') {
+    global $db_path;
+    if (is_array($ref)) return false;
+    if($ref){
+        $clan_collection_group = clan_collection_group_get($ref);
+        if(!$clan_collection_group){
+            return false;
+        }
+    }
+    common_delete($db_path,TABLE_clan_collection_GROUP,$ref,$add);
+    return true;
+}
+#Работа с базой данных групп коллекций завершена
+
+#Работа с базой данных органок по времени
+
+function clan_collection_stat_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_clan_collection_STAT,$ref,$add);
+}
+
+function clan_collection_stat_list($add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_clan_collection_STAT,false,$add);
+}
+
+function clan_collection_stat_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_clan_collection_STAT,$param,FIELD_clan_collection_STAT);
+}
+
+function clan_collection_stat_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_clan_collection_STAT,$ref,$add);
+}
+
+#Работа с базой данных органок по времени
+
+// Функция проверки кол-ва коллекций в день
+function clan_collection_stat_check(&$clan_collection, $check_only=false, $session_user) {
+    if (!$clan_collection) return false;
+    $bkey_info = date_bkey($clan_collection['per_unit']);
+    $bkey = $bkey_info[0];
+    if (!$bkey || !$clan_collection['id'] || !$session_user) return true;
+    $bkey .= '_U'.$session_user['id'];
+    $stat = clan_collection_stat_get(false,sql_pholder(" AND clan_collection_id=? AND bkey=?",$clan_collection['id'],$bkey));
+    if ($check_only) return ($stat['cnt'] < $clan_collection['per_value']);
+    if (!$stat) {
+        clan_collection_stat_save(array(
+            '_noerr' => true,
+            'clan_collection_id' => $clan_collection['id'],
+            'bkey' => $bkey,
+            'dtime' => $bkey_info[1] ? time_current() + 86400 + $bkey_info[1] : 0,
+        ));
+    }
+    return clan_collection_stat_save(array(
+        '_cnt' => true,
+        '_set' => "cnt=cnt+1",
+        '_add' => sql_pholder(" AND clan_collection_id=? AND bkey=? AND cnt<?",$clan_collection['id'],$bkey,$clan_collection['per_value']),
+    ));
+}
+
+
+
+function clan_collection_favarite_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_clan_collection_FAVARITE,$ref,$add);
+}
+
+function clan_collection_favarite_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_clan_collection_FAVARITE,$ref,$add,$field_list);
+}
+
+function clan_collection_favarite_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_clan_collection_FAVARITE, $ref, $add);
+}
+
+function clan_collection_favarite_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_clan_collection_FAVARITE,$param,FIELD_clan_collection_FAVARITE);
+}
+
+function clan_collection_favarite_delete($ref, $add = '') {
+    global $db_path;
+    common_delete($db_path,TABLE_clan_collection_FAVARITE,$ref,$add);
+    return true;
+}

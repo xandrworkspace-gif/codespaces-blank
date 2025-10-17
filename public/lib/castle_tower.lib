@@ -1,0 +1,92 @@
+<?
+
+define('CT_STATUS_STANDART', 0); // башни распределены, ничего не происходит
+define('CT_STATUS_WAITING_OPP', 1);	// одна из рас готова, другая ещё мочит дракона
+define('CT_STATUS_RUNNING',  2); // идёт битва за башни
+
+
+// Имена и поля таблиц
+define('TABLE_CASTLE_TOWERS','castle_towers');
+define('FIELD_CASTLE_TOWERS','');
+define('TABLE_CASTLE_TOWER_AREAS','castle_tower_areas');
+define('FIELD_CASTLE_TOWER_AREAS','');
+define('TABLE_CASTLE_TOWER_REQUESTS','castle_tower_requests');
+define('FIELD_CASTLE_TOWER_REQUESTS','');
+
+
+function castle_tower_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CASTLE_TOWERS,$ref,$add);
+}
+
+function castle_tower_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CASTLE_TOWERS,false,$add);
+}
+
+function castle_tower_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CASTLE_TOWERS,$param,FIELD_CASTLE_TOWERS);
+}
+
+function castle_tower_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CASTLE_TOWERS,$ref,$add);
+}
+
+function castle_tower_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CASTLE_TOWERS, $ref, $add);
+}
+
+function castle_tower_area_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CASTLE_TOWER_AREAS,$ref,$add);
+}
+
+function castle_tower_area_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CASTLE_TOWER_AREAS,false,$add);
+}
+
+function castle_tower_area_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CASTLE_TOWER_AREAS,$param,FIELD_CASTLE_TOWER_AREAS);
+}
+
+function castle_tower_area_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CASTLE_TOWER_AREAS,$ref,$add);
+}
+
+function castle_tower_area_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CASTLE_TOWER_AREAS, $ref, $add);
+}
+
+function castle_tower_request_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CASTLE_TOWER_REQUESTS,$ref,$add);
+}
+
+function castle_tower_request_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CASTLE_TOWER_REQUESTS,false,$add);
+}
+
+function castle_tower_request_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CASTLE_TOWER_REQUESTS,$param,FIELD_CASTLE_TOWER_REQUESTS);
+}
+
+function castle_tower_request_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CASTLE_TOWER_REQUESTS,$ref,$add);
+}
+
+function castle_tower_request_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CASTLE_TOWER_REQUESTS, $ref, $add);
+}
+
+?>

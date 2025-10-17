@@ -1,0 +1,116 @@
+<?
+
+// действие "надеть предмет на тень"
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if ($object['slot_id_c']) return;
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = 'В настоящий момент это действие выполнить нельзя!';
+    return;
+}
+
+$companion_id = $subject['companion_id'];
+if(!$companion_id){
+    $out['error'] = 'У вас нет тени!';
+    return;
+}
+$companion = companion_user_get($subject['id']);
+if(!$companion){
+    $out['error'] = 'У вас нет тени!';
+    return;
+}
+
+$artikul = artifact_artikul_get($object['artikul_id']);
+$artifact_in_companion = artifact_get(array('companion_id' => $companion_id, 'slot_id_c' => $artikul['slot_id_c']));
+if($artifact_in_companion) $artifact_in_companion_artikul = artifact_artikul_get($artifact_in_companion['artikul_id']);
+
+global $class_info;
+
+if (!$artikul['slot_id_c']) {
+    $out['error'] = 'Эту вещь нельзя надеть!';
+    return;
+}
+
+if ($object['durability_max'] && ($object['durability'] <= 0)) {
+    $out['error'] = 'Нельзя одеть вещь без прочности!';
+    return;
+}
+
+if ($companion['level'] < $artikul['level_min']) {
+    $out['error'] = sprintf(translate('Нельзя одеть эту вещь на тень ниже %d уровня!'),$artikul['level_min']);
+    return;
+}
+if (($artikul['level_max'] >= $artikul['level_min']) && ($companion['level'] > $artikul['level_max'])) {
+    $out['error'] = sprintf(translate('Нельзя одеть эту вещь на тень выше %d уровня!'),$artikul['level_max']);
+    return;
+}
+
+$undress_slots = array($artikul['slot_id_c']);
+
+if ($artikul['slot_id_c'] == 'LHAND') {
+    $rhand_arts = user_get_artifact_list($subject['id'], null, sql_pholder(' AND companion_id = ? AND type_id = ?',$companion_id, ARTIFACT_TYPE_ID_COMPANION), false, array('companion_item' => PARAM_COMP_ITEMS_ONLY, 'companion_slot' => 'RHAND'));
+    if ($rhand_arts && ($rhand_arts[0]['flags'] & ARTIFACT_FLAG_WEAPON)) {
+        $rhand_art_artikul = artifact_artikul_get($rhand_arts[0]['artikul_id']);
+        if (($rhand_art_artikul['f_cfg'] & ARTIFACT_PPT_MW) || $rhand_art_artikul['flags2'] & ARTIFACT_FLAG2_WEAPON_2H) {
+            $undress_slots[] = 'RHAND';
+        }
+    }
+}
+if (($artikul['slot_id'] == 'RHAND') && ($object['flags'] & ARTIFACT_FLAG_WEAPON) && ($artikul['f_cfg'] & ARTIFACT_PPT_MW)) {
+    $undress_slots[] = 'LHAND';
+}
+
+$param['companion_slot'] = $undress_slots;
+
+// Одевание вещей без количества и веса, но с количеством карманов в слоте более одного
+$slot_num_max = companion_get_slot_num_max($companion_id, $artikul['slot_id_c']);
+if ($slot_num_max > 1) {
+    $artifact_list = user_get_artifact_list($subject['id'], null, sql_pholder(' AND companion_id = ? AND type_id = ?',$companion_id, ARTIFACT_TYPE_ID_COMPANION), false, array('companion_item' => PARAM_COMP_ITEMS_ONLY, 'companion_slot' => $artikul['slot_id_c']));
+    $slot_nums = get_hash($artifact_list,'slot_num','slot_num');;
+    $t = array_diff(range(1,$slot_num_max),$slot_nums);
+    $slot_num = reset($t);
+    if (!$slot_num) {
+        $out['error'] = translate('Нет места под эту вещь!');
+        return;
+    }
+    $param = array(
+        'id' => $object['id'],
+        'user_id' => $subject['id'],
+        'companion_id' => $companion_id,
+        'slot_id_c' => $artikul['slot_id_c'],
+        'slot_num' => $slot_num,
+    );
+    if ($object['flags'] & ARTIFACT_FLAG_BOE) $param['flags'] = ($object['flags'] & ~ARTIFACT_FLAG_BOE) | ARTIFACT_FLAG_NOGIVE;
+    artifact_save($param);
+    $out['status'] = ACTION_STATUS_OK;
+    return;
+}
+
+$add2 = '';
+if($param['companion_slot']) $add2 = ($param['companion_slot'] == '*' ? " AND slot_id_c<>''": (is_array($param['companion_slot']) ? sql_pholder(" AND slot_id_c IN(?@)",$param['companion_slot']) : sql_pholder(" AND slot_id_c=?",$param['companion_slot'])));
+
+$artifact_list = artifact_list(false,$subject['id'], null,true, false, $add2.sql_pholder(' AND companion_id = ? AND type_id = ?',$companion_id, ARTIFACT_TYPE_ID_COMPANION), false);
+if (count($artifact_list) > 4) return;
+foreach($artifact_list as $artifact){
+    if ($artifact['type_id'] != ARTIFACT_TYPE_ID_INJURY) {
+        artifact_save(array(
+            'id' => $artifact['id'],
+            'companion_id' => 0,
+            'slot_id_c' => '',
+        ));
+    } elseif ($artifact['time_expire'] > time_current()) {
+        $out['error'] = 'У Вашей тени травмирована эта часть тела!';
+        return;
+    }
+}
+$param = array(
+    'id' => $object['id'],
+    'user_id' => $subject['id'],
+    'companion_id' => $companion_id,
+    'slot_id_c' => $artikul['slot_id_c'],
+);
+artifact_save($param);
+$out['status'] = ACTION_STATUS_OK;
+
+?>

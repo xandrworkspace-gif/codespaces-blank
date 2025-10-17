@@ -1,0 +1,117 @@
+<? # $Id: ticket.lib,v 1.2 2008-01-24 10:47:38 s.panferov Exp $
+//  ===========================================================================
+
+//  List of project-specific ticket types:
+
+define('TICKET_PLAYIT_ID', 1);
+define('TICKET_PLAYIT_TTL', 60 * 3);  //  Three minutes
+
+//  ===========================================================================
+
+/* In $db_diff:
+CREATE TABLE `tickets` (
+	`id` int(11) NOT NULL auto_increment,
+	`code` varchar(32) NOT NULL default '',
+	`type_id` int(11) NOT NULL default '0',
+	`exp_time` int(11) NOT NULL default '0',
+	`data` text NOT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE `code` (`code`),
+	KEY `type_id` (`type_id`),
+	KEY `exp_time` (`exp_time`)
+);
+*/
+
+define('TABLE_TICKETS', 'tickets');
+define('FIELD_TICKETS', '');
+
+define('TICKET_EXPIRED_LIFETIME', 60 * 60 * 24);  //  Keep expired tickets for one day more.
+
+//  ===========================================================================
+
+//  WARNING: These functions are written to use Drive-like common_* db
+//  functions -- you may need to adapt them somehow. [CFG]
+
+function ticket_list($add = '', $field_list = '*') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_TICKETS, $add, $field_list);
+}
+
+function ticket_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_TICKETS, $param, FIELD_TICKETS);
+}
+
+function ticket_get($ref = false, $add = '', $field_list = '*') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_TICKETS, $ref, $add, 'id', $field_list);
+}
+
+function ticket_get_by_code($type_id, $code, $active_only = true) {
+	$add = sql_pholder(' AND type_id=? AND code=?', $type_id, $code);
+	if ($active_only) {
+		$add .= sql_pholder(' AND exp_time>=?', time_current());
+	}
+	return ticket_get(false, $add);
+}
+
+function ticket_delete($ref, $add = '') {
+	global $db_diff;
+	return common_delete($db_diff, TABLE_TICKETS, $ref, $add);
+}
+
+//  ===========================================================================
+
+function ticket_create($type_id, $ttl, $data) {
+	$result = false;
+	$code = md5('TICKET_' . $type_id . uniqid(rand(), true));
+	if (
+			ticket_save(
+					array(
+							'code' => $code,
+							'type_id' => $type_id,
+							'exp_time' => time_current() + $ttl,
+							'data' => serialize($data),
+							'_mode' => CSMODE_REPLACE,
+						)
+				)
+		) {
+		$result = $code;
+	}
+
+	return $result;
+}
+
+function ticket_unserialize_data($serialized_data) {
+	$result = null; //  Note 'false' can be valid data.
+	$data = @unserialize($serialized_data);
+	//  We should distinguish unserialization failure from data, containing false.
+	if ($data !== false || $serialized_data === serialize(false)) {
+		$result = $data;
+	}
+	return $result;
+}
+
+function ticket_get_data($type_id, $code, $auto_purge = false) {
+	$result = null; //  Note 'false' can be valid data.
+
+	$ticket = ticket_get_by_code($type_id, $code, true);  //  Only actual tickets
+	if ($ticket) {
+		$result = ticket_unserialize_data($ticket['data']);
+		if ($auto_purge) {
+			ticket_delete($ticket['id']); //  Ignoring possible errors
+		}
+	}
+
+	return $result;
+}
+
+function ticket_purge_old($timestamp = false, $type_id = false, $add = '') { //  To be used in cron
+	$query_add = sql_pholder(' AND exp_time<?', $timestamp ? $timestamp : time_current());
+	if ($type_id) {
+		$query_add .= sql_pholder(' AND type_id=?', $type_id);
+	}
+
+	return ticket_delete(false, $query_add . $add);
+}
+?>

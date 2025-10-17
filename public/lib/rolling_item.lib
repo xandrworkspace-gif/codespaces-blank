@@ -1,0 +1,268 @@
+<?
+
+define('TABLE_ROLLING_ARTIKUL', 'rolling_artikul');
+define('TABLE_ROLLING_ITEM', 'rolling_item');
+define('TABLE_ROLLING_USER', 'rolling_user');
+
+define('ROLLING_DTIME_TTL', 259200); //3 дня храним
+
+define('ROLLING_ARTIKUL_FLAG_ACTIVE', 0x000001);
+
+$rolling_artikul_flags_hash = array(
+    ROLLING_ARTIKUL_FLAG_ACTIVE => 'Активно',
+);
+
+/* СУТЬ:
+ * Есть артикулы роллов, их выбирать в бонусах или в другом ином месте.
+ * Есть группа игроков, даже похуй 1 игрок.
+ * Берется rolling_artikul, создается копия в rolling_item (id, rolling_artikul_id, ctime, dtime, data, status) с уникальным id, к нему крептися rolling_user (id, rolling_item_id, user_id, ctime, status)
+ * После всех манипуляций запускается ожидание статусов (Идет рассылка по rolling_user!!!), кому дошла, кому нет, короче все выбрали статус себе.
+ * Дальше идет распределение, кому че давать с этого ролла.
+ * После этого rolling_user чистится, в поле data таблицы rolling_item попадают данные об этом ролле.
+ * Все, готово.
+ *
+ * !!! - Сделать JS интерфейс активация через чат (Выбивать окна текущих роллов), да сразу может быть хоть 10 роллов (Продумать и этот момент)
+ * */
+
+function rolling_artikul_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_ROLLING_ARTIKUL,$ref,$add);
+}
+
+function rolling_artikul_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_ROLLING_ARTIKUL,$ref,$add,$field_list);
+}
+
+function rolling_artikul_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_ROLLING_ARTIKUL, $ref, $add);
+}
+
+function rolling_artikul_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_ROLLING_ARTIKUL,$param);
+}
+
+function rolling_artikul_delete($ref) {
+    global $db_2;
+    if (!$ref) return false;
+    common_delete($db_2,TABLE_ROLLING_ARTIKUL,$ref);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////////////
+
+function rolling_item_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_ROLLING_ITEM,$ref,$add);
+}
+
+function rolling_item_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_ROLLING_ITEM,$ref,$add,$field_list);
+}
+
+function rolling_item_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_ROLLING_ITEM, $ref, $add);
+}
+
+function rolling_item_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_ROLLING_ITEM,$param);
+}
+
+function rolling_item_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_ROLLING_ITEM,$ref,$add);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////////////
+
+function rolling_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_ROLLING_USER,$ref,$add);
+}
+
+function rolling_user_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_ROLLING_USER,$ref,$add,$field_list);
+}
+
+function rolling_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_ROLLING_USER, $ref, $add);
+}
+
+function rolling_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_ROLLING_USER,$param);
+}
+
+function rolling_user_delete($ref,$add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_ROLLING_USER,$ref,$add);
+    return true;
+}
+
+/////////////////////////////////////////////////////////////////////////
+
+function rolling_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('ROLLING_USER_'.intval($ref),$timewait,$timelock);
+}
+
+function rolling_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('ROLLING_USER_'.intval($ref));
+}
+
+function rolling_create($artikul_id, $user_ids, $artikul_cnt = 1, $artikul_flags = 0, $artikul_validity = -1, $period = 300) {
+    if(!$user_ids) return false;
+    if(!is_array($user_ids)) $user_ids = array($user_ids);
+    $user_hash = make_hash(user_list(array('id' => $user_ids)));
+
+    $user_online_global = user_is_online_global(array_keys($user_hash), true, true);
+    foreach ($user_hash as $k=>$user){
+        if(!$user_online_global[$user['id']]) {
+            logfile(NODE_FILE_LOG, ' user_not_online_roll_'.$artikul_id.' user_id='.$user['id']);
+            unset($user_hash[$k]);
+        }
+    }
+    if(!$user_hash) return false;
+
+    $rolling_item_id = rolling_item_save(array(
+        'artikul_id' => $artikul_id,
+        'artikul_cnt' => $artikul_cnt,
+        'artikul_flags' => intval($artikul_flags),
+        'artikul_validity' => $artikul_validity,
+        'period' => $period,
+        'ctime' => time_current(),
+        'etime' => time_current() + $period,
+        'dtime' => time_current() + $period + ROLLING_DTIME_TTL,
+        'cnt' => count($user_hash),
+    ));
+
+    $create_ids = array();
+    foreach ($user_hash as $user){
+        $roll_user_id = rolling_user_save(array(
+            'rolling_item_id' => $rolling_item_id,
+            'user_id' => $user['id'],
+        ));
+        $create_ids[$user['id']] = $roll_user_id;
+        //Отправим в чат сообщение игроку чтобы открыть ролл
+        if($roll_user_id) chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user['id'], array('func' => '_mf().RollShowing('.$roll_user_id.')'));
+    }
+    if(!$create_ids) {
+        rolling_item_delete($rolling_item_id);
+    }else{
+        rolling_item_save(array('id' => $rolling_item_id, 'cnt' => count($create_ids))); //Укажем правдивое значение ожидания
+    }
+    return $create_ids;
+}
+
+define('ROLLING_ITEM_STATUS_ACTIVE', 0);
+define('ROLLING_ITEM_STATUS_COMPLITE', 1);
+
+define('ROLLING_USER_STATUS_NEED', 1);
+define('ROLLING_USER_STATUS_MAYBE', 2);
+define('ROLLING_USER_STATUS_NO_NEED', 3);
+
+function rolling_control() {
+    $rolling_item_list = rolling_item_list(array('status' => ROLLING_ITEM_STATUS_ACTIVE), sql_pholder(' AND (etime < ? OR cnt = scnt)', time_current()));
+    if(!$rolling_item_list) return false;
+
+    //Предварительная проверка cnt & scnt, исключение если все таки кто-то еще тормозит.
+    foreach ($rolling_item_list as $k=>$v){ if($v['etime'] > time_current()){ if(rolling_user_count(array('rolling_item_id' => $v['id'], 'status' => 0))){ unset($rolling_item_list[$k]); } }; }
+
+    $artikul_ids = array();
+    foreach ($rolling_item_list as $rolling_item) {
+        $artikul_ids[$rolling_item['artikul_id']] = $rolling_item['artikul_id'];
+    }
+    if($artikul_ids) $artikul_hash = make_hash(artifact_artikul_list(array('id' => $artikul_ids)));
+    $user_ids = array();
+    foreach ($rolling_item_list as &$rolling_item) {
+        $rolling_user_list = rolling_user_list(array('rolling_item_id' => $rolling_item['id']));
+        $rolling_item['rolling_user_list'] = $rolling_user_list;
+        foreach ($rolling_user_list as $v) { $user_ids[$v['user_id']] = $v['user_id']; }
+    }
+    if($user_ids) $user_hash = make_hash(user_list(array('id' => $user_ids)));
+
+    foreach ($rolling_item_list as &$rolling_item) {
+        $rolling_user_list_hash = make_hash($rolling_item['rolling_user_list'], 'status', true);
+
+        $user_ids_need = array(); //FOR FICTION
+
+        for($_sts = ROLLING_USER_STATUS_NEED; $_sts <= ROLLING_USER_STATUS_MAYBE; $_sts++) {
+            if($rolling_item['artikul_recieved']) continue; //ВСЕ))) ЗАКОНЧИЛОСЬ!
+            $rolling_user_list = &$rolling_user_list_hash[$_sts];
+            if(!$rolling_user_list) continue;
+            shuffle($rolling_user_list);
+            switch ($_sts){
+                case ROLLING_USER_STATUS_MAYBE:
+                case ROLLING_USER_STATUS_NEED:
+                    foreach ($rolling_user_list as $k=>$v) $user_ids_need[$v['user_id']] = $v['user_id'];
+                    foreach ($rolling_user_list as $k=>$v) {
+                        //Отдаем первому попавшемуся!
+                        $msg_text = array();
+                        if($rolling_item['artikul_id']) {
+                            $force_param = array('flags' => $rolling_item['artikul_flags']);
+                            if($rolling_item['artikul_validity'] != -1) {
+                                $force_param['time_expire'] = (intval($rolling_item['artikul_validity']) > 0 ? time_current() + intval($rolling_item['artikul_validity']) : 0);
+                            }
+                            artifact_add($rolling_item['artikul_id'], max($rolling_item['artikul_cnt'], 1), $v['user_id'], false, false, $force_param);
+                            $msg_text[] = tpl_artikul_info($artikul_hash[$rolling_item['artikul_id']], $rolling_item['artikul_cnt']);
+                        }
+                        if($msg_text) chat_msg_send_system('<b class="redd">Вам удалось заполучить: </b> '.implode(', ', $msg_text), CHAT_CHF_USER, $v['user_id']);
+
+                        unset($rolling_user_list[$k]);
+                        $rolling_item['artikul_recieved'] = $v['user_id'];
+                        break;
+                    }
+                    break;
+            }
+        }
+
+        //Фикция, но задорно)
+        do{
+            if(!$user_ids_need) break;
+
+            $rand_ch = array();
+            $rand_ch_max = 100;
+            if(count($user_ids_need) >= 20) $rand_ch_max = 100 * (floor(count($user_ids_need) / 20)+1);
+            foreach ($user_ids_need as $v) {
+                do{
+                    $ch = mt_rand(1,$rand_ch_max);
+                    if(!in_array($ch, $rand_ch)) {
+                        $rand_ch[$v] = $ch;
+                        break;
+                    }
+                }while(true);
+            }
+            //Подмена!
+            $max_value = max($rand_ch);
+            foreach ($rand_ch as $k=>$v){
+                if($v == $max_value) {
+                    if($rand_ch[$rolling_item['artikul_recieved']] != $max_value) {
+                        $pd = $rand_ch[$rolling_item['artikul_recieved']];
+                        $rand_ch[$k] = $pd;
+                        $rand_ch[$rolling_item['artikul_recieved']] = $v;
+                    }
+                    break;
+                }
+            }
+            foreach ($user_ids_need as $v) {
+                $user = $user_hash[$v];
+                chat_msg_send_system('<b>Игрок '.html_user_info($user).' выбросил случайное число <b class="'.($v == $rolling_item['artikul_recieved'] ? 'grnn' : 'redd').'">'.$rand_ch[$v].' из '.$rand_ch_max.'</b></b>', CHAT_CHF_USER, $user_ids_need);
+            }
+            chat_msg_send_system('<b>Игрок '.html_user_info($user_hash[$rolling_item['artikul_recieved']]).' получил '.tpl_artikul_info($artikul_hash[$rolling_item['artikul_id']], $rolling_item['artikul_cnt']).'</b>', CHAT_CHF_USER, $user_ids_need);
+        }while(0);
+
+        rolling_user_delete(array('rolling_item_id' => $rolling_item['id']));
+        rolling_item_save(array('id' => $rolling_item['id'], 'status' => ROLLING_ITEM_STATUS_COMPLITE));
+    }
+}

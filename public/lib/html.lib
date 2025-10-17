@@ -1,0 +1,967 @@
+<? # $Id: html.lib,v 1.130 2010-02-04 08:34:34 s.ignatenkov Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/artifact.lib");
+
+function html_select($name, $arr, $key_id=-1, $with_undef=false, $add='', $key_default='', $val_default='--', $param = array()) {
+    $html = "<select name=\"$name\" $add>\n";
+    if ($with_undef) $html .= "<option value=\"$key_default\">".$val_default."</option>\n";
+    $v_arr = ($param['v_arr'] ? true : false);
+    foreach ($arr as $k=>$v) {
+        $selected = false;
+        if (isset($key_id) && !is_array($key_id) && ($key_id == $k)) {
+            $selected = true;
+            unset($key_id);
+        } elseif (isset($key_id) && is_array($key_id) && (in_array($k, $key_id))) {
+            $selected = true;
+        }
+        $html .= "<option value=\"$k\"".($selected ? " selected": "")." ".($v_arr ? $v['sel_add'] : "").">".($v_arr ? $v['title'] : $v)."</option>\n";
+    }
+    $html .= "</select>";
+    return $html;
+}
+
+function html_select_adv($name, $arr, $key_id=-1, $with_undef=false, $add='', $key_default='', $val_default='--', $param=array(), $param_options=array()) {
+    $html = "<select ".$param['add']." name=\"$name\" $add>\n";
+    if ($with_undef) $html .= "<option ".$param['add_']." value=\"$key_default\">".$val_default."</option>\n";
+    foreach ($arr as $k=>$v) {
+        $selected = false;
+        if (isset($key_id) && !is_array($key_id) && ($key_id == $k)) {
+            $selected = true;
+            unset($key_id);
+        } elseif (isset($key_id) && is_array($key_id) && (in_array($k, $key_id))) {
+            $selected = true;
+        }
+        $html .= "<option ".$param_options[$k]['add']." value=\"$k\"".($selected ? " selected": "").">".$v."</option>\n";
+    }
+    $html .= "</select>";
+    return $html;
+}
+
+function html_select_grp($name, $arr_grp, $grp, $key_ids=null, $with_undef=false, $multiple=false, $add='', $key_default='', $val_default='--') {
+    if (!is_array($key_ids)) $key_ids = array($key_ids);
+    $html = "<select name=\"$name\"".($multiple ? ' multiple': '')." $add>\n";
+    if ($with_undef) $html .= "<option value=\"$key_default\">".$val_default."</option>\n";
+    foreach ($arr_grp as $k_grp=>$arr) {
+        $html .= "<optgroup label=\"".($grp[$k_grp] ? $grp[$k_grp]: '======')."\">\n";
+        foreach ($arr as $k=>$v) {
+            $html .= "<option value=\"$k\"".(in_array($k,$key_ids) ? " selected": "").">".$v."</option>\n";
+        }
+        $html .= "</optgroup>\n";
+    }
+    $html .= "</select>";
+    return $html;
+}
+
+function html_radio($name, $arr, $key_id=-1, $with_undef=false, $add='', $key_default='', $val_default='--', $lf="<br>\n") {
+    static $_rd_id = 0;
+    $html = "";
+    if ($with_undef) $html .= "<input type=\"radio\" name=\"$name\" value=\"$key_default\" $add/>&nbsp;".$val_default.$lf;
+    foreach ($arr as $k=>$v) {
+        $selected = false;
+        if (isset($key_id) && ($key_id == $k)) {
+            $selected = true;
+            unset($key_id);
+        }
+        $html .= "<input type=\"radio\" name=\"$name\" value=\"$k\"".($selected ? " checked": "")." $add ID=_rd_".$_rd_id." />&nbsp;<label for=_rd_".($_rd_id++).">".$v."</label>".$lf;
+    }
+    return $html;
+}
+
+function html_intel_select($name,$arr,$key_id=-1,$with_undef=false,$add='',$id='', $key_default='-1', $val_default='--', $param = array()) {
+    $html = '';
+    if (!$id) $id = $name;
+    $html .= concat('<input type="text" value="" onkeyup="sel_check(this,\'',$id,'\')" ',$add,'>');
+    $html .= $param['add_inpsel'];
+    $html .= concat('<select name="',$name,'" ',$add,' id="',$id,'">');
+    if ($with_undef) $html .= concat("<option value=\"$key_default\">",htmlspecialchars($val_default),"</option>");
+    $max = 0;
+    foreach ($arr as $k=>$v) {
+        $max = max($max,$k);
+        $html .= concat("<option value=\"$k\"",(isset($key_id) && (($key_id == $k) || ((is_array($key_id)) &&  ($key_id[$k] == $k))) ? " selected": ""),">",$v,"</option>");
+    }
+    $html .= "</select>";
+    $html .= '<script>';
+    $html .= 'var mass = [];';
+    $html .= concat('var obj=gebi(\'',$id,'\');');
+    $html .= 'while (obj.type != "select-one" && obj.nextSibling != null) {';
+    $html .= '	obj = obj.nextSibling;';
+    $html .= '}';
+    $html .= "for(var k in obj.options) {\r\n";
+    $html .= "  if(obj.options[k] != null && obj.options[k].tagName != null && obj.options[k].tagName == \"OPTION\") {\r\n";
+    $html .= "    mass[obj.options[k].value]=obj.options[k].text;\r\n";
+    $html .= "  }\r\n";
+    $html .= "}\r\n";
+    $html .= 'obj.mass=mass;';
+    $html .= '</script>';
+
+    return $html;
+}
+
+function html_intel_select_grp($name, $arr_grp, $grp, $key_ids=null, $with_undef=false, $multiple=false, $add='', $id='', $key_default='', $val_default='--') {
+    if (!is_array($key_ids)) $key_ids = array($key_ids);
+    if (!$id) $id = $name;
+    $html = '';
+    $html .= concat('<input type="text" value="" onkeyup="sel_check_grp(this,\'',$id,'\')" ',$add,'><br>');
+    $html .= concat('<select name="',$name,'"',($multiple ? ' multiple': ''),$add,' id="',$id,'" ',">\n");
+    if ($with_undef) {
+        $html .= '<optgroup label="=">';
+        $html .= concat('<option value="',$key_default,'">',htmlspecialchars($val_default),"</option>\r\n");
+        $html .= "</optgroup>\r\n";
+    }
+    foreach ($arr_grp as $k_grp=>$arr) {
+        $html .= concat('<optgroup label="',($grp[$k_grp] ? $grp[$k_grp]: '======'),"\">\r\n");
+        foreach ($arr as $k=>$v) {
+            $html .= concat('<option value="',$k,'"',(in_array($k,$key_ids) ? ' selected ' : ''),'>',htmlspecialchars($v),"</option>\n");
+        }
+        $html .= "</optgroup>\r\n";
+    }
+    $html .= "</select>\n";
+    $html .= '<script>';
+    $html .= "var mass = [];\n";
+    $html .= concat("var obj=gebi('",$id,"');\r\n");
+    $html .= "while (obj.type != 'select-one' && obj.nextSibling != null) {\n";
+    $html .= " obj = obj.nextSibling;\n";
+    $html .= "}\n";
+    $html .= "for(var k in obj.childNodes) {\n";
+    $html .= "  var grp = obj.childNodes[k];\n";
+    $html .= "  if(grp != null && grp.tagName != null && grp.tagName == \"OPTGROUP\") {\n";
+    $html .= "    var grp_cntt = [];\n";
+    $html .= "    for(var j in grp.childNodes) {\n";
+    $html .= "      var opt = grp.childNodes[j];\n";
+    $html .= "      if(opt != null && opt.tagName != null && opt.tagName == \"OPTION\") {\n";
+    $html .= "        grp_cntt[opt.value] = opt.text;\n";
+    $html .= "      }\n";
+    $html .= "    }\n";
+    $html .= "    mass[k] = [];\n";
+    $html .= "    mass[k][\"label\"] = grp.label;\n";
+    $html .= "    mass[k][\"objects\"] = grp_cntt;\n";
+    $html .= "  }\n";
+    $html .= "}\n";
+    $html .= "obj.mass=mass;\n";
+    $html .= "</script>\n";
+    return $html;
+}
+
+function html_checkbox_ex($name, $arr, $checked=0, $add='', $lf="<br>\n"){
+    static $_chk_id = 0;
+    $html = "";
+    $html .= "
+	<div class='settings-table-right'>
+	<input type='hidden' name='".$name."' value=''/>";
+    foreach ($arr as $k=>$v) {
+        $html .= "
+			<label for=_chk_".$_chk_id.">".$v."
+				<input type='checkbox' name='".$name.(count($arr) > 1 ? "[]": '')."' value=\"".$k."\"".(($checked & $k)==$k ? " checked": "")." $add ID=_chk_".$_chk_id." />
+			</label>
+			<script type='text/javascript' charset='utf-8'>$('#_chk_".$_chk_id."').chStyler({css: {left: '-20px', position: 'absolute'}});</script>
+		";
+        $_chk_id++;
+    }
+    $html .= "</div>";
+    return $html;
+}
+
+function html_checkbox($name, $arr, $checked=0, $add='', $lf="<br>\n", $flags_mode=true, $def_value='', $param = array()) {
+    static $_chk_id = 0;
+    if (!$flags_mode) {
+        $checked = explode(',', $checked);
+        $checked = array_combine($checked, $checked);
+    }
+    $html = "";
+    if($param['chStyler']) $html .= "<div class='settings-table-right'>";
+    $html .= "<input type=\"hidden\" name=\"".$name."\" value=\"".$def_value."\"/>\n";
+    foreach ($arr as $k=>$v) {
+        if ($flags_mode) {
+            $enabled = ($checked & $k)==$k;
+        } else {
+            $enabled = isset($checked[$k]);
+        }
+        $label = is_array($v) ? $v['label'] : $v;
+        $title = is_array($v) && $v['title'] ? $v['title'] : false;
+        $html .= "<input".($title ? ' title="'.$title.'"' : '')." type=\"checkbox\" name=\"".$name.(count($arr) > 1 ? "[]": '')."\" value=\"".$k."\"".($enabled ? " checked": "")." $add ID=_chk_".$_chk_id." />&nbsp;<label".($title ? ' title="'.$title.'"' : '')." for=_chk_".$_chk_id.">".$label."</label>".$lf;
+        if($param['chStyler']) $html .= "<script type='text/javascript' charset='utf-8'>$('#_chk_".$_chk_id."').chStyler({css: {left: '-20px', position: 'absolute'}});</script>";
+        $_chk_id++;
+    }
+    if($param['chStyler']) $html .= "</div>";
+    return $html;
+}
+
+function html_hidden($arr, $arr_name=false) {
+    $html = "";
+    foreach ($arr as $k=>$v) {
+        if ($arr_name) $k = $arr_name.'['.$k.']';
+        $html .= !is_array($v) ? "<input type=\"hidden\" name=\"".$k."\" value=\"".htmlspecialchars($v)."\" />": html_hidden($v,$k);
+    }
+    return $html;
+}
+
+
+// ===============================================================================================================
+
+// $param:
+// 'add'
+// 'add_raw'
+function html_button($title, $class='butt1', $type='submit', $url='', $param=false) {
+    $onClick = '';
+    if (!preg_match('/onClick/i',$param['add']) && (($type == 'submit') || $url)) $onClick .= 'if(document._submit)return false;document._submit=true;';	// защита от повторных нажатий
+    if (preg_match('/onClick=\"(.+?);?\"/i',$param['add'],$matches)) {
+        $param['add'] = preg_replace('/onClick=\"(.+?)\"/i','',$param['add']);
+        $onClick .= $matches[1].';';
+    }
+    if ($url) {
+        if ($param['target']) {
+            $onClick .= 'window.open(\''.$url.'\',\''.$param['target'].'\');';
+        } else {
+            $onClick .= 'location.href=\''.$url.'\';';
+        }
+    }
+    $html = '<b class="'.$class.' pointer " '.$param['add_b'].'><b><input value="'.htmlspecialchars(trim($title)).'" type="'.$type.'"'.($onClick ? ' onClick="'.$onClick.'"': '').($param['add'] ? ' '.$param['add']: '').($param['add_raw'] ? ' '.$param['add_raw']: '').'></b></b>';
+    return $html;
+}
+
+// $param:
+// 'external'	 - external mode
+// 'noprivate'
+// 'nopersonal'
+// 'noinfo'
+// 'url'
+// 'url_add'
+// 'attack'
+// 'attack_url_error'
+// 'ghost'
+// 'all_ranks'
+// 'nick_len'
+// 'nolevel' -don't print character level
+function html_user_info(&$user, $param=false) {
+    global $rank_info, $clan_hash, $user_info_hash, $session_user;
+    $html = '';
+    $path = '/';
+    if ($param['external']) {	// external mode
+        $param['noprivate'] = $param['nopersonal'] = true;
+        unset($param['url'],$param['url_add']);
+        $path = SERVER_URL;
+    }
+
+    if ($param['anchor']) {
+        $html .= '<div '.($param['anchor_class'] ? 'class="'.$param['anchor_class'].'"' : '').'><a name="'.$param['anchor'].htmlspecialchars($user['nick']).'">&nbsp;</a></div>';
+    }
+
+    if (!$param['noprivate']) {
+        if ($param['attack']) $html .= '<a href="#" onClick="userAttack(\''.addslashes(urlencode($user['nick'])).'\',\''.$param['attack_url_error'].'\');return false;" title="'.translate('Напасть').'"><img src="'.$path.'images/attack.gif" width="12" height="10" border=0 align="absmiddle"></a>&nbsp;';
+        else $html .= '<a href="#" onClick="userPrvTag(\''.addslashes($user['nick']).'\');return false;" title="'.translate('Приватное сообщение').'"><img src="'.$path.'images/users-arrow.gif" border=0 width=12 height=10 align="absmiddle"></a>&nbsp;';
+    }
+    if(isset($user['referral_id']) && isset($session_user) && $user['referral_id'] == $session_user['id'] && !$param['external']) $html .= '<img src="/images/referal.png" alt="Ваш реферал" title="Ваш реферал" style="vertical-align: middle;">&nbsp;';
+    global $POSITIVE_URL, $MARRIAGE_URL, $JOKER_URL;
+    if (intval($user['marks']) & USER_MARK_GUARD) $html .= '<img src="'.$path.'images/ico_help.png" border=0 width=13 height=13 align="absmiddle" title="Помощник">&nbsp;';
+    if (intval($user['marks']) & USER_MARK_FOOL) $html .= '<img src="'.$path.'images/ico_jok.png" border=0 width=13 height=13 align="absmiddle" title="'.translate('Арлекин').'">&nbsp;';
+    if (intval($user['marks']) & USER_MARK_MARRIAGE) $html .= '<img src="'.$path.'images/ico_obryad.png" border=0 width=13 height=13 align="absmiddle" title="'.translate('Священник').'">&nbsp;';
+    if (intval($user['marks']) & USER_MARK_SUBDEALER) $html .= '<img src="'.$path.'images/m_poludrag.png" border=0 width=12 height=12 align="absmiddle" title="'.translate('Кредитор').'">&nbsp;';
+    if (intval($user['marks']) & USER_MARK_JOKER) $html .= '<img src="'.$path.'images/ico_event.png" border=0 width=14 height=14 align="absmiddle" title="'.translate('Эвентор').'">&nbsp;';
+    if (intval($user['marks']) & USER_MARK_POSITIVE) $html .= sprintf(translate('<img src="'.$path.'images/positive.gif" border=0 width=13 height=13 align="absmiddle" title="').translate('ПозитиФФщик').'">&nbsp;',$path);
+    if (intval($user['marks']) & USER_MARK_ADMIN) $html .= sprintf(translate('<img src="'.$path.'images/ico_admin.png" border=0 width=13 height=13 align="absmiddle" title="Администратор">&nbsp;'),$path);
+    if (intval($user['marks']) & USER_MARK_CHRONICLER) $html .= '<img src="/images/km.gif" align="absmiddle"> <b style="color:green;" title="Комьюнити Менеджер">[KM]</b>';//'<img src="'.$path.'images/feather.gif" border="0" width="13" height="13" align="absmiddle" title="'.translate('Летописец').'">&nbsp;';
+
+    if (intval($user['marks']) & USER_MARK_ORDEN_GUARD) $html .= '<img src="'.$path.'images/ico_guard.png" border=0 width=13 height=13 align="absmiddle" title="Модератор чата">&nbsp;';
+
+    if ((intval($user['flags']) & USER_FLAG_PUNISH) && (!$param['external'] || $param['show_punish'])) $html .= '<a href="#" onClick="showPunishmentInfo(\''.addslashes(urlencode($user['nick'])).'\');return false;" title="'.translate('Наложено проклятие').'"><img src="'.$path.'images/punishment.gif" border=0 width=13 height=13 align="absmiddle"></a>&nbsp;';
+
+    $user_info = cache_fetch($user_info_hash,$user['id'],'user_info_get');
+    if (intval($user['marks']) & USER_MARK_YOUTUBE) $html .= '<img class="pointer" onclick="'.($user_info['url'] ? 'window.open(\''.$user_info['url'].'\');' : '').'" src="/images/youtubeic.png" align="absmiddle">&nbsp;';
+    global $SERVERS;
+    $srv_id = false;
+    $clan_id = false;
+    if (isset($param['clan_data']) && !empty($param['clan_data'])) {
+        $srv_id = $param['clan_data']['server_id'];
+        $clan_id = $param['clan_data']['clan_id'];
+        $clan_title = $param['clan_data']['title'];
+        $clan_pic = $param['clan_data']['picture'];
+    } elseif ($user_info['clan_data']) {
+        $clan_info = unserialize($user_info['clan_data']);
+        $srv_id = $clan_info['server_id'];
+        $clan_id = $clan_info['id'];
+        $clan_title = $clan_info['title'];
+        $clan_pic = $clan_info['picture'];
+    }
+    if ($srv_id && $clan_id && $clan_title && $clan_pic) $html .='<a '.(($param['external'] || ($srv_id!=SERVER_ID)) ? 'href="'.$SERVERS[$srv_id]['url'].'clan_info.php?clan_id='.$clan_id.'_'.$srv_id.'" target=_blank' : 'href="#" onClick="showClanInfo(\''.$clan_id.'_'.$srv_id.'\');return false;"').' title="'.htmlspecialchars($clan_title).'"><img src="'.$SERVERS[$srv_id]['url'].$path.PATH_IMAGE_CLANS.$clan_pic.'" border=0 width=13 height=13 align="absmiddle"></a>&nbsp;';
+
+    if ((($user['rank'] >= 3) || $param['all_ranks']) && !$param['norank']) $html .= '<img src="'.$path.'images/ranks/rank'.$user['rank'].'.gif" border=0 width=13 height=13 align="absmiddle" title="'.$rank_info[$user['rank']]['title'].'">&nbsp;';
+    $style = ($param['ghost'] && ($user['flags'] & USER_FLAG_GHOST)) ? ' style="color: #c49485;"' : '';
+    $short_nick = ($param['nick_len'] > 0) ? common_short_nick($user['nick'], $param['nick_len']) : $user['nick'];
+    $html .= '<a '.($param['forum_tag'] ? 'onclick="F_USER(\''.$user['nick'].'\'); return false;"' : '').' '.($param['add_bb'] ? $param['add_bb'] : '').($param['url'] ? ' href="'.$param['url'].'"': '').' '.$param['url_add'].'><b'.(!$param['nopersonal'] && !$param['url'] && (stristr($param['url_add'],'onClick') === false) ? ' onClick="userToTag(\''.addslashes($user['nick']).'\');return false;" title="'.translate('Персональное сообщение').'" style="cursor:hand"': '').$style.'>'.htmlspecialchars($short_nick).(!$param['nolevel'] ? '&nbsp;['.intval($user['level']).']' : '').'</b></a>';
+    if ($user['gag_time'] > time_current()) {
+        if ($user['gag_reason_str']) $gag_text = sprintf(translate('Проклятие молчания, причина: %s. Осталось %s.'),$user['gag_reason_str'],html_period_str($user['gag_time']-time_current()));
+        else $gag_text = sprintf(translate('Проклятие молчания. Осталось %s.'),html_period_str($user['gag_time']-time_current()));
+        $html .= '&nbsp;<span title="'.$gag_text.'"><img src="'.$path.'images/gag.gif" width="12" height="12" align="absmiddle"></span>';
+    }
+    if (!user_is_invisible($user)) { // скрываем информацию о травмах при невидимости
+        if ($user['injury_time'] > time_current()) {
+            NODE_PUSH(null,$user['id']);
+            $artifact_list = artifact_list(false,$user['id'],'*',true,false," AND type_id=".ARTIFACT_TYPE_ID_INJURY);
+            artifact_artikul_get_title($artifact_list);
+            NODE_POP();
+            $injure = '';
+            foreach($artifact_list as $artifact) {
+                $injure .= $artifact['title']." (".html_period_str($artifact['time_expire'] - time_current())."). ";
+            }
+            $html .= '&nbsp;<a '.($param['external'] ? 'href="'.SERVER_URL.'injury_info.php?nick='.urlencode($user['nick']).'" target=_blank' : 'href="#" onClick="showInjuryInfo(\''.addslashes(urlencode($user['nick'])).'\');return false;"').' title="'.$injure.'"><img src="'.$path.'images/injury.gif" width="10" height="10" border="0" align="absmiddle"></a>';
+        }
+    }
+    if (!$param['noinfo']) $html .= '&nbsp;<a '.($param['external'] ? 'href="'.SERVER_URL.'user_info.php?nick='.urlencode($user['nick']).'" target=_blank' : 'href="#" onClick="showUserInfo(\''.addslashes(urlencode($user['nick'])).'\', \''.SERVER_URL.'\');return false;"').' title="'.translate('Информация о персонаже').'"><img src="'.$path.'images/player_info.gif" border=0 align="absmiddle"></a>';
+    if($param['ex_info']) $html .= '&nbsp;<a '.($param['external'] ? 'href="'.SERVER_URL.'user_info.php?nick='.urlencode($user['nick']).'" target=_blank' : 'href="#" onClick="showUserInfo(\''.addslashes(urlencode($user['nick'])).'\', \''.SERVER_URL.'\');return false;"').' title="'.translate('Информация о персонаже').'"><i class="b-icon-32x32 b-icon-32x32_info"></i></a>';
+    return $html;
+}
+
+// $param:
+// 'url_add'
+// 'add_b_style'
+// 'attack'
+// 'ghost'
+// 'with_flag'
+function html_user_info_light(&$user, $param=false, &$session) {
+    global $rank_info, $user_info_hash, $session_user, $auth_list_hash, $SERVERS;
+    $html = '';
+    if ($param['external']) {	// external mode
+        $param['noprivate'] = $param['nopersonal'] = true;
+    }
+    if($param['chat_user']){
+        $html .= '<div class="chat_user_item" id="chat_user_'.$user['id'].'" data-id="'.$user['id'].'" data-nick="'.htmlspecialchars($user['nick']).'" data-level="'.$user['level'].'" data-rank="'.$user['rank'].'" data-clanid="'.intval($user['clan_id']).'" data-injuryweight="0" data-profession="'.$user['profession'].'" data-profession_skill="0" data-marks="0">';
+    }
+    if (!$param['noprivate']) {
+        if($param['chat_full']){
+            if ($param['attack']) $html .= '$0$'.addslashes(urlencode($user['nick'])).'$1$';
+            $html .= '$2$'.addslashes($user['nick']).'$3$';
+        }else{
+            if ($param['attack']) $html .= '$0$'.addslashes(urlencode($user['nick'])).'$1$';
+            else $html .= '$2$'.addslashes($user['nick']).'$3$';
+        }
+    }
+    if (intval($user['marks']) & USER_MARK_ADMIN) $html .= '$34$';
+    if (intval($user['marks']) & USER_MARK_GUARD) $html .= '$4$';
+    if (intval($user['marks']) & USER_MARK_FOOL) $html .= '$5$';
+    if (intval($user['marks']) & USER_MARK_MARRIAGE) $html .= '$6$';
+    if (intval($user['marks']) & USER_MARK_SUBDEALER) $html .= '$30$';
+    if (intval($user['marks']) & USER_MARK_JOKER) $html .= '$32$';
+    if (intval($user['marks']) & USER_MARK_POSITIVE) $html .= '$33$';
+    if (intval($user['marks']) & USER_MARK_CHRONICLER) $html .= '<img src="/images/km.gif" align="absmiddle"> <b style="color:green;" title="Комьюнити Менеджер">[KM]</b>';//'$40$'; // tpl_shablon_function
+
+    if (intval($user['marks']) & USER_MARK_ORDEN_GUARD) $html .= '<img src="/images/ico_guard.png" border=0 width=13 height=13 align="absmiddle" title="Модератор чата">&nbsp;';
+
+    if ((intval($user['flags']) & USER_FLAG_PUNISH)) $html .= '$7$'.addslashes(urlencode($user['nick'])).'$8$';
+
+    if (defined('GLADIATORS_SERVER') && GLADIATORS_SERVER && $SERVERS[$auth_list_hash[$user['id']]['server_id']]) {
+        $html .= '$37$'.$SERVERS[$auth_list_hash[$user['id']]['server_id']]['image'].'$38$'.$SERVERS[$auth_list_hash[$user['id']]['server_id']]['name'].'$39$';
+    }
+    $user_info = cache_fetch($user_info_hash,$user['id'],'user_info_get');
+
+    if (intval($user['marks']) & USER_MARK_YOUTUBE) $html .= '$41$'.($user_info['url'] ? 'window.open(\''.$user_info['url'].'\');' : '').'$42$';
+
+    if ($user['flags'] & USER_FLAG_ADMIN) {
+        //$html .= '<b style=color:red;>[GM]</b>';
+    }
+    if ($user_info['clan_data']) {
+        global $SERVERS;
+        $clan_info = unserialize($user_info['clan_data']);
+        $html .= '$9$'.$clan_info['id'].'_'.$clan_info['server_id'].'$10$'.htmlspecialchars($clan_info['title']).'$11$'.$SERVERS[$clan_info['server_id']]['url'].PATH_IMAGE_CLANS.$clan_info['picture'].'$12$';
+    }
+
+    if ($user['rank'] >= 3 || $param['all_ranks']) $html .= '$13$'.$user['rank'].'$14$'.$rank_info[$user['rank']]['title'].'$15$';
+    if ($user['flags'] & USER_FLAG_GHOST){
+        $html .= '<span title="Игрок мёртв"><img src="'.$path.'images/fighttype_pve.gif" align="absmiddle"></span>&nbsp;';
+        $short_nick = ($param['nick_len'] > 0) ? common_short_nick($user['nick'], $param['nick_len']) : $user['nick'];
+        $style = ($param['ghost'] && ($user['flags'] & USER_FLAG_GHOST)) ? '$16$' : '';
+        $html .= '<a '.$param['url_add'].'><b'.(!$param['nopersonal'] && (stristr($param['url_add'],'onClick') === false) ? '$17$'.addslashes($user['nick']).'$18$': '').$style.'><span style="color:gray">'.htmlspecialchars($short_nick).'&nbsp;['.intval($user['level']).'$19$'.'</span>';
+
+    } else {
+
+        $style = (($param['ghost'] && ($user['flags'] & USER_FLAG_GHOST)) ? '$16$' : '').($param['add_b_style'] ? ' '.$param['add_b_style'] : '');
+        $short_nick = ($param['nick_len'] > 0) ? common_short_nick($user['nick'], $param['nick_len']) : $user['nick'];
+        $html .= '<a '.$param['url_add'].'><b'.(!$param['nopersonal'] && (stristr($param['url_add'],'onClick') === false) ? '$17$'.addslashes($user['nick']).'$18$': '').$style.'>'.htmlspecialchars($short_nick).'&nbsp;['.intval($user['level']).'$19$';
+    }
+
+    if ($user['gag_time'] > time_current()) {
+        if ($user['gag_reason_str']) $gag_text = sprintf('$20$%s$21$%s.',$user['gag_reason_str'],html_period_str($user['gag_time']-time_current()));
+        else $gag_text = sprintf('$22$%s.',html_period_str($user['gag_time']-time_current()));
+        $html .= '$23$'.$gag_text.'$24$';
+    }
+    if ($user['injury_time'] > time_current()) {
+        NODE_PUSH(null,$user['id']);
+        $artifact_list = artifact_list(false,$user['id'],'*',true,false," AND type_id=".ARTIFACT_TYPE_ID_INJURY);
+        artifact_artikul_get_title($artifact_list);
+        NODE_POP();
+        $injure = '';
+        foreach($artifact_list as $artifact) {
+            $injure .= $artifact['title']." (".html_period_str($artifact['time_expire'] - time_current())."). ";
+        }
+        $html .= '$25$'.addslashes(urlencode($user['nick'])).'$26$'.$injure.'$27$';
+    }
+    if ($session && $session['action_id'] && ($session['ltime'] > time_current())) {
+        $html .= '$31$'.html_period_str($session['ltime'] - time_current()).'">';
+    }
+    $html .= '$28$'.addslashes(urlencode($user['nick'])).'$29$';
+    global $profession_info;
+    if($user['profession'] & PR_INJURY){
+        $html .= '&nbsp;<span title="'.$profession_info[PR_INJURY]['title'].' '.($user['prof_skills'][PR_INJURY] ? '- '.$user['prof_skills'][PR_INJURY] : '').'"><img src="'.$path.'images/axe.png" width="12" height="13" align="absmiddle"></span>';
+    }
+    if($user['profession'] & PR_MEDIC){
+        $html .= '&nbsp;<span title="'.$profession_info[PR_MEDIC]['title'].' '.($user['prof_skills'][PR_MEDIC] ? '- '.$user['prof_skills'][PR_MEDIC] : '').'"><img src="'.$path.'images/ankh.png" width="13" height="13" align="absmiddle"></span>';
+    }
+    if($user['profession'] & PR_SAFECRACK){
+        $html .= '&nbsp;<span title="'.$profession_info[PR_SAFECRACK]['title'].' '.($user['prof_skills'][PR_SAFECRACK] ? '- '.$user['prof_skills'][PR_SAFECRACK] : '').'"><img src="'.$path.'images/key.png" width="13" height="13" align="absmiddle"></span>';
+    }
+    /* if($user['profession'] & PR_GEOLOGY){
+        $html .= '&nbsp;<span title="'.$profession_info[PR_GEOLOGY]['title'].'"><img src="'.$path.'images/des/geo1.png" width="14" height="14" align="absmiddle"></span>';
+    }
+    if($user['profession'] & PR_FARM){
+        $html .= '&nbsp;<span title="'.$profession_info[PR_FARM]['title'].'"><img src="'.$path.'images/des/trav.png" width="14" height="14" align="absmiddle"></span>';
+    }
+    if($user['profession'] & PR_FISHING){
+        $html .= '&nbsp;<span title="'.$profession_info[PR_FISHING]['title'].'"><img src="'.$path.'images/des/riba.png" width="14" height="14" align="absmiddle"></span>';
+    }
+
+     */
+
+    global $country_info;
+    if ($param['with_flag'] && MLT_COUNTRY_CHOICE_ENABLED && $user_info['country'] && $country_info[$user_info['country']] && !(MLT_ADMIN_ONLY && !($session_user['flags'] & USER_FLAG_ADMIN))) {
+        $html .= '$35$'.addslashes($country_info[$user_info['country']]['img']).'$36$';
+    }
+    if($param['chat_user']){
+        $html .= '</div>';
+    }
+    return $html;
+}
+
+
+
+function html_user_info_mobile(&$user, $param=false, &$session) {
+    global $rank_info, $user_info_hash, $session_user, $auth_list_hash, $SERVERS;
+    $html = '';
+    if ($param['external']) {	// external mode
+        $param['noprivate'] = $param['nopersonal'] = true;
+    }
+    if($param['chat_user']){
+        $html .= '<div class="chat_user_item" id="chat_user_'.$user['id'].'" data-id="'.$user['id'].'" data-nick="'.htmlspecialchars($user['nick']).'" data-level="'.$user['level'].'" data-rank="'.$user['rank'].'" data-clanid="'.intval($user['clan_id']).'" data-injuryweight="0" data-profession="'.$user['profession'].'" data-profession_skill="0" data-marks="0">';
+    }
+    if (!$param['noprivate']) {
+        if($param['chat_full']){
+            $html .= '$2$'.addslashes($user['nick']).'$3$';
+        }else{
+            $html .= '$2$'.addslashes($user['nick']).'$3$';
+        }
+    }
+    if (intval($user['marks']) & USER_MARK_ADMIN) $html .= '$34$';
+    if (intval($user['marks']) & USER_MARK_GUARD) $html .= '$4$';
+    if (intval($user['marks']) & USER_MARK_FOOL) $html .= '$5$';
+    if (intval($user['marks']) & USER_MARK_MARRIAGE) $html .= '$6$';
+    if (intval($user['marks']) & USER_MARK_SUBDEALER) $html .= '$30$';
+    if (intval($user['marks']) & USER_MARK_JOKER) $html .= '$32$';
+    if (intval($user['marks']) & USER_MARK_POSITIVE) $html .= '$33$';
+    if (intval($user['marks']) & USER_MARK_CHRONICLER) $html .= '<img src="/images/km.gif" align="absmiddle"> <b style="color:green;" title="Комьюнити Менеджер">[KM]</b>';//'$40$'; // tpl_shablon_function
+    if ((intval($user['flags']) & USER_FLAG_PUNISH)) $html .= '$7$'.addslashes(urlencode($user['nick'])).'$8$';
+
+    if (defined('GLADIATORS_SERVER') && GLADIATORS_SERVER && $SERVERS[$auth_list_hash[$user['id']]['server_id']]) {
+        $html .= '$37$'.$SERVERS[$auth_list_hash[$user['id']]['server_id']]['image'].'$38$'.$SERVERS[$auth_list_hash[$user['id']]['server_id']]['name'].'$39$';
+    }
+    $user_info = cache_fetch($user_info_hash,$user['id'],'user_info_get');
+    if ($user_info['clan_data']) {
+        global $SERVERS;
+        $clan_info = unserialize($user_info['clan_data']);
+        $html .= '$9$'.$clan_info['id'].'_'.$clan_info['server_id'].'$10$'.htmlspecialchars($clan_info['title']).'$11$'.$SERVERS[$clan_info['server_id']]['url'].PATH_IMAGE_CLANS.$clan_info['picture'].'$12$';
+    }
+
+    if ($user['rank'] >= 3) $html .= '$13$'.$user['rank'].'$14$'.$rank_info[$user['rank']]['title'].'$15$';
+    if ($user['flags'] & USER_FLAG_GHOST){
+        $html .= '<span title="Игрок мёртв"><img src="'.$path.'images/fighttype_pve.gif" align="absmiddle"></span>&nbsp;';
+        $short_nick = ($param['nick_len'] > 0) ? common_short_nick($user['nick'], $param['nick_len']) : $user['nick'];
+        $style = ($param['ghost'] && ($user['flags'] & USER_FLAG_GHOST)) ? '$16$' : '';
+        $html .= '<a '.$param['url_add'].'><b'.(!$param['nopersonal'] && (stristr($param['url_add'],'onClick') === false) ? '$17$'.addslashes($user['nick']).'$18$': '').$style.'><span style="color:gray">'.htmlspecialchars($short_nick).'&nbsp;['.intval($user['level']).'$19$'.'</span>';
+
+    } else {
+
+        $style = (($param['ghost'] && ($user['flags'] & USER_FLAG_GHOST)) ? '$16$' : '').($param['add_b_style'] ? ' '.$param['add_b_style'] : '');
+        $short_nick = ($param['nick_len'] > 0) ? common_short_nick($user['nick'], $param['nick_len']) : $user['nick'];
+        $html .= '<a '.$param['url_add'].'><b'.(!$param['nopersonal'] && (stristr($param['url_add'],'onClick') === false) ? '$17$'.addslashes($user['nick']).'$18$': '').$style.'>'.htmlspecialchars($short_nick).'&nbsp;['.intval($user['level']).'$19$';
+    }
+
+    if ($user['gag_time'] > time_current()) {
+        if ($user['gag_reason_str']) $gag_text = sprintf('$20$%s$21$%s.',$user['gag_reason_str'],html_period_str($user['gag_time']-time_current()));
+        else $gag_text = sprintf('$22$%s.',html_period_str($user['gag_time']-time_current()));
+        $html .= '$23$'.$gag_text.'$24$';
+    }
+
+    if ($session && $session['action_id'] && ($session['ltime'] > time_current())) {
+        $html .= '$31$'.html_period_str($session['ltime'] - time_current()).'">';
+    }
+    //$html .= '$28$'.addslashes(urlencode($user['nick'])).'$29$';
+    global $profession_info;
+    /*if($user['profession'] & PR_INJURY){
+        $html .= '&nbsp;<span title="'.$profession_info[PR_INJURY]['title'].'"><img src="'.$path.'images/axe.png" width="12" height="13" align="absmiddle"></span>';
+    }
+    if($user['profession'] & PR_MEDIC){
+        $html .= '&nbsp;<span title="'.$profession_info[PR_MEDIC]['title'].'"><img src="'.$path.'images/ankh.png" width="13" height="13" align="absmiddle"></span>';
+    }
+    if($user['profession'] & PR_SAFECRACK){
+        $html .= '&nbsp;<span title="'.$profession_info[PR_SAFECRACK]['title'].'"><img src="'.$path.'images/key.png" width="13" height="13" align="absmiddle"></span>';
+    }
+     if($user['profession'] & PR_GEOLOGY){
+        $html .= '&nbsp;<span title="'.$profession_info[PR_GEOLOGY]['title'].'"><img src="'.$path.'images/des/geo1.png" width="14" height="14" align="absmiddle"></span>';
+    }
+    if($user['profession'] & PR_FARM){
+        $html .= '&nbsp;<span title="'.$profession_info[PR_FARM]['title'].'"><img src="'.$path.'images/des/trav.png" width="14" height="14" align="absmiddle"></span>';
+    }
+    if($user['profession'] & PR_FISHING){
+        $html .= '&nbsp;<span title="'.$profession_info[PR_FISHING]['title'].'"><img src="'.$path.'images/des/riba.png" width="14" height="14" align="absmiddle"></span>';
+    }
+
+     */
+
+    global $country_info;
+    if ($param['with_flag'] && MLT_COUNTRY_CHOICE_ENABLED && $user_info['country'] && $country_info[$user_info['country']] && !(MLT_ADMIN_ONLY && !($session_user['flags'] & USER_FLAG_ADMIN))) {
+        $html .= '$35$'.addslashes($country_info[$user_info['country']]['img']).'$36$';
+    }
+    if($param['chat_user']){
+        $html .= '</div>';
+    }
+    return $html;
+}
+
+
+
+
+function html_user_info_blind($show_icons=true, $param=false) {
+    return ($show_icons ? '<a href="#" onClick="userAttack();return false;" title="'.translate('Напасть').'"><img src="/images/attack.gif" width="12" height="10" border=0 align="absmiddle"></a>&nbsp;' : '').'<b'.($param['url_add'] ? ' '.$param['url_add'] : '').'>'.translate('Невидимка').'</b>';
+}
+
+function html_clan_info(&$clan, $server_id = false) {
+    $prefix = '';
+    if ($server_id) {
+        global $SERVERS;
+        $server = $SERVERS[$server_id];
+        if ($server) $prefix = rtrim($server['url'], '/').'/';
+    }
+    return '<a title="'.htmlspecialchars($clan['title']).'" href="#" onClick="showClanInfo(\''.$clan['id'].($server ? '_'.$server['id'] : '').'\'); return false;"><img src="'.$prefix.PATH_IMAGE_CLANS.$clan['picture'].'" border=0 width=13 height=13 align="absmiddle"></a>&nbsp;<b>'.htmlspecialchars($clan['title']).($server ? ' ('.$server['name'].')' : '').'</b>';
+}
+
+// $param:
+// 'noinfo'
+// 'url'
+// 'url_add'
+// 'attack'
+// 'attack_url_error'
+// 'nick_len'
+function html_bot_info(&$bot, $param=false, $short_nick=false) {
+    $html = '';
+    if ($param['attack'] && $bot['id']) $html .= '<a href="#" onClick="botAttack('.$bot['id'].',\''.$param['attack_url_error'].'\');return false;" title="'.translate('Напасть').'"><img src="/images/attack.gif" width="12" height="10" border=0 align="absmiddle"></a>&nbsp;';
+    if (!$short_nick) $short_nick = ($param['nick_len'] > 0) ? common_short_nick($bot['nick'], $param['nick_len']) : $bot['nick'];
+    $html .= '<a'.($param['url'] ? ' href="'.$param['url'].'"': '').' '.$param['url_add'].'><b class="blue">'.htmlspecialchars($short_nick).'&nbsp;['.intval($bot['level']).']</b></a>';
+    if (!$param['noinfo']) $html .= '&nbsp;<a href="#" onClick="showBotInfo('.intval($bot['id']).','.intval($bot['artikul_id']).');return false;" title="'.translate('Информация о существе').'"><img src="/images/player_info.gif" border=0 align="absmiddle"></a>';
+    return $html;
+}
+
+function html_bot_artikul_info($bot, $param=false, $short_nick=false) {
+    $html = '';
+    if (!$short_nick) $short_nick = ($param['nick_len'] > 0) ? common_short_nick($bot['nick'], $param['nick_len']) : $bot['nick'];
+    $html .= '<a'.($param['url'] ? ' href="'.$param['url'].'"': '').' '.$param['url_add'].'><b class="blue">'.htmlspecialchars($short_nick).'&nbsp;['.intval($bot['level']).']</b></a>';
+    if (!$param['noinfo']) $html .= '&nbsp;<a href="#" onClick="showBotInfo(false,'.intval($bot['id']).');return false;" title="'.translate('Информация о существе').'"><img src="/images/player_info.gif" border=0  align="absmiddle"></a>';
+    return $html;
+}
+
+function html_companion_info(&$companion, $user, $param=false, $short_nick=false) {
+    $html = '';
+    $nick = 'Тень - '.$user['nick'];
+    if (!$short_nick) $short_nick = ($param['nick_len'] > 0) ? common_short_nick($nick, $param['nick_len']) : $nick;
+    $html .= '<a'.($param['url'] ? ' href="'.$param['url'].'"': '').' '.$param['url_add'].'><b class="blue">'.htmlspecialchars($short_nick).'&nbsp;['.intval($companion['level']).']</b></a>';
+    if (!$param['noinfo']) $html .= '&nbsp;<a href="#" onClick="showShadowInfo(\''.strval($user['nick']).'\','.intval($param['fight_user_id']).');return false;" title="'.translate('Информация о тени').'"><img src="/images/player_info.gif" border=0 align="absmiddle"></a>';
+    return $html;
+}
+
+// $param:
+// 'format'
+// 'url'
+// 'url_add'
+// 'nozerohide'
+function html_money_str($money_type, $amount, $param=false) {
+    global $money_type_info;
+    if (!$money_type_info[$money_type]) return '';
+
+    $amount = money_floatval($amount);
+    if (isset($money_type_info[$money_type]['picture1'])) {
+        $t = array();
+        if ($amount < 0) $t[] = '-';
+        $amount = abs($amount);
+        preg_match('/(\d*?)(\d{1,2})\.(\d{2})/',sprintf('%.2f',$amount),$matches);
+        list(,$amount3,$amount2,$amount1) = $matches;
+        $amount1 = intval($amount1);
+        $amount2 = intval($amount2);
+        $amount3 = intval($amount3);
+        if ($amount3) $t[] = _html_money_str($amount3, '%d', $money_type_info[$money_type]['picture3'], $money_type_info[$money_type]['alt3'], $money_type_info[$money_type]['url'],$param['out']);
+        if ($amount2) $t[] = _html_money_str($amount2, '%d', $money_type_info[$money_type]['picture2'], $money_type_info[$money_type]['alt2'], $money_type_info[$money_type]['url'],$param['out']);
+        if ($amount1 || (!$amount2 && !$amount3)) $t[] = _html_money_str($amount1, '%d', $money_type_info[$money_type]['picture1'], $money_type_info[$money_type]['alt1'], $money_type_info[$money_type]['url'],$param['out']);
+        return implode('&nbsp;',$t);
+    }
+    if ($money_type_info[$money_type]['zerohide'] && !$param['nozerohide'] && ($amount == 0)) {
+        return '';
+    }
+    if (!$param['format']) $param['format'] = '%.2f';
+    if ($param['currency_only']) $param['format'] = false;
+    $url = $param['nourl'] ? false : $money_type_info[$money_type]['url'];
+    return _html_money_str($amount, $param['format'], $money_type_info[$money_type]['picture'],
+        $money_type_info[$money_type]['alt'], $url, $param['out']);
+}
+
+function _html_money_str($amount, $format, $image, $alt, $url=false, $out=false) {
+    $html = '<span title="'.$alt.'"><img src="'.($out ? SERVER_URL : '/').'images/'.$image.'" border=0 width=11 height=11 align=absmiddle></span>';
+    if ($url) $html = '<a href="'.$url.'" target="_blank">'.$html.'</a>';
+    if ($format) $html .= '&nbsp;'.sprintf($format, $amount);
+    return $html;
+}
+
+function html_work_str($amount, $alt=false) {
+    if (!$alt) $alt = translate('Энергия');
+    $html = '<span title="'.$alt.'">';
+    $html.= '<img src="/images/work.gif">&nbsp;'.$amount.'</span>';
+    return $html;
+}
+
+function html_date_str($v, $mode=1) {
+    $month_hash = array(1 => translate('января'), translate('февраля'), translate('марта'), translate('апреля'), translate('мая'), translate('июня'), translate('июля'), translate('августа'), translate('сентября'), translate('октября'), translate('ноября'), translate('декабря'));
+    $month_hash2 = array(1 => 'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек');
+    $d = getdate($v);
+    if ($mode == 1) {
+        return $d['mday'].' '.$month_hash[$d['mon']].' '.$d['year'].' '.date('H:i',$v);
+    } elseif ($mode == 2) {
+        return $d['mday'].' '.$month_hash[$d['mon']].' '.$d['year'];
+    } elseif ($mode == 3) {
+        return $d['mday'].' '.$month_hash[$d['mon']].' '.$d['year'].' '.date('H:i:s',$v);
+    } elseif ($mode == 4) {
+        return $d['mday'].'.'.$d['mon'].'.'.$d['year'].' '.date('H:i:s',$v);
+    }elseif ($mode == 5) {
+        return $d['mday'].' '.$month_hash2[$d['mon']].'. '.date('H:i:s',$v);
+    }elseif ($mode == 6) {
+        return date('H:i:s',$v);
+    }elseif ($mode == 7) {
+        return date('H:i',$v);
+    }elseif ($mode == 8) {
+        return $d['mday'].' '.$month_hash2[$d['mon']].' '.$d['year'];
+    }
+}
+
+function html_period_str($v, $with_seconds=false, $with_minutes=true, $glue=' ', $extended=true, $normalize = false) {
+    $v = max($v,0);
+    $ss = intval($v) % 60;
+    $mm = intval($v/60) % 60;
+    $hh = intval($v/3600) % 24;
+    $dd = intval($v/86400);
+    if($normalize){
+        $ss = sprintf("%02d", $ss);
+        $mm = sprintf("%02d", $mm);
+        $hh = sprintf("%02d", $hh);
+        $dd = sprintf("%02d", $dd);
+    }
+    $t = array();
+    if($extended) {
+        if ($dd) $t[] = concat($dd,translate(' д.'));
+        if ($hh || ($dd && $mm)) $t[] = concat($hh,translate(' ч.'));
+        if ($with_minutes && $mm) $t[] = concat($mm,translate(' мин.'));
+        if (($with_seconds && $ss) || ($v < 60)) $t[] = concat($ss,translate(' сек.'));
+    }else{
+        $t[] = sprintf("%02d", $hh);
+        if ($with_minutes) $t[] = sprintf("%02d", $mm);
+        if ($with_seconds) $t[] = sprintf("%02d", $ss);
+    }
+    return implode($glue,$t);
+}
+
+// $param:
+// 'size' - 10 - default
+// 'prefix'
+// 'format'
+function html_page_list($url, $page, $page_count, $param=false) {
+    $size = $param['size'] ? $param['size']: 10;
+    $format = $param['format'] ? $param['format']: '&nbsp;%d&nbsp;';
+
+    if ($page_count < 2) return '';
+    $url .= strpos($url,'?') !== false ? '&': '?';
+    $html = $param['prefix'] ? $param['prefix']: '<nobr>'.translate('Страницы: ').'</nobr>';
+    $page_start = floor($page/$size)*$size;
+    $page_end = min($page_start+$size,$page_count);
+    if ($page_start > 0) {
+        $html .= '<a href="'.$url.'page=0">'.sprintf($format,1).'</a>...';
+        $html .= '<a href="'.$url.'page='.($page_start-1).'">&nbsp;&laquo;&nbsp;</a>';
+    }
+    for ($i=$page_start; $i<$page_end; $i++) {
+        $t = sprintf($format,$i+1);
+        if ($page == $i) $t = '<b>'.$t.'</b>';
+        $html .= '<a href="'.$url.'page='.$i.'">'.$t.'</a>';
+    }
+    if ($page_end < $page_count) {
+        $html .= '<a href="'.$url.'page='.$page_end.'">&nbsp;&raquo;&nbsp;</a>';
+        $html .= '...<a href="'.$url.'page='.($page_count-1).'">'.sprintf($format,$page_count).'</a>';
+    }
+    print $html;
+}
+
+function html_page_limit($current, $total, $onpage) {
+    $current = intval($current);
+    $total = intval($total);
+    $onpage = intval($onpage);
+    if ($current < 0) $current = 0;
+    if ($current > $total) $current = $total;
+    return sprintf(' LIMIT %d, %d', $current*$onpage, $onpage);
+}
+
+// Рисовалка номеров страниц в дизайне
+// $param:
+// 'size' - 10 - default
+function html_page_list2($url, $page, $page_count, $param=false) {
+    $size = $param['size'] ? $param['size']: 10;
+
+    if(!$param['page_name']) $param['page_name'] = 'page';
+
+    if ($page_count < 2) return '';
+    $url .= strpos($url,'?') !== false ? '&': '?';
+    $html = '<table border=0 cellpadding=0 cellspacing=0 class="pg w100" '.$param['add_table'].'><tr>';
+    $html .= '<td class="b" width=10><nobr>'.translate('Страницы:').'&nbsp;</nobr></td>';
+    $page_start = floor($page/$size)*$size;
+    $page_end = min($page_start+$size,$page_count);
+    if ($page_start > 0) {
+        $html .= '<td class="pg-inact"><a href="'.$url.$param['page_name'].'=0" class="pg-inact_lnk">1</a></td><td width=17>...</td>';
+        $html .= '<td class="pg-inact"><a href="'.$url.$param['page_name'].'='.($page_start-1).'" class="pg-inact_lnk">&laquo;</a></td>';
+    }
+    for ($i=$page_start; $i<$page_end; $i++) {
+        $cl_pfx = ($page == $i ? 'pg-act': 'pg-inact');
+        $html .= '<td class="'.$cl_pfx.'"><a href="'.$url.$param['page_name'].'='.$i.'" class="'.$cl_pfx.'_lnk">'.($i+1).'</a></td>';
+    }
+    if ($page_end < $page_count) {
+        $html .= '<td class="pg-inact"><a href="'.$url.$param['page_name'].'='.$page_end.'" class="pg-inact_lnk">&raquo;</a></td>';
+        $html .= '<td width=17>...</td><td class="pg-inact"><a href="'.$url.$param['page_name'].'='.($page_count-1).'" class="pg-inact_lnk">'.$page_count.'</a></td>';
+    }
+    $html .= '<td style="text-align: left;">'.$param['add'].'</td>';
+    $t = array();
+    $html .= '<td width="1%" style="text-align:right" nowrap>';
+    if ($page > 0) {
+        $html .= '<a href="'.$url.$param['page_name'].'='.($page-1).'"><img src="/images/p-left-red.gif" border=0 width=29 height=17 title="'.translate('Предыдущая').'"></a>';
+    } else {
+        $html .= '<img src="/images/p-left-gray.gif" border=0 width=29 height=17 title="'.translate('Предыдущая').'">';
+    }
+    $html .= '<img src="/images/pg-act.gif" border=0 width=17 height=17>';
+    if ($page < $page_count-1) {
+        $html .= '<a href="'.$url.$param['page_name'].'='.($page+1).'"><img src="/images/p-right-red.gif" border=0 width=29 height=17 title="'.translate('Следующая').'"></a>';
+    } else {
+        $html .= '<img src="/images/p-right-gray.gif" border=0 width=29 height=17 title="'.translate('Следующая').'">';
+    }
+    $html .= '</td>';
+    $html .= '</tr></table>';
+    if ($param['return'])
+        return $html;
+    print $html;
+}
+
+// Рисовалка номеров страниц в дизайне Главной
+// $param:
+// 'size' - 10 - default
+function html_page_list3($url, $page, $page_count, $param=false) {
+    $size = $param['size'] ? $param['size']: 10;
+
+    if ($page_count < 2) return '';
+    $url .= strpos($url,'?') !== false ? '&': '?';
+    $html = '<table border=0 cellpadding=0 cellspacing=0 class="pg_v2 w100"><tr>';
+    $html .= '<td class="b" width=10><span class="pg-v2-str-line '.$param['c_add_style'].'" data-font="PTSans">Страницы</span></td>';
+    $page_start = floor($page/$size)*$size;
+    $page_end = min($page_start+$size,$page_count);
+    if ($page_start > 0) {
+        $html .= '<td class="pg_v2-inact" onclick="location.href=\''.$url.'page=0\';"><a href="'.$url.'page=0" class="pg_v2-inact_lnk" data-font="PTSans"><cufontext>1</cufontext></a></td><td width=17>...</td>';
+        $html .= '<td class="pg_v2-inact" onclick="location.href=\''.$url.'page='.($page_start-1).'\';"><a href="'.$url.'page='.($page_start-1).'" class="pg_v2-inact_lnk">&laquo;</a></td>';
+    }
+    for ($i=$page_start; $i<$page_end; $i++) {
+        $cl_pfx = ($page == $i ? 'pg_v2-act': 'pg_v2-inact');
+        $html .= '<td class="'.$cl_pfx.'" onclick="location.href=\''.$url.'page='.$i.'\';"><a href="'.$url.'page='.$i.'" class="'.$cl_pfx.'_lnk" data-font="PTSans"><cufontext>'.($i+1).'</cufontext></a></td>';
+    }
+    if ($page_end < $page_count) {
+        $html .= '<td class="pg_v2-inact" onclick="location.href=\''.$url.'page='.$page_end.'\';"><a href="'.$url.'page='.$page_end.'" class="pg_v2-inact_lnk">&raquo;</a></td>';
+        $html .= '<td width=17>...</td><td class="pg_v2-inact" onclick="location.href=\''.$url.'page='.($page_count-1).'\';"><a href="'.$url.'page='.($page_count-1).'" class="pg_v2-inact_lnk" data-font="PTSans"><cufontext>'.$page_count.'</cufontext></a></td>';
+    }
+    $html .= '<td style="text-align: left;">'.$param['add'].'</td>';
+    $t = array();
+    $html .= '<td width="1%" style="text-align:right; '.$param['add_style_b'].'" nowrap>';
+    if ($page > 0) {
+        $html .= '<a href="'.$url.'page='.($page-1).'" class="pg-v2-arr-left pg-v2-inact-left" title="'.translate('Предыдущая').'"><img src="v2/images/1x1.gif" alt="&lt;" /></a>';
+        //$html .= '<a href=""><img src="/images/p-left-red.gif" border=0 width=29 height=17 "></a>';
+    } else {
+        $html .= '<a href="#" onclick="return false;" class="pg-v2-arr-left" title="'.translate('Предыдущая').'"><img src="v2/images/1x1.gif" alt="&lt;" /></a>';
+        //$html .= '<img src="/images/p-left-gray.gif" border=0 width=29 height=17 title="'.translate('Предыдущая').'">';
+    }
+    //$html .= '<img src="/images/pg-act.gif" border=0 width=17 height=17>';
+    if ($page < $page_count-1) {
+        $html .= '<a href="'.$url.'page='.($page+1).'" class="pg-v2-arr-right pg-v2-inact-right" title="'.translate('Следующая').'"><img src="v2/images/1x1.gif" alt="&lt;" /></a>';
+        //$html .= '<a href="'.$url.'page='.($page+1).'"><img src="/images/p-right-red.gif" border=0 width=29 height=17 title="'.translate('Следующая').'"></a>';
+    } else {
+        //$html .= '<img src="/images/p-right-gray.gif" border=0 width=29 height=17 title="'.translate('Следующая').'">';
+        $html .= '<a href="#" onclick="return false;" class="pg-v2-arr-right" title="'.translate('Следующая').'"><img src="v2/images/1x1.gif" alt="&lt;" /></a>';
+    }
+    $html .= '</td>';
+    $html .= '</tr></table>';
+    if ($param['return'])
+        return $html;
+    print $html;
+}
+
+// меню на базе списка режимов + ссылка "выйти в город"
+// $continue_line - делает картинку слева с полосками (для продолжения меню в строчке)
+function html_menu($mode_hash, $active_mode, $exit_url=null, $exit_title=null, $without_title = false, $continue_line = false, $param = array()) {
+    global $area_url;
+    if (!$exit_url) $exit_url='?exit=1';
+    if (!$exit_title) $exit_title=translate('Выход');
+    $html = '<table border="0" width="100%"  cellspacing="0" cellpadding="0"><tr>';
+
+    if($param['centered']) {
+        $html .= '<td class="tbl-fgt_tabs-lines">&nbsp;</td>';
+    }
+
+    $i = 0;
+
+    $count_without_hide = 0;
+    foreach ($mode_hash as $k=>$v){
+        if($v['hide']) continue;
+        $count_without_hide++;
+    }
+
+    if($mode_hash[$active_mode]['parent']) $active_mode = $mode_hash[$active_mode]['parent'];
+    foreach ($mode_hash as $k=>$v) {
+        if($v['hide']) continue;
+        $title = '<a '.($v['add_act'] && $active_mode == $k ? $v['add_act'] : $v['add']).' href="'.($v['fhref'] ? $v['fhref'] : $area_url.'&mode='.$k.$v['add_url']).'" title="'.$v['alt'].'" class="'.($active_mode == $k ? 'tbl-fgt_tabs-link_act': 'tbl-fgt_tabs-link').'">'.$v['title'].'</a>';
+        if ($i) $html .= '<td width="10" valign="top"><img src="images/'.($active_mode == $k ? 'tbl-fgt_tabs-act-c-left.gif': 'tbl-fgt_tabs-in-c-left.gif').'" width="10" height="27"></td>';
+        elseif ($continue_line) $html .= '<td width="38" valign="top"><img src="images/'.($active_mode == $k ? 'tbl-fgt_tabs-act-left3.gif': 'tbl-fgt_tabs-inact-left2.gif').'" width="38" height="31"></td>';
+        else $html .= '<td width="46" valign="top"><img src="images/'.($active_mode == $k ? 'tbl-fgt_tabs-act-left.gif': 'tbl-fgt_tabs-inact-left.gif').'" width="46" height="31"></td>';
+        $html .= '<td width="2%" align="center" class="'.($active_mode == $k ? 'tbl-fgt_tabs-act-center': 'tbl-fgt_tabs-in-center').'" nowrap>'.$title.'</td>';
+        if (++$i < $count_without_hide) $html .= '<td width="10" valign="top"><img src="images/'.($active_mode == $k ? 'tbl-fgt_tabs-act-c-right.gif': 'tbl-fgt_tabs-in-c-right.gif').'" width="10" height="27"/></td>';
+        else $html .= '<td width="38" valign="top"><img src="images/'.($active_mode == $k ? 'tbl-fgt_tabs-act-right.gif': 'tbl-fgt_tabs-inact-right2.gif').'" width="38" height="31"></td>';
+    }
+    $html .= '<td class="tbl-fgt_tabs-lines">&nbsp;</td>';
+    if (!$without_title && $exit_url){
+        $html .= '<td width="38" valign="top"><img src="images/tbl-fgt_tabs-inact-left2.gif" width="38" height="31"></td><td width="80" align="center" class="tbl-fgt_tabs-in-center" nowrap><a id="exit_mnu_butt" href="'.$exit_url.'" class="tbl-fgt_tabs-link" onclick="top.return_link(\''.$exit_url.'\'); return false;">'.htmlspecialchars($exit_title).'</a></td><td width="46" valign="top"><img src="images/tbl-fgt_tabs-inact-right.gif" width="46" height="31"/></td>';
+    }elseif($without_title) {
+        $html .= '<td width="20" valign="top"><img src="images/tbl-fgt_tabs-lines-right.gif" width="20" height="31"></td>';
+    }
+    $html .= '</tr></table>';
+    return $html;
+}
+
+// выбор артефакта, с цветом набора, прочностью и т.п.
+// внимание в $arr должен быть не результатом get_hash(), а результатом make_hash()
+// param:
+//   'key_default' => '',
+//   'val_default' => '--',
+//   'add_color' => false,
+//   'add_durability' => false,
+function html_artifact_select($name, &$arr, $key_id=-1, $with_undef=false, $add='', $param=array()) {
+    static $rSelectId = 0;
+    global $quality_info;
+    $html = "<select ".($param['rSelect'] ? 'id="rSelectArtifact_'.$rSelectId.'"' : '')." name=\"$name\" $add>\n";
+    if ($with_undef) $html .= "<option value=\"".$param['key_default']."\">".($param['val_default'] ? $param['val_default'] : '--')."</option>\n";
+    if ($arr && $param['add_color']) {
+        $artikul_ids = get_hash($arr, 'artikul_id', 'artikul_id');
+        $artikul_hash = make_hash(artifact_artikul_list(array('id' => $artikul_ids), '', 'id, quality'));
+    }
+    foreach ($arr as $k=>$v) {
+        $add_style = array();
+        $value = $v['title'];
+
+        $option_add = '';
+        if($param['rSelect'] && $v['picture']){
+            $option_add .= ' data-picture="/'.PATH_IMAGE_ARTIFACTS.$v['picture'].'" data-style="background-size: cover;background-position: center;" data-picwidth="0px" data-picheight="0px" ';
+        }
+
+        if ($param['add_color']) $add_style[] = 'color:'.$quality_info[$artikul_hash[$v['artikul_id']]['quality']]['color'];
+        if ($param['add_durability']) $value .= ' ('.$v['durability'].'/'.$v['durability_max'].')';
+        if ($param['add_socket']) {
+            $socket = artifact_socket_get($v);
+            if($socket){
+                $value .= ' ['.$socket['free_cnt'].'/'.$socket['cnt'].']';
+            }
+        }
+        if ($param['add_socket_all']) {
+            $socket = artifact_socket_get($v);
+            if($socket){
+                $value .= ' ['.$socket['cnt'].']';
+            }
+        }
+        if($param['add_rf_enchant']){
+            global $symbol_rym_numbers, $symbol_info;
+            $value .= ' {'.$symbol_info[$v['rf_enchant_id']]['title'].' '.$symbol_rym_numbers[$v['rf_enchant_level']].'}';
+        }
+        $value .= !empty($v['enchant2_id']) ? ' ('.translate('Зачаровано').')' : '';
+        $value .= !empty($v['char_id']) ? ' ('.translate('Наложены чары').')' : '';
+        $html .= "<option ".$option_add." value=\"$k\"".(isset($key_id) && ($key_id == $k) ? " selected": "").($add_style ? ' style="'.implode(';', $add_style).'"' : '')." ".($v['sel_add'] ? $v['sel_add'] : "").">".$value."</option>\n";
+    }
+    $html .= "</select>";
+    return $html;
+}
+
+// формирует горизонтальный блок с вводом игровых денег по частям золото/серебро/медь
+//function html_money_input_print($money, $field_prefix='money', $param="oninput=\"recalculate()\" onkeyup=\"setTimeout('recalculate()', 10)\"") {
+function html_money_input_print($money, $field_prefix='money', $param=" onpropertychange=\"recalculate()\" oninput=\"recalculate()\" onkeyup=\"setTimeout('recalculate()', 10)\"") {
+
+
+    global $money_type_info;
+    $money_parts = array();
+    $money_parts[3] = intval($money/100);
+    $money_parts[2] = intval($money - 100 * $money_parts[3]);
+    $money_parts[1] = intval(($money - intval($money)) * 100);
+    if (!is_array($param)) $param = array('add' => $param);
+    if(!$param['add']) $param['add'] = "onpropertychange=\"recalculate()\" oninput=\"recalculate()\" onkeyup=\"setTimeout('recalculate()', 10)\"";
+    if (!$param['add_class']) $param['add_class'] = 'dbgl2 brd b small';
+    if (!$param['add_style3']) $param['add_style3'] = 'height:17px;width:25;text-align:right;';
+    if (!$param['add_style']) $param['add_style'] = 'height:17px;width:20;text-align:right;';
+
+    if(mb_strpos($param['add_class'], 'gui-input') !== false) {
+        if (!$param['add_class']) $param['add_class'] = 'dbgl2 brd b small';
+        $param['add_style3'] = 'width:80px;';
+        $param['add_style'] = 'width:40px;';
+    }
+
+    ?>
+    <input type="text" ID="<?=$field_prefix?>3" name="form[<?=$field_prefix?>3]" value="<?=$money_parts[3];?>" style="<?=$param['add_style3'];?>" maxlength=6 class="<?=$param['add_class'];?>" <?=$param['add3'];?> <?=$param['add'];?>>&nbsp;<img
+            src="images/<?=$money_type_info[MONEY_TYPE_GAME]['picture3'];?>">&nbsp;<input
+            type="text" ID="<?=$field_prefix?>2" name="form[<?=$field_prefix?>2]" value="<?=$money_parts[2];?>" style="<?=$param['add_style'];?>" maxlength=2 class="<?=$param['add_class'];?>" <?=$param['add2'];?> <?=$param['add'];?>>&nbsp;<img
+            src="images/<?=$money_type_info[MONEY_TYPE_GAME]['picture2'];?>">&nbsp;<?if(!$param['no_1']){?><input
+        type="text" ID="<?=$field_prefix?>1" name="form[<?=$field_prefix?>1]" value="<?=$money_parts[1];?>" style="<?=$param['add_style'];?>" maxlength=2 class="<?=$param['add_class'];?>" <?=$param['add1'];?> <?=$param['add'];?>>&nbsp;<img
+        src="images/<?=$money_type_info[MONEY_TYPE_GAME]['picture1'];?>"><?}?>
+    <?
+}
+
+// собирает деньги из массива $form = array('money3'=>98,'money2'=>76,'money1'=>54);
+function html_money_input_assemble(&$form, $field_prefix='money') {
+    $money = 0;
+    foreach (array(3=>100.0, 2=>1, 1=>0.01) as $n=>$k) {
+        $money += abs(intval($form[$field_prefix.$n])) * $k;
+    }
+    return $money;
+}
+
+
+// select c выбором предметов по качеству
+// в базовом варианте $arr = $quality_info
+function html_quality_select($name, &$arr, $key_id=-1, $with_undef=false, $add='', $key_default='', $val_default='--') {
+    $html = "<select name=\"$name\" $add>\n";
+    if ($with_undef) $html .= "<option value=\"$key_default\">".$val_default."</option>\n";
+    foreach ($arr as $k=>$v) {
+        $add_style = 'color:'.$v['color'];
+        $html .= "<option value=\"$k\"".(isset($key_id) && ($key_id == $k) ? " selected": "").($add_style ? ' style="'.$add_style.'"' : '')." data-color=\"".$v['color']."\">".$v['title']."</option>\n";
+    }
+    $html .= "</select>";
+    return $html;
+}
+
+function html_ip_info($ip, $append_only=false) {
+    $ip_info = common_ip_info($ip);
+    $html = $append_only ? '' : $ip;
+    $html.= '('.($ip_info ? ($ip_info['city'] ? $ip_info['city'].', ' : '').$ip_info['country_code'] : translate('нет информации')).')';
+    return $html;
+}
+
+function htmlspecialchars_recursive($arr) {
+    foreach ($arr as $k => &$v) {
+        $arr[$k] = is_array($v) ? htmlspecialchars_recursive($v) : htmlspecialchars($v);
+    }
+    return $arr;
+}

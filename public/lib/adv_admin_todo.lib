@@ -1,0 +1,54 @@
+<?
+
+define('TABLE_ADV_ADMIN_TODO_LIST','adv_admin_todo');
+define('FIELD_ADV_ADMIN_TODO_LIST','');
+
+define('TODO_FLAGS_ACTIVE', 0x0000001); //Активное задание
+
+$admin_todo_flags_hash = array(
+    TODO_FLAGS_ACTIVE => 'Активное задание',
+);
+
+$admin_todo_color_hash = array(
+    0 => array('id' => 0, 'title' => 'Никакой', 'style' => 'style="color:#757439"'),
+    1 => array('id' => 1, 'title' => 'Низкий', 'style' => 'style="color:#8E6344"'),
+    2 => array('id' => 2, 'title' => 'Средний', 'style' => 'style="color:#EF8E48"'),
+    3 => array('id' => 3, 'title' => 'Высокий', 'style' => 'style="color:#FF2F00"'),
+    4 => array('id' => 4, 'title' => 'Высочайший', 'style' => 'style="color:#3F51B5"'),
+);
+
+$admin_todo_level_hash = array(
+    0 => array('id' => 0, 'title' => 'Открыт', 'color' => ''),
+    1 => array('id' => 1, 'title' => 'Взят в работу', 'color' => ''),
+    2 => array('id' => 2, 'title' => 'Почти выполнен', 'color' => ''),
+    3 => array('id' => 3, 'title' => 'Повторно открыт', 'color' => ''),
+    4 => array('id' => 4, 'title' => 'Еще немного...', 'color' => ''),
+    5 => array('id' => 5, 'title' => 'Закрыт', 'color' => ''),
+);
+
+function adv_admin_todo_get($ref=false, $add='') {
+    global $db_path;
+    return  common_get($db_path,TABLE_ADV_ADMIN_TODO_LIST,$ref,$add);
+}
+
+function adv_admin_todo_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_ADMIN_TODO_LIST,$ref,$add);
+}
+
+function adv_admin_todo_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_ADMIN_TODO_LIST, $ref, $add);
+}
+
+function adv_admin_todo_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_ADMIN_TODO_LIST,$param,FIELD_ADV_ADMIN_TODO_LIST);
+}
+
+function adv_admin_todo_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_ADV_ADMIN_TODO_LIST,$ref);
+    return true;
+}

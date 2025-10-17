@@ -1,0 +1,383 @@
+<? # $Id: rating.lib,v 1.13 2010-02-01 11:22:00 p.knoblokh Exp $
+
+// Имена и поля таблиц
+define('TABLE_RATING_USERS','rating_users');
+define('FIELD_RATING_USERS','');
+
+define('TABLE_RATING_DUEL','rating_duel');
+define('FIELD_RATING_DUEL','');
+
+define('TABLE_TOTAL_RATING_USERS','total_rating_users');
+define('FIELD_TOTAL_RATING_USERS','');
+define('TABLE_TOTAL_RATING_USERS_ALL','total_rating_users_all');
+define('FIELD_TOTAL_RATING_USERS_ALL','');
+define('TABLE_TOTAL_RATING_CLANS','total_rating_clans');
+define('FIELD_TOTAL_RATING_CLANS','');
+define('TABLE_RATING_CLANS','rating_clans');
+define('FIELD_RATING_CLANS','');
+define('TABLE_RATING_USER_SKILLS','rating_user_skills');
+define('FIELD_RATING_USER_SKILLS','');
+define('TABLE_RATING_ACHIEVEMENTS','rating_achievements');
+define('FIELD_RATING_ACHIEVEMENTS','');
+define('TABLE_RATING_ACHIEVEMENTS_EXTENDED','rating_achievements_extended');
+define('FIELD_RATING_ACHIEVEMENTS_EXTENDED','');
+
+define('RATING_ACHIEVEMENT_LEVEL_MAX', 16);
+define('RATING_ACHIEVEMENT_EXTENDED_CNT', 30);
+
+define('RATING_CLAN_CACHE_TTL', 600);
+
+function rating_user_get($ref=false, $add='') {
+	global $db_3;
+	return common_get($db_3,TABLE_RATING_USERS,$ref,$add);
+}
+
+function rating_user_list($ref=false, $add='') {
+	global $db_3;
+	return common_list($db_3,TABLE_RATING_USERS,$ref,$add);
+}
+
+function rating_user_save($param) {
+	global $db_3;
+	return common_save($db_3,TABLE_RATING_USERS,$param,FIELD_RATING_USERS);
+}
+
+function rating_user_delete($ref, $add='') {
+	global $db_3;
+	return common_delete($db_3,TABLE_RATING_USERS,$ref,$add);
+}
+
+function rating_user_truncate() {
+	global $db_3;
+	return common_truncate($db_3,TABLE_RATING_USERS);
+}
+
+/////////////////////////////////////
+
+function rating_duel_get($ref=false, $add='') {
+    global $db_3;
+    return common_get($db_3,TABLE_RATING_DUEL,$ref,$add);
+}
+
+function rating_duel_list($ref=false, $add='') {
+    global $db_3;
+    return common_list($db_3,TABLE_RATING_DUEL,$ref,$add);
+}
+
+function rating_duel_save($param) {
+    global $db_3;
+    return common_save($db_3,TABLE_RATING_DUEL,$param,FIELD_RATING_DUEL);
+}
+
+function rating_duel_count($ref, $add='') {
+    global $db_3;
+    return common_count($db_3,TABLE_RATING_DUEL,$ref,$add);
+}
+
+function rating_duel_delete($ref, $add='') {
+    global $db_3;
+    return common_delete($db_3,TABLE_RATING_DUEL,$ref,$add);
+}
+
+function rating_duel_truncate() {
+    global $db_3;
+    return common_truncate($db_3,TABLE_RATING_DUEL);
+}
+
+////////////////////////////////////
+
+function rating_clan_get($ref=false, $add='') {
+	global $db_3;
+	return common_get($db_3,TABLE_RATING_CLANS,$ref,$add);
+}
+
+function rating_clan_list($ref=false, $add='', $field_list='*') {
+	global $db_3;
+	return common_list($db_3, TABLE_RATING_CLANS, $ref, $add, $field_list);
+}
+
+function rating_clan_save($param) {
+	global $db_3;
+	return common_save($db_3,TABLE_RATING_CLANS,$param,FIELD_RATING_CLANS);
+}
+
+function rating_clan_delete($ref, $add='') {
+	global $db_3;
+	return common_delete($db_3,TABLE_RATING_CLANS,$ref,$add);
+}
+
+function rating_clan_truncate() {
+	global $db_3;
+	return common_truncate($db_3,TABLE_RATING_CLANS);
+}
+
+function rating_clan_total_position($clan_id) {
+	if (!$clan_id)
+		return false;
+
+	$clan_rating = rating_clan_get(array('clan_id'=>intval($clan_id), 'stat_artikul_id' => 0 ));
+	if (!isset($clan_rating['value']))
+		return;
+	$clan_total = rating_clan_list(false, sql_pholder(' AND stat_artikul_id = 0 AND value > ?  ', $clan_rating['value'] ));
+	  
+	return count($clan_total) + 1;
+}
+
+function cmp_clan_list($a, $b) {
+	if ($a['value'] == $b['value']) {
+		if ($a['next_sort_value'] == $b['next_sort_value']) {
+			return $a['clan_id'] < $b['clan_id'];
+		}
+		return ($a['next_sort_value'] < $b['next_sort_value'])? 1 : -1;
+	}
+	return ($a['value'] < $b['value'])? 1 : -1;
+}
+
+function rating_user_skill_get($ref=false, $add='') {
+	global $db_3;
+	return common_get($db_3,TABLE_RATING_USER_SKILLS,$ref,$add);
+}
+
+function rating_user_skill_list($ref=false, $add='') {
+	global $db_3;
+	return common_list($db_3,TABLE_RATING_USER_SKILLS,$ref,$add);
+}
+
+function rating_user_skill_save($param) {
+	global $db_3;
+	return common_save($db_3,TABLE_RATING_USER_SKILLS,$param,FIELD_RATING_USER_SKILLS);
+}
+
+function rating_user_skill_delete($ref=false, $add='') {
+	global $db_3;
+	return common_delete($db_3,TABLE_RATING_USER_SKILLS,$ref,$add);
+}
+
+function rating_user_skill_truncate() {
+	global $db_3;
+	return common_truncate($db_3,TABLE_RATING_USER_SKILLS);
+}
+
+function rating_achievement_get($ref=false, $add='') {
+	global $db_3;
+	return common_get($db_3,TABLE_RATING_ACHIEVEMENTS,$ref,$add);
+}
+
+function rating_achievement_list($ref=false, $add='') {
+	global $db_3;
+	return common_list($db_3,TABLE_RATING_ACHIEVEMENTS,$ref,$add);
+}
+
+function rating_achievement_save($param) {
+	global $db_3;
+	return common_save($db_3,TABLE_RATING_ACHIEVEMENTS,$param,FIELD_RATING_ACHIEVEMENTS);
+}
+
+function rating_achievement_delete($ref=false, $add='') {
+	global $db_3;
+	return common_delete($db_3,TABLE_RATING_ACHIEVEMENTS,$ref,$add);
+}
+
+function rating_achievement_truncate() {
+	global $db_3;
+	return common_truncate($db_3,TABLE_RATING_ACHIEVEMENTS);
+}
+
+function rating_achievement_extended_get($ref=false, $add='') {
+	global $db_3;
+	return common_get($db_3,TABLE_RATING_ACHIEVEMENTS_EXTENDED,$ref,$add);
+}
+
+function rating_achievement_extended_list($ref=false, $add='') {
+	global $db_3;
+	return common_list($db_3,TABLE_RATING_ACHIEVEMENTS_EXTENDED,$ref,$add);
+}
+
+function rating_achievement_extended_save($param) {
+	global $db_3;
+	return common_save($db_3,TABLE_RATING_ACHIEVEMENTS_EXTENDED,$param,FIELD_RATING_ACHIEVEMENTS_EXTENDED);
+}
+
+function rating_achievement_extended_delete($ref=false, $add='') {
+	global $db_3;
+	return common_delete($db_3,TABLE_RATING_ACHIEVEMENTS_EXTENDED,$ref,$add);
+}
+
+function rating_achievement_extended_truncate() {
+	global $db_3;
+	return common_truncate($db_3,TABLE_RATING_ACHIEVEMENTS_EXTENDED);
+}
+
+// ============================================================================================================
+
+// рейтинг по скиллам
+// Функция собирает данные со всех node, поэтому 
+// $limit_for_node отвечает за limit в каждой ноде, это значит что кол-во
+// результирующих данных будет в пределах [$limit_for_node, $limit_for_node * $NODE_NUMS],
+// что гарантирует попадание $limit_for_node кол-во лучших пользователей
+// Результаты не отсортированы по значению скила, т.е взяты только лучшие с 
+// каждой nod'ы 
+function &rating_get_user_skills($skill_id, $limit_for_node) {
+	global $db, $NODE_NUMS;
+	$data = array();
+	if (!$skill_id || ($limit_for_node <= 0)) return $data;
+	foreach ($NODE_NUMS as $nn) {
+		NODE_SWITCH($nn);
+		$tmp = common_list($db,TABLE_USER_SKILLS,array('skill_id' => $skill_id),' ORDER BY value DESC LIMIT '.intval($limit_for_node));
+		$data = array_merge($data, $tmp);
+	}
+	// Исключаем админов и наказанных, предполагая, что их немного
+	$add = sql_pholder(' AND flags & ?', USER_FLAG_ADMIN | USER_FLAG_PUNISH);
+	$exclude_user_ids = get_hash(user_list(array('id' => get_hash($data, 'user_id', 'user_id')), $add, false, 'id'), 'id', 'id');
+	foreach ($data as $k => $item) {
+		if (isset($exclude_user_ids[$item['user_id']])) {
+			unset($data[$k]);
+		}
+	}
+	return $data;
+}
+
+// Выборка $limit_for_node пользователей с каждой ноды, с наиболее высокими показателями указанной статистики
+function &rating_get_user_stats($stat_id, $limit_for_node) {
+	global $db, $NODE_NUMS;
+	$data = array();
+	if (!$stat_id || ($limit_for_node <= 0)) return $data;
+	foreach ($NODE_NUMS as $nn) {
+		NODE_SWITCH($nn);
+		$tmp = user_stat_list($stat_id, sprintf(' ORDER BY value DESC LIMIT %d ', (int)$limit_for_node), ' user_id, type_id, object_id, value ');
+		$data = array_merge($data, $tmp);
+	}
+
+	// Исключаем админов и наказанных, предполагая, что их немного
+	$add = sql_pholder(' AND flags & ? ', USER_FLAG_ADMIN | USER_FLAG_PUNISH);
+	$user_ids = get_hash($data, 'user_id', 'user_id');
+	$exclude_user_ids = array();
+	if ($user_ids) {
+		$exclude_user_ids = get_hash(user_list(array('id' => $user_ids), $add, false, 'id'), 'id', 'id');
+	}
+	foreach ($data as $k => $item) {
+		if ($exclude_user_ids[$item['user_id']]) {
+			unset($data[$k]);
+		}
+	}
+	return $data;
+}
+
+function total_rating_user_get($ref=false, $add='', $field = array()) {
+	global $db_3;
+	$total_rating_user = common_get($db_3,TABLE_TOTAL_RATING_USERS,$ref,$add);
+	if($field) return get_params($total_rating_user, $field);
+	return $total_rating_user;
+}
+
+function total_rating_user_list($ref=false, $add='', $fields = '*') {
+	global $db_3;
+	return common_list($db_3,TABLE_TOTAL_RATING_USERS,$ref,$add,$fields);
+}
+
+function total_rating_user_save($param) {
+	global $db_3;
+	return common_save($db_3,TABLE_TOTAL_RATING_USERS,$param,FIELD_TOTAL_RATING_USERS);
+}
+
+function total_rating_user_delete($ref, $add='') {
+	global $db_3;
+	return common_delete($db_3,TABLE_TOTAL_RATING_USERS,$ref,$add);
+}
+
+function total_rating_user_multi_update($data, $data_fields, $update_fields = array()) {
+	global $db_3;
+	return common_multi_update($db_3, TABLE_TOTAL_RATING_USERS, $data, $data_fields, $update_fields);
+}
+
+
+function total_rating_user_truncate() {
+	global $db_3;
+	return common_truncate($db_3,TABLE_TOTAL_RATING_USERS);
+}
+
+function total_rating_user_count($ref=false, $add='') {
+	global $db_3;
+	return common_count($db_3, TABLE_TOTAL_RATING_USERS, $ref, $add);
+}
+
+
+
+
+function total_rating_clan_get($ref=false, $add='') {
+	global $db_3;
+	return common_get($db_3,TABLE_TOTAL_RATING_CLANS,$ref,$add);
+}
+
+function total_rating_clan_list($ref=false, $add='', $fields = '*') {
+	global $db_3;
+	return common_list($db_3,TABLE_TOTAL_RATING_CLANS,$ref,$add,$fields);
+}
+
+function total_rating_clan_save($param) {
+	global $db_3;
+	return common_save($db_3,TABLE_TOTAL_RATING_CLANS,$param,FIELD_TOTAL_RATING_CLANS);
+}
+
+function total_rating_clan_delete($ref, $add='') {
+	global $db_3;
+	return common_delete($db_3,TABLE_TOTAL_RATING_CLANS,$ref,$add);
+}
+
+function total_rating_clan_multi_update($data, $data_fields, $update_fields = array()) {
+	global $db_3;
+	return common_multi_update($db_3, TABLE_TOTAL_RATING_CLANS, $data, $data_fields, $update_fields);
+}
+
+
+function total_rating_clan_truncate() {
+	global $db_3;
+	return common_truncate($db_3,TABLE_TOTAL_RATING_CLANS);
+}
+
+function total_rating_clan_count($ref=false, $add='') {
+	global $db_3;
+	return common_count($db_3, TABLE_TOTAL_RATING_CLANS, $ref, $add);
+}
+
+///////////NEW
+
+function total_rating_user_all_get($ref=false, $add='', $field=false) {
+    global $db_3;
+    $total_rating_user = common_get($db_3,TABLE_TOTAL_RATING_USERS_ALL,$ref,$add);
+    if($field) return get_params($total_rating_user, $field);
+    return $total_rating_user;
+}
+
+function total_rating_user_all_list($ref=false, $add='', $fields = '*') {
+    global $db_3;
+    return common_list($db_3,TABLE_TOTAL_RATING_USERS_ALL,$ref,$add,$fields);
+}
+
+function total_rating_user_all_save($param) {
+    global $db_3;
+    return common_save($db_3,TABLE_TOTAL_RATING_USERS_ALL,$param,FIELD_TOTAL_RATING_USERS_ALL);
+}
+
+function total_rating_user_all_delete($ref, $add='') {
+    global $db_3;
+    return common_delete($db_3,TABLE_TOTAL_RATING_USERS_ALL,$ref,$add);
+}
+
+function total_rating_user_all_multi_update($data, $data_fields, $update_fields = array()) {
+    global $db_3;
+    return common_multi_update($db_3, TABLE_TOTAL_RATING_USERS_ALL, $data, $data_fields, $update_fields);
+}
+
+
+function total_rating_user_all_truncate() {
+    global $db_3;
+    return common_truncate($db_3,TABLE_TOTAL_RATING_USERS_ALL);
+}
+
+function total_rating_user_all_count($ref=false, $add='') {
+    global $db_3;
+    return common_count($db_3, TABLE_TOTAL_RATING_USERS_ALL, $ref, $add);
+}
+
+?>

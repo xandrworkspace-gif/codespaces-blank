@@ -1,0 +1,92 @@
+<?
+
+// действие "раздробить теневой предмет"
+// Параметры:
+//	$in['artifact_id'] - артефакт который нужно раздробить
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+if (!$artifact || $artifact['slot_id']) { // неверный или одетый предмет
+    $out['error'] = translate('Нужно выбрать предмет!');
+    return;
+}
+
+if ($artifact['flags'] & ARTIFACT_FLAG_CANT_CRUSHED) {
+    $out['error'] = translate('Этот предмет невозможно раздробить!');
+    return;
+}
+
+global $quality_info, $disenchant_shadow, $disenchant_shadow_cnt;
+
+$artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+
+if(!$artifact_artikul['slot_id_c'] || !($artifact_artikul['type_id'] == ARTIFACT_TYPE_ID_COMPANION)){
+    $out['error'] = translate('Этот предмет невозможно раздробить!');
+    return;
+}
+
+$disenchant_info = $disenchant_shadow_cnt[$disenchant_shadow[$artifact_artikul['slot_id_c']]][$artifact_artikul['quality']];
+
+if (!$disenchant_info) {
+    $out['error'] = translate('Этот предмет невозможно раздробить!');
+    return;
+}
+
+$multi = 0; //Multipulter
+if (in_array($artifact_artikul['level_min'], range(6,10))) {
+    $multi = 1;
+} elseif (in_array($artifact_artikul['level_min'], range(11,15))) {
+    $multi = 2;
+}
+
+
+$min = $disenchant_info['min'];
+$max = $disenchant_info['max'];
+if(!($min && $max)){
+    $out['error'] = translate('Этот предмет невозможно раздробить!');
+    return;
+}
+//Расчет сколько нужно выдать шт.
+$n = 0;
+if(mt_rand(1, 10000)<=(0.15 * 10000)){
+    $n = $max;
+}else{
+    $n = $min;
+}
+if($multi) $n *= $multi;
+
+if($n <= 0) $n = 1;
+
+artifact_delete($artifact);
+artifact_artikul_get_title($artifact);
+$msg_txt = sprintf(translate('Вы применили магию дробления на %s '),$artifact['title']);
+
+$disenchant_artikul = artifact_artikul_get(COMPANION_ATK_ARTIFACT_ID);
+if ($disenchant_artikul && $n) {
+    $msg_txt .= sprintf(translate('и получили <a href="#" onClick="showArtifactInfo(false,%d);return false;">%s</a> <b>%d шт</b>'),$disenchant_artikul['id'], $disenchant_artikul['title'], abs($n));
+    $status = artifact_add($disenchant_artikul['id'], $n, $subject['id']);
+} else {
+    $msg_txt .= sprintf(translate('и от %s осталась только пыль.'), $artifact_artikul['title']);
+}
+$out['status'] = ACTION_STATUS_OK;
+
+chat_msg_send_system($msg_txt, CHAT_CHF_USER, $subject['id']);
+
+// лог-сервис -----------------------
+logserv_log_action(array(
+    'action' => $action,
+),$action_user);
+logserv_log_operation(array(
+    'artifact' => $artifact,
+    'cnt' => -max($artifact['cnt'],1),
+    'comment' => ($out['status'] == ACTION_STATUS_OK ? translate('Теневая вещь раздроблена') : translate('Теневая вещь не раздроблена')),
+),$action_user);
+// ----------------------------------
+
+?>

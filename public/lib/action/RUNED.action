@@ -1,0 +1,181 @@
+<? # $Id: ENCHANT.action,v 1.10 2010-02-02 11:08:36 p.knoblokh Exp $
+
+// действие "вставить самоцвет"
+// Параметры:
+//	$in['artifact_id'] - артефакт на который нужно вставить самоцвет
+
+require_once("lib/inlay_rune.lib");
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+
+if (!$artifact || $artifact['slot_id']) { // неверный или одетый предмет
+    $out['error'] = translate('Нужно выбрать предмет в который вставляется самоцвет!');
+    return;
+}
+
+if($artifact['flags2'] & ARTIFACT_FLAG2_RUNEWORD) {
+    $out['error'] = 'Невозможно!';
+    return;
+}
+
+
+$artifact_samocvet = artifact_get($object['id']);
+if(!$artifact_samocvet){
+    $out['error'] = 'Не выбран самоцвет!';
+    return;
+}
+
+$artikul_samocvet = artifact_artikul_get($artifact_samocvet['artikul_id']);
+if(!$artikul_samocvet){
+    $out['error'] = 'Не найден самоцвет!';
+    return;
+}
+
+
+if(!$artifact){
+    $out['error'] = 'Не выбран артефакт!';
+    return;
+}
+
+if($artifact['flags2'] & ARTIFACT_FLAG2_RUNEWORD) {
+    $out['error'] = 'Невозможно!';
+    return;
+}
+
+$socket = artifact_socket_get($artifact);
+
+$current_runes = array();
+$num_slot = 1;
+foreach ($socket['socket'] as $num_sl=>$sock){
+    if($sock[0] > 0 && $sock[1] >= 0){
+        $current_runes['rune'.$num_sl.'_id'] = $sock[0];
+        $num_slot++;
+    }
+}
+$error = '';
+
+list($s_type, $s_quality) = artifact_samocvet_id_get($artifact_samocvet, $artikul_samocvet, $error);
+if(!$s_type) {
+    $out['error'] = 'Внутренняя ошибка!';
+    return;
+}
+if($error) {
+    $out['error'] = $error;
+    return;
+}
+
+if($socket['free_cnt'] == 0 && !($num_slot > 3)) {
+    $out['error'] = 'Все сокеты заняты!';
+    return;
+}
+
+$current_runes['rune'.$num_slot.'_id'] = $s_type;
+$current_runes['artikul_id'] = $artifact['artikul_id'];
+if($current_runes['artikul_id'] && count($current_runes) > 2) {
+    $inlay_rune = inlay_rune_get($current_runes);
+    if($inlay_rune) {
+        $inlay_rune_check = true;
+        for($run_i = 1; $run_i <= 4; $run_i++) {
+            if(intval($inlay_rune['rune'.$run_i.'_id']) == 0) continue;
+            if(intval($current_runes['rune'.$run_i.'_id']) == intval($inlay_rune['rune'.$run_i.'_id'])) continue;
+            $inlay_rune_check = false;
+            break;
+        }
+
+        if($inlay_rune_check) {
+            //Это рунворд!
+            $socket_picker = array(
+                'id' => $artifact['id'],
+                'title' => $inlay_rune['title'],
+                'picture' => $inlay_rune['picture'],
+                'rune1_id' => '',
+                'rune2_id' => '',
+                'rune3_id' => '',
+                'quality' => 7,
+                'artikul_skills' => 0,
+                '_set' => sql_pholder(' rune1_id = ?, rune2_id = ?, rune3_id = ?, flags2 = flags2 | ?#ARTIFACT_FLAG2_RUNEWORD', '','',''),
+            );
+            artifact_save($socket_picker);
+            $artifact = artifact_get($artifact['id']);
+            artifact_random_skills_set($inlay_rune, $artifact);
+
+            chat_msg_send_system('<b style="color: #ff4500;">Вы создали рунословный предмет: <a href="#" onclick="showArtifactInfo('.$artifact['id'].'); return false;">"'.$inlay_rune['title'].'"</a> </b>', CHAT_CHF_USER, $subject['id']);
+
+            $out['status'] = ACTION_STATUS_OK;
+
+            // лог-сервис -----------------------
+            logserv_log_action(array(
+                'action' => $action,
+                'comment' => sprintf(translate('Создан рунословный предмет на "%s"'),$artifact['title']),
+            ),$action_user);
+            // ----------------------------------
+
+            return;
+        }
+    }
+}
+
+if($socket['free_cnt'] <= 0){
+    if($artifact['flags2'] & ARTIFACT_FLAG2_CUSNICA_USE) {
+        $out['error'] = 'Все сокеты на предмете заняты, освободите для вставления самоцвета!';
+    }else{
+        $out['error'] = 'На данном предмете нет сокетов, посетите кузницу для создания!';
+    }
+    return;
+}
+
+//Предварительная проверка сокетов на доступность
+$num_slot = 1; //Скажем первому слоту YES, временно!
+foreach ($socket['socket'] as $num_sl=>$sock){
+    if($sock[0] > 0 && $sock[1] >= 0){
+        $num_slot++; //Следующий
+    }
+}
+if($num_slot > 3){
+    $out['error'] = 'Все сокеты на предмете заняты, освободите для вставления самоцвета.';
+    return;
+}
+
+list($s_type, $s_quality) = artifact_samocvet_id_get($artifact_samocvet, $artikul_samocvet, $error);
+if(!$s_type) {
+    $out['error'] = 'Внутренняя ошибка!';
+    return;
+}
+if($error) {
+    $out['error'] = $error;
+    return;
+}
+
+$socket_info = $s_type.'_'.$s_quality;
+if($artifact_samocvet['flags2'] & ARTIFACT_FLAG2_SOCKET){
+    $socket_info = $s_type.'_'.$artifact_samocvet['picture_gem'].'_0'; //Последний нолик укажем что это самоцвет нового типа
+}
+
+//Есть слот, есть цвет, есть самоцвет бабах!!!
+$socket_picker = array(
+    'id' => $artifact['id'],
+    'rune'.$num_slot.'_id' => $socket_info,
+);
+artifact_save($socket_picker);
+
+$out['status'] = ACTION_STATUS_OK;
+
+artifact_artikul_get_title($artifact, array($artifact_artikul['id'] => $artifact_artikul));
+// лог-сервис -----------------------
+logserv_log_action(array(
+    'action' => $action,
+    'comment' => sprintf(translate('Наложен самоцвет на "%s"'),$artifact['title']),
+),$action_user);
+// ----------------------------------
+
+artifact_bag_send_diff($subject['id'], $artifact['id']);
+
+
+?>

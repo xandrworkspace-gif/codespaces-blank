@@ -1,0 +1,34 @@
+<?
+
+// Имена и поля таблиц
+define('TABLE_RESTRICTION_OBJECTS','restriction_objects');
+define('FIELD_RESTRICTION_OBJECTS','id, title');
+
+function restriction_object_get($ref=false, $add='') {
+	global $db_2;
+	$restriction_object = common_get($db_2,TABLE_RESTRICTION_OBJECTS,$ref,$add);
+	if ($restriction_object) $restriction_object['object_class'] = OBJECT_CLASS_RESTR_OBJ;
+	return $restriction_object;
+}
+
+function restriction_object_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_RESTRICTION_OBJECTS,$ref,$add);
+}
+
+function restriction_object_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_RESTRICTION_OBJECTS, $ref, $add);
+}
+
+function restriction_object_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_RESTRICTION_OBJECTS,$param,FIELD_RESTRICTION_OBJECTS);
+}
+
+function restriction_object_delete($ref=false, $add='') {
+	global $db_2;
+	common_delete($db_2,TABLE_RESTRICTION_OBJECTS,$ref,$add);
+	return true;
+}
+

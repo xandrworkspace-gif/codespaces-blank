@@ -1,0 +1,126 @@
+<? # $Id: smile.lib,v 1.17 2010-02-01 12:23:39 p.knoblokh Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/clan.lib");
+
+// Имена и поля таблиц
+define('TABLE_SMILES','smiles');
+define('FIELD_SMILES','');
+define('TABLE_SMILE_USERS','smile_users');
+define('FIELD_SMILE_USERS','');
+
+define('SMILE_CAN_BUY_TIME',7*24*60*60);
+
+define('SMILE_FLAG_FROM_BONUS', 0x0001); //можно получать с бонуса
+define('SMILE_FLAG_PREMIUM', 0x0002); //премиальный смайлик
+
+function smile_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_SMILES,$ref,$add);
+}
+
+function smile_list($param=array(), $count = false) {
+	global $db_diff;
+	$add = $param['add'];
+	$add_only = $param['add_only'];
+	if (!$param['all'] && !$add_only) {
+		$add1 = '';
+		if ($param['user_id']) {
+			$add1 .= sql_pholder(' OR user_id=?', $param['user_id']);
+		}
+		if ($param['clan_id']) {
+			$add1 .= sql_pholder(' OR clan_id=?', $param['clan_id']);
+		}
+		if ($param['user_marks']) {
+			$add1 .= sql_pholder(' OR user_marks & ?', $param['user_marks']);
+		}
+		if ($param['ids']) {
+			$add1 .= sql_pholder(' OR id IN (?@)', $param['ids']);
+		}
+		$add_flags = sql_pholder(' (NOT flags & ? ) AND ', SMILE_FLAG_FROM_BONUS);
+        $add_flags .= sql_pholder(' (NOT flags & ? ) AND ', SMILE_FLAG_PREMIUM);
+		$add .= ' AND (( '.$add_flags .' user_id=0 AND clan_id=0 AND user_marks=0 AND buy=0) '.$add1.')';
+	}
+	
+	$smiles = common_list($db_diff,TABLE_SMILES,false,$add_only ? $add_only : $add);
+	
+	foreach ($smiles as $k => $smile) {
+		if ($smile['user_id'] && isset($param['user_id']) && ($smile['user_id'] != $param['user_id'])) 
+			unset($smiles[$k]);
+		if ($smile['clan_id'] && isset($param['clan_id']) && ($smile['clan_id'] != $param['clan_id']))
+			unset($smiles[$k]);
+		if ($smile['user_marks'] && isset($param['user_marks']) && !($smile['user_marks'] & $param['user_marks']))
+			unset($smiles[$k]);
+	}
+	
+	return $count ? count($smiles) : $smiles; 
+}
+
+function smile_count($param=array()) {
+	return smile_list($param, true);
+}
+
+function smile_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_SMILES,$param,FIELD_SMILES);
+}
+
+function smile_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_SMILES,$ref,$add);
+}
+
+function rtag($a) {
+	return '<a style="cursor:pointer" onClick="if(top.frames[\'chat\'])top.frames[\'chat\'].chatAddToMsg(\''.$a['tag'].'\');return false;"><img src="/'.PATH_IMAGE_SMILES.$a['picture'].'" border=0 ></a>';
+}
+
+function smile_place($text, &$user) {
+	$ids = get_hash(smile_user_list(false,$user['id'],false,'','smile_id'),'smile_id','smile_id');
+	$smile_hash = make_hash(smile_list(array(
+		'user_id' =>$user['id'],
+		'clan_id' => $user['clan_id'],
+		'user_marks' => $user['marks'],
+		'ids' => $ids,
+	)), 'tag');
+	$smile_hash = array_map('rtag',$smile_hash);
+	$text = str_replace(array_keys($smile_hash),$smile_hash,$text);
+	$smile_count = preg_match_all('/<img[^<>]+?\>/',$text,$matches);
+	if ($smile_count > 3) $text = preg_replace('/<img[^<>]+?\>/','',$text,$smile_count-3);
+	return $text;
+}
+
+function smile_user_get($ref=false,$user_id=false,$smile_id=false, $add='') {
+	global $db_diff;
+	$query_add = '';
+	if ($user_id) $query_add .= sql_pholder(' AND user_id=?',$user_id);
+	if ($smile_id) $query_add .= sql_pholder(' AND smile_id=?',$smile_id);
+	return common_get($db_diff,TABLE_SMILE_USERS,$ref,$query_add.$add);
+}
+function smile_user_list($ref=false,$user_id=false,$smile_id=false,$add='', $field_list='*') {
+	global $db_diff;
+	$query_add = '';
+	if ($user_id) $query_add .= sql_pholder(' AND user_id=?',$user_id);
+	if ($smile_id) $query_add .= sql_pholder(' AND smile_id=?',$smile_id);
+	return common_list($db_diff,TABLE_SMILE_USERS,$ref,$query_add.$add,$field_list);
+}
+function smile_user_count($ref=false,$user_id=false,$smile_id=false,$add='') {
+	global $db_diff;
+	$query_add = '';
+	if ($user_id) $query_add .= sql_pholder(' AND user_id=?',$user_id);
+	if ($smile_id) $query_add .= sql_pholder(' AND smile_id=?',$smile_id);
+	return common_count($db_diff,TABLE_SMILE_USERS,$ref,$query_add.$add);
+}
+function smile_user_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_SMILE_USERS,$param,FIELD_SMILE_USERS);
+}
+function smile_user_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_SMILE_USERS,$ref,$add);
+}
+function smile_user_truncate() {
+	global $db_diff;
+	return common_truncate($db_diff,TABLE_SMILE_USERS);
+}
+
+
+?>

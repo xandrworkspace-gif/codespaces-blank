@@ -1,0 +1,1 @@
+/home/admin/web/dwar.fun/demons/chatd/CMakeFiles/chatd.dir

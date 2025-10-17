@@ -1,0 +1,220 @@
+<? # $Id: ATTACK.action,v 1.41 2010-02-24 09:44:39 p.knoblokh Exp $
+// ACTION: Действие напасть
+// действие "напасть"
+// Параметры:
+//	$in['nick'] - ник
+
+require_once("lib/instance.lib");
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+$fight_param = intval($action['param1']);
+$norestrict = $nogreat = 0;
+if ($fight_param == 1) {
+	$norestrict = 1; // нападение без правил
+} elseif ($fight_param == 2) {
+	$nogreat = 1; // начало битвы драконов
+}
+
+/*Новое*/
+$area = area_get($subject['area_id']);
+if($area['flags2'] & AREA_FLAG2_ALL_PVP){
+    $norestrict = 1;
+}
+/*Новое*/
+
+$inj_prob = intval($action['param2']);	// травматизм
+$param = array('attack_subject_avail' => true);
+
+if ($subject['flags'] & USER_FLAG_DEAF) unset($in['nick']);
+
+if (!$in['nick']) {
+    if(!($area['flags2'] & AREA_FLAG2_ALL_PVP)){ //Новое
+        if (!($subject['flags'] & USER_FLAG_DEAF)) {
+            $out['error'] = 'Не задан ник пользователя для атаки!';
+            return;
+        }
+    } //Новое
+	$session_list = array();
+	global $NODE_NUMS;
+	foreach($NODE_NUMS as $nn) {
+		if ($nn == FRIDGE_NN) continue;
+		NODE_PUSH($nn);
+		$tmp_sessions = session_list(($session_user['instance_id'] ? null : $session_user['area_id']),$session_user['instance_id'],true,sql_pholder(' AND uid <> ? AND fight_time < ?',$session_user['id'], time_current() - SLAUGHTER_FIGHT_DELAY),'*',true);
+		foreach($tmp_sessions as $tmp_session) {
+			$session_list[] = $tmp_session;
+		}
+		NODE_POP($nn);
+	}
+	if (!$session_list) {
+		$out['error'] = translate('В локации нет персонажей доступных для нападения!');
+		return;
+	}
+	$user = user_get($session_list[rand(1,count($session_list))-1]['uid']);
+	$param['fight_flags'] = FIGHT_FLAG_BLIND;
+} else {
+	$user = user_get(false,$in['nick']);
+}
+if ($session_user['flags2'] & USER_FLAG2_ACTING_GUARD) {
+	$out['error'] = translate('Нападение невозможно. Вы находитесь при исполнении обязанностей стража!');
+	return;
+}
+
+if (!$user) {
+	$out['error'] = translate('Пользователь не найден!');
+	return;
+}
+if ($in['real_action'] && ($in['real_action'] == 'HELP')) {
+	$in['no_action'] = 1;
+	$in['real_action'] = false;
+	$in['target_nick'] = $in['nick'];
+	$in['target_user'] = 1;
+	include('lib/action/FIGHT_HELP.action');
+	if ($target['object_class'] != OBJECT_CLASS_USER) {
+		if (!$out['error']) {
+			$out['error'] = translate('Не удалось выбрать цель!');
+		}
+		return;
+	}
+	$user = $target;
+}
+if ($subject['id'] == $user['id']) {
+	$out['error'] = translate('Нельзя напаcть на самого себя!');
+	return;
+}
+if ($user['flags'] & USER_FLAG_NOATTACK) {
+	$out['error'] = translate('На этого персонажа нельзя напасть!');
+	return;
+}
+if ($user['flags2'] & USER_FLAG2_ACTING_GUARD) {
+	$out['error'] = translate('Нападение невозможно. Страж находится при исполнении.');
+	return;
+} 
+if (!$norestrict && !$subject['raid_id'] && ($subject['kind'] == $user['kind']) && !($area['flags2'] & AREA_FLAG2_ALL_PVP)) {
+	$out['error'] = translate('Вы не можете напасть на персонажа своей расы!');
+	return;
+}
+if ($subject['raid_id'] && ($subject['raid_id'] == $user['raid_id']) && !($area['flags2'] & AREA_FLAG2_ALL_PVP)) {
+	$instance = ($session_user['instance_id'] > 0) ? instance_get_root($session_user['instance_id']) : false;
+	if (!$instance['castle_id']) {
+		$out['error'] = translate('Вы не можете напасть на члена вашей команды!');
+		return;
+	}
+}
+if(!$instance) $instance = ($session_user['instance_id'] > 0) ? instance_get_root($session_user['instance_id']) : false;
+if($instance['dun_active']) {
+	$out['error'] = translate('Нельзя напасть на игрока вашей команды в подземелье!');
+	return;
+}
+if (!user_is_near($subject,$user)) {
+	$out['error'] = translate('Персонаж не находится рядом!');
+	return;
+}
+if (!user_is_online($user['id']) && !$in['target_nick']) {
+	$out['error'] = translate('Пользователь отсутствует в игре!');
+	return;
+}
+if ($user['flags'] & USER_FLAG_GHOST) {
+	$out['error'] = translate('Нельзя напасть на персонажа, пока он призрак!');
+	return;
+}
+if (!$subject['instance_id']) { // "мирные" локации
+	$area = area_get($subject['area_id']);
+	if ($area['flags'] & AREA_FLAG_NO_FIGHT) {
+		$out['error'] = translate('Нападения в этом месте запрещены!');
+		return;
+	}
+}
+
+require_once("lib/fight.lib");
+
+if ($user['fight_id']) {
+	$fight = fight_get($user['fight_id']);
+	if ($fight['flags'] & FIGHT_FLAG_NO_GREAT) $nogreat = 1;
+
+
+    if($fight['type'] == FIGHT_TYPE_ARENA){
+        $out['error'] = translate('Вы не можете напасть на игрока участвующего в Арене равных.');
+        return;
+    }
+
+    if($fight['type'] == FIGHT_TYPE_ADV_DUEL){
+        $out['error'] = translate('Вы не можете напасть на игрока участвующего  в дуэли.');
+        return;
+    }
+}	
+
+if ($user['fight_id'] && empty($in['confirmed']) && $object['object_class'] != OBJECT_CLASS_ARTIFACT) {
+	$test_param = $param;
+	$test_param['test_only'] = true;
+	if ($norestrict) $test_param['fight_flags'] |= FIGHT_FLAG_NORESTRICT;
+	if ($nogreat) $test_param['fight_flags'] |= FIGHT_FLAG_NO_GREAT;
+	if ($inj_prob > 0) $test_param['user_skills'][$subject['id']]['INJ_PROB'] = $inj_prob;
+	$out_attack = fight_attack($subject,$user,$test_param);
+	if (!$out_attack['status']) {
+		$out['error'] = $out_attack['error'] ? $out_attack['error']: translate('Невозможно начать нападение!');
+		return;
+	}		
+	
+	if ($fight['level'] && !($fight['flags'] & FIGHT_FLAG_NORESTRICT)) {
+		$out['status'] = ACTION_STATUS_OK;
+		$out['url_success'] = '/area.php';
+		$out['param_success'] = array(
+			'great_fight' => 1,
+			'action' => $action['code'],
+			'in' => $in,
+		);
+		return;
+	}
+}
+if (!$nogreat){
+	if (!($subject['instance_id'] ? instance_lock($subject['instance_id']) : 1)){
+		$out['error'] = translate('Не удалось провести операцию!');	
+		return;
+	}
+}
+
+if ($norestrict) $param['fight_flags'] |= FIGHT_FLAG_NORESTRICT;
+if ($nogreat) $param['fight_flags'] |= FIGHT_FLAG_NO_GREAT;
+if ($inj_prob > 0) $param['user_skills'][$subject['id']]['INJ_PROB'] = $inj_prob;
+if ($object['object_class'] == OBJECT_CLASS_ARTIFACT) {
+	if ($object['enchant2_id']) {
+		$new_id = artifact_create($object['enchant2_id'], 1, $subject['id'], false, 'TEMP_EFFECT', false, $force_param=array('flags' => ARTIFACT_FLAG_DELAFTERFIGHT));
+	} else {
+		$new_artifact = $object;
+		$new_artifact['flags'] = $new_artifact['flags']|ARTIFACT_FLAG_DELAFTERFIGHT;
+		$new_artifact['slot_id'] = 'TEMP_EFFECT';
+		$new_artifact['cnt'] = 0;
+		unset($new_artifact['id'], $new_artifact['object_class']);
+		$new_id = artifact_save($new_artifact);
+	}
+	if (!$new_id) {
+		$out['error'] = translate('Неудалось выполнить действие!');
+		if (!$nogreat){
+			if ($subject['instance_id']) instance_unlock($subject['instance_id']);
+		}
+		return;
+	}
+}
+$out_attack = fight_attack($subject,$user,$param);
+if (!$out_attack['status']) {
+	$out['error'] = $out_attack['error'] ? $out_attack['error']: translate('Невозможно начать нападение!');
+	if (isset($new_id) && $new_id) {
+		artifact_delete($new_id);
+	}
+} else {
+	$out['status'] = ACTION_STATUS_OK;
+	$out['param_success'] = array('url_close'=> 'fight.php');
+}
+if (!$nogreat){
+	if ($subject['instance_id']) instance_unlock($subject['instance_id']);
+}
+
+
+// Логирование
+$log['user_id2'] = $user['id'];
+
+?>

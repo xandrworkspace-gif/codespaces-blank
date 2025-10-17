@@ -1,0 +1,162 @@
+<? # $Id: area_casino.lib,v 1.0 2009/11/17 12:24:36 i.hrustalev Exp $
+
+// Имена и поля таблиц
+define('TABLE_TUTORIAL','tutorials');
+define('FIELD_TUTORIAL','');
+
+// типы окошек 
+define('TUTORIAL_WINDOW_TYPE_SMALL',	0x0001);	// маленькое окошко
+define('TUTORIAL_WINDOW_TYPE_MIDDLE',	0x0002);	// окошко побольше
+define('TUTORIAL_WINDOW_TYPE_LARGE',	0x0003);	// окошко большое
+
+
+// флаги
+define('TUTORIAL_FLAG_BUTTON_NEXT',   0x000001);
+define('TUTORIAL_FLAG_SCREEN_UNLOCK', 0x000002);
+
+global $tutorial_window_types;
+$tutorial_window_types = array(
+	TUTORIAL_WINDOW_TYPE_SMALL => translate('Малюсенькое окошко'),
+	TUTORIAL_WINDOW_TYPE_MIDDLE => translate('Не большое окошко'),
+	TUTORIAL_WINDOW_TYPE_LARGE => translate('Большое окошко')
+);
+
+global $tutorial_flags_hash;
+$tutorial_flags_hash = array(
+	TUTORIAL_FLAG_BUTTON_NEXT => translate('Есть кнопка далее'),
+	TUTORIAL_FLAG_SCREEN_UNLOCK => translate('Разблокировать экран'),
+);
+
+
+function tutorial_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_TUTORIAL,$ref,$add);
+}
+
+function tutorial_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_TUTORIAL,$ref,$add);
+}
+
+function tutorial_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_TUTORIAL,$param, FIELD_TUTORIAL);
+}
+
+function tutorial_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_TUTORIAL,$ref,$add);
+}
+
+
+function tutorial_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff,TABLE_TUTORIAL,$ref,$add);
+}
+
+function get_json_tutorial($step) {
+	$tutorial = tutorial_get(array('step' => $step));
+	$tutorial['arrows_data'] = json_decode($tutorial['arrows_data'], true);
+	return json_encode($tutorial);
+}
+
+function get_json_tutorial_list() {
+	$tutorials = make_hash(tutorial_list(),'step');
+	foreach ($tutorials as $key => $tutorial){
+		$tutorials[$key]['arrows_data'] = json_decode($tutorial['arrows_data'], true);
+	}
+	return json_encode($tutorials);
+}
+
+function check_tutorial($session_user, $code){
+	if ((defined('SHOW_TUTORIAL') && SHOW_TUTORIAL) && 	!($session_user['flags2'] & USER_FLAG2_TUTORIAL_OFF) && $session_user['tutorial_step']){
+		$tutorial = tutorial_get(array('code' => $code), 'AND step >= '.$session_user['tutorial_step'].' ORDER BY step ASC');
+		//print_r($tutorial);
+        if ($tutorial['step'] == $session_user['tutorial_step'] && $code == $tutorial['code']){
+            //print_r($tutorial);
+        }
+		if ($tutorial['step'] == $session_user['tutorial_step'] && $code == $tutorial['code']) return true;
+	}
+	return false;
+	
+}
+
+function load_tutorial($step){
+	$tutorial_json = get_json_tutorial_list();
+	$js_code = '
+		<link href="'.static_get('style/tutorial.css').'" rel="stylesheet" type="text/css">
+		<script language="javascript" src="'.static_get('js/tutorial.js').'"></script>
+		<script language="javascript" src="'.static_get('js/jquery.js').'"></script>
+		<script language="javascript">
+		var Tutorial_data = '.$tutorial_json.';
+		var current_tutorial = '.$step.';
+		</script>
+		';
+	return $js_code;
+}
+
+function tutorialHook($step, $onload = 0, $end=0) {
+    console.log(step);
+	if (!$end){
+		$js_code = '
+					<script language="javascript">
+						tutorialHook('.$step.', 0);
+					</script>
+				';		
+		if ($onload) {
+			$js_code = '
+				<script language="javascript">
+
+				function init() {
+					// выходим, если функция уже выполнялась
+					if (arguments.callee.done) return;
+
+					// устанавливаем флаг, чтобы функция не исполнялась дважды
+					arguments.callee.done = true;
+
+					// что-нибудь делаем
+					tutorialHook('.$step.', 0);
+				};
+
+				/* для Mozilla/Firefox/Opera 9 */
+				if (document.addEventListener) {
+					document.addEventListener("DOMContentLoaded", init, false);
+				}
+
+				/* для Internet Explorer */
+				/*@cc_on @*/
+				/*@if (@_win32)
+				document.write("<script id=\"__ie_onload\" defer=\"defer\" src=\"javascript:void(0)\"><\/script>");
+				var script = document.getElementById("__ie_onload");
+				script.onreadystatechange = function() {
+					if (this.readyState == "complete") {
+					init(); // вызываем обработчик для onload
+					}
+				};
+				/*@end @*/
+
+				/* для Safari */
+				if (/WebKit/i.test(navigator.userAgent)) { // условие для Safari
+					var _timer = setInterval(function() {
+					if (/loaded|complete/.test(document.readyState)) {
+						clearInterval(_timer);
+						init(); // вызываем обработчик для onload
+					}
+					}, 10);
+				}
+
+				/* для остальных браузеров */
+				window.onload = init;	
+				</script>
+			';
+		}
+	} else {
+			$js_code = '
+						<script language="javascript">
+								window.onload = function(){tutorialHook('.$step.', 1);}
+						</script>
+					';		
+	} 
+
+	return $js_code;
+}

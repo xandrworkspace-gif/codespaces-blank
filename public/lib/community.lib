@@ -1,0 +1,245 @@
+<?
+
+define('TABLE_COMMUNITY_TOPIC_LIST', 'community_topic');
+define('TABLE_COMMUNITY_TOPIC_LIKE', 'community_topic_like');
+define('TABLE_COMMUNITY_CATEGORY_LIST', 'community_category');
+define('TABLE_COMMUNITY_POST_LIST', 'community_post');
+define('TABLE_COMMUNITY_POST_LIKE', 'community_post_like');
+
+define('FIELD_COMMUNITY_TOPIC_LIST', 'id,cat_id,user_id,title,message,ctime,last_update,edit,cnt_posts,flags,like_cnt,dislike_cnt');
+define('FIELD_COMMUNITY_POST_LIST',  'id,topic_id,user_id,ctime,edit,message,like_cnt,dislike_cnt');
+
+define('COMMUNITY_POST_SIZE' , 2000); //2000 символов
+define('COMMUNITY_POST_MAIN_SIZE' , 75); //75 символов
+define('COMMUNITY_POST_MAIN_TITLE_SIZE' , 35); //35 символов
+define('COMMUNITY_POST_ALL_PAGE_SIZE', 10);
+define('COMMUNITY_TOPIC_TTL', 1800); // 30 минут на 1 топик
+define('COMMUNITY_POST_TTL', 180); // 3 минуты на 1 сообщение
+
+define('COMMUNITY_TOPIC_EDIT_CNT', 3);
+
+define('COMM_CAT_FLAG_ACTIVE',          0x0000001); //Категория активна
+define('COMM_CAT_FLAG_SHOW',            0x0000002); //Категория отображена
+define('COMM_CAT_FLAG_ACCESS_ADMIN',    0x0000004); //Писать в данной категории может только Администратор
+define('COMM_CAT_FLAG_ACCESS_GUARD1',   0x0000008); //Писать в данной категории может только Страж людей
+define('COMM_CAT_FLAG_ACCESS_GUARD2',   0x0000010); //Писать в данной категории может только Страж магмаров
+define('COMM_CAT_FLAG_ACCESS_MUTE',     0x0000020); //Писать вопрос в данной категории может игрок с мутом
+
+define('COMM_TOP_FLAG_CLOSE',           0x0000001);
+define('COMM_TOP_FLAG_ATOP',            0x0000002);
+
+$comm_cat_flags_hash = array(
+    COMM_CAT_FLAG_ACTIVE => 'Категория активна',
+    COMM_CAT_FLAG_SHOW => 'Категория отображена',
+    COMM_CAT_FLAG_ACCESS_ADMIN => 'Писать в данной категории может только Администратор',
+    COMM_CAT_FLAG_ACCESS_GUARD1 => 'Писать в данной категории может только Страж людей',
+    COMM_CAT_FLAG_ACCESS_GUARD2 => 'Писать в данной категории может только Страж древних',
+    COMM_CAT_FLAG_ACCESS_MUTE => 'Писать вопрос в данной категории может игрок с мутом',
+);
+
+function community_cat_access($user=array(), $cat=array()){
+    if(!$user || !$cat) return false;
+    if(($cat['flags'] & COMM_CAT_FLAG_ACCESS_ADMIN) && !($user['flags'] & USER_FLAG_ADMIN)) return false;
+    if(($cat['flags'] & COMM_CAT_FLAG_ACCESS_GUARD1) && !($user['flags'] & USER_FLAG2_ACTING_GUARD && $user['kind'] == KIND_HUMAN)) return false;
+    if(($cat['flags'] & COMM_CAT_FLAG_ACCESS_GUARD2) && !($user['flags'] & USER_FLAG2_ACTING_GUARD && $user['kind'] == KIND_MAGMAR)) return false;
+    return true;
+}
+
+#Работа с базой данных
+function community_cats_get($ref=false, $add='', $ex = false, $count = false) {
+    global $db_info;
+    $community_cat = common_get($db_info,TABLE_COMMUNITY_CATEGORY_LIST,$ref,$add);
+    if($ex){
+        $topics = community_topic_list(array('cat_id' => $community_cat['id']));
+        $community_cat['topics'] = $topics;
+    }
+    if($count){
+        if($ex) {
+            $community_cat['topics_c'] = count($community_cat['topics']);
+        }else{
+            $community_cat['topics_c'] = community_topic_count(array('cat_id' => $community_cat['id']));
+        }
+    }
+    return $community_cat;
+}
+
+function community_cats_list($ref=false, $add='', $ex = false, $ex2 = false, $count = false) {
+    global $db_info;
+    $list = common_list($db_info,TABLE_COMMUNITY_CATEGORY_LIST,$ref,$add);
+    if($ex && $list){
+        $list_hash = make_hash($list);
+        $topics = community_topic_list(array('cat_id' => array_keys($list_hash)), '', $ex2);
+        $topics_hash = make_hash($topics,'cat_id', true);
+        foreach ($list_hash as $cat_id=>$news){
+            if(!$topics_hash[$cat_id]) continue;
+            $list_hash[$cat_id]['topics'] = $topics_hash[$cat_id];
+            if($count){
+                $list_hash['topics_c'] = count($topics_hash[$cat_id]);
+            }
+        }
+        $list = $list_hash;
+    }
+    if($list && !$ex && $count){
+        $list_hash = make_hash($list);
+        foreach ($list_hash as $cat_id=>$news){
+            $list_hash[$cat_id]['topics_c'] = community_topic_count(array('cat_id' => $cat_id));
+        }
+        $list = $list_hash;
+    }
+    return $list;
+}
+
+function community_cats_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_COMMUNITY_CATEGORY_LIST, $ref, $add);
+}
+
+function community_cats_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_COMMUNITY_CATEGORY_LIST,$param);
+}
+
+function community_cats_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_COMMUNITY_CATEGORY_LIST,$ref,$add);
+    return true;
+}
+////////////////////////////////////////////////////
+function community_topic_get($ref=false, $add='', $ex = false, $count = false) {
+    global $db_info;
+    $topic = common_get($db_info,TABLE_COMMUNITY_TOPIC_LIST,$ref,$add);
+    if($ex){
+        $posts = community_post_list(array('topic_id' => $topic['id']), ' ORDER BY id ASC');
+        $topic['posts'] = $posts;
+    }
+    if($count){
+        $topic['posts_c'] = community_post_count(array('topic_id' => $topic['id']));
+    }
+    return $topic;
+}
+
+function community_topic_list($ref=false, $add='', $ex = false, $count = false) {
+    global $db_info;
+    $list = common_list($db_info,TABLE_COMMUNITY_TOPIC_LIST,$ref,$add);
+    if($ex && $list){
+        $list_hash = make_hash($list);
+        $posts = community_post_list(array('topic_id' => array_keys($list_hash)), ' ORDER BY id ASC');
+        $posts_hash = make_hash($posts,'topic_id', true);
+        foreach ($list_hash as $topic_id=>$news){
+            if(!$posts_hash[$topic_id]) continue;
+            $list_hash[$topic_id]['posts'] = $posts_hash[$topic_id];
+            if($count){
+                $list_hash[$topic_id]['posts_c'] = count($posts_hash[$topic_id]);
+            }
+        }
+        $list = $list_hash;
+    }
+    return $list;
+}
+
+function community_topic_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_COMMUNITY_TOPIC_LIST, $ref, $add);
+}
+
+function community_topic_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_COMMUNITY_TOPIC_LIST,$param,FIELD_COMMUNITY_TOPIC_LIST);
+}
+
+function community_topic_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_COMMUNITY_TOPIC_LIST,$ref,$add);
+    return true;
+}
+//////////////////////////////////////////////
+function community_post_get($ref=false, $add='') {
+    global $db_info;
+    return common_get($db_info,TABLE_COMMUNITY_POST_LIST,$ref,$add);
+}
+
+function community_post_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_COMMUNITY_POST_LIST,$ref,$add);
+}
+
+function community_post_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_COMMUNITY_POST_LIST, $ref, $add);
+}
+
+function community_post_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_COMMUNITY_POST_LIST,$param,FIELD_COMMUNITY_POST_LIST);
+}
+
+function community_post_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_COMMUNITY_POST_LIST,$ref,$add);
+    return true;
+}
+
+
+//////////////////////////////////////////////
+function community_topic_like_get($ref=false, $add='') {
+    global $db_info;
+    return common_get($db_info,TABLE_COMMUNITY_TOPIC_LIKE,$ref,$add);
+}
+
+function community_topic_like_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_COMMUNITY_TOPIC_LIKE,$ref,$add);
+}
+
+function community_topic_like_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_COMMUNITY_TOPIC_LIKE, $ref, $add);
+}
+
+function community_topic_like_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_COMMUNITY_TOPIC_LIKE,$param);
+}
+
+function community_topic_like_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_COMMUNITY_TOPIC_LIKE,$ref,$add);
+    return true;
+}
+
+
+//////////////////////////////////////////////
+function community_post_like_get($ref=false, $add='') {
+    global $db_info;
+    return common_get($db_info,TABLE_COMMUNITY_POST_LIKE,$ref,$add);
+}
+
+function community_post_like_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_COMMUNITY_POST_LIKE,$ref,$add);
+}
+
+function community_post_like_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_COMMUNITY_POST_LIKE, $ref, $add);
+}
+
+function community_post_like_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_COMMUNITY_POST_LIKE,$param);
+}
+
+function community_post_like_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_COMMUNITY_POST_LIKE,$ref,$add);
+    return true;
+}
+
+#BUGTRACKER Сюда же!
+
+define('TABLE_BUGTRACKER_LIST', 'bugtracker');

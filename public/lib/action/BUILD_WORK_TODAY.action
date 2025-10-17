@@ -1,0 +1,23 @@
+<?
+
+require_once("lib/buildings.lib");
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+
+$estate = estate_get(array(
+    'user_id' => $subject['id'],
+));
+
+if(!$estate){
+    $out['error'] = translate('У вас нет поместья!');
+    return;
+}
+
+estate_save(array(
+    'id' => $estate['id'],
+    'work_today' => 0,
+));
+$out['status'] = ACTION_STATUS_OK;

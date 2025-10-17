@@ -1,0 +1,225 @@
+<? # $Id: punishment.lib,v 1.26 2010-01-15 09:50:10 p.knoblokh Exp $
+
+// Имена и поля таблиц
+define('TABLE_PUNISHMENTS','punishments');
+define('FIELD_PUNISHMENTS','');
+define('TABLE_PUNISHMENT_USERS','punishment_users');
+define('FIELD_PUNISHMENT_USERS','');
+
+define('CRIME_FINANCE', 1); // Нищита (LOAN_RETURN_PERIOD дней долг)
+define('CRIME_EXPERIENCE', 2);
+define('CRIME_FREEDOM', 3);
+define('CRIME_FINANCE2', 4); // Меняла (LOAN_RETURN_PERIOD2 дней долг)
+define('CRIME_FINANCE3', 5); // Меняла (LOAN_RETURN_PERIOD3 дней долг)
+
+define('PUNISH_TYPE_TIME', 1);  // наказание временем
+define('PUNISH_TYPE_MONEY', 2); // наказание деньгами
+
+define('PUNISH_DAY_PRICE', 100); // Стоимость 1 дня = 1 золото
+define('PUNISH_INDEFINITE', 10*365); // 10 лет - бессрочное наказание
+
+define('PUNISH_INPUT_LIST',  1);
+define('PUNISH_INPUT_MANUAL', 2);
+
+global $punishment_time_interval_hash, $punishment_input_hash, $crime_type_info, $punishment_type_hash;
+
+$punishment_input_hash = array (
+	PUNISH_INPUT_LIST => translate('из списка'),
+	PUNISH_INPUT_MANUAL => translate('ручной ввод')
+);
+
+global $crime_type_info;
+$crime_type_info = array(
+	CRIME_FINANCE => array('id' => CRIME_FINANCE, 'title' => translate('Проклятие Нищета'), 'title2' => translate('Проклятие Нищеты'), 'alt' => translate('Проклятие ограничивает персонажа в применении профессиональных навыков и торговле, получении энергии, сдаче предметов старьевщику, использовании почты и аукциона, принятии приглашения в группу. Снять проклятие можно в темнице.')),
+	CRIME_FINANCE2 => array('id' => CRIME_FINANCE2, 'title' => translate('Проклятие Менялы'), 'title2' => translate('Проклятие Менялы'), 'alt' => translate('Проклятие запрещает персонажу снимать скальпы с противников и зарабатывать очки доблести, лишает доступа к Великим битвам и уменьшает количество полученной с монстров денежной добычи на 50%. Снять проклятие можно в темнице')),
+	CRIME_FINANCE3 => array('id' => CRIME_FINANCE3, 'title' => translate('Проклятие Менялы 2'), 'title2' => translate('Проклятие Менялы 2'), 'alt' => translate('')),
+	CRIME_EXPERIENCE => array('id' => CRIME_EXPERIENCE, 'title' => translate('Проклятие Слабость'), 'title2' => translate('Проклятие Слабости'), 'alt' => translate('Получаемый в боях опыт снижается до 0. Снять проклятие можно в темнице.')),
+	CRIME_FREEDOM => array('id' => CRIME_FREEDOM, 'title' => translate('Проклятие Неволя'), 'title2' => translate('Проклятие Неволи'), 'alt' => translate('При проклятии персонаж попадает в темницу, при этом автоматически выходит из группы или расформировывает группу, если он является ее лидером. В темнице персонаж ограничен во всех возможных действиях, за исключением общения в чате.')),
+);
+$punishment_type_hash = array(
+	PUNISH_TYPE_TIME => translate('Наказание временем'),
+	PUNISH_TYPE_MONEY => translate('Денежный штраф'),
+);
+
+$punishment_time_interval_hash = array(
+	1 => translate('1 день'),
+	3 => translate('3 дня'),
+	5 => translate('5 дней'),
+	10 => translate('10 дней'),
+	20 => translate('20 дней'),
+	30 => translate('30 дней'),
+	40 => translate('40 дней'),
+	80 => translate('80 дней'),
+	PUNISH_INDEFINITE => translate('бессрочно'),
+);
+
+function punishment_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_PUNISHMENTS,$ref,$add);
+}
+
+function punishment_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_PUNISHMENTS,$ref,$add);
+}
+
+function punishment_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_PUNISHMENTS, $ref, $add);
+}
+
+function punishment_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_PUNISHMENTS,$param,FIELD_PUNISHMENTS);
+}
+
+function punishment_delete($ref) {
+	global $db_2;
+	return common_delete($db_2,TABLE_PUNISHMENTS,$ref);
+}
+
+
+function punishment_user_get($ref=false, $skip_expired=false, $add='') {
+	global $db_2;
+	$query_add = '';
+	if ($skip_expired) {
+		$query_add = sql_pholder(' AND !(type_id=?#PUNISH_TYPE_TIME AND ftime < ?)', time_current());
+	}
+	return common_get($db_2,TABLE_PUNISHMENT_USERS,$ref,$query_add.$add);
+}
+
+function punishment_user_list($ref=false, $skip_expired=false, $add='') {
+	global $db_2;
+	$query_add = '';
+	if ($skip_expired) {
+		$query_add = sql_pholder(' AND !(type_id=?#PUNISH_TYPE_TIME AND ftime < ?)', time_current());
+	}
+	return common_list($db_2,TABLE_PUNISHMENT_USERS,$ref,$query_add.$add);
+}
+
+function punishment_user_count($ref=false, $skip_expired=false, $add='') {
+	global $db_2;
+	$query_add = '';
+	if ($skip_expired) {
+		$query_add = sql_pholder(' AND !(type_id=?#PUNISH_TYPE_TIME AND ftime < ?)', time_current());
+	}
+	return common_count($db_2,TABLE_PUNISHMENT_USERS,$ref,$query_add.$add);
+}
+
+function punishment_user_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_PUNISHMENT_USERS,$param,FIELD_PUNISHMENT_USERS);
+}
+
+function punishment_user_delete($ref) {
+	global $db_2;
+	return common_delete($db_2,TABLE_PUNISHMENT_USERS,$ref);
+}
+
+// список возможных наказаний, разбитый по crime_id, затем по type_id
+function punishment_avail_mode_get($crime_type_id, $punishment_type_id) {
+	$ref = array();
+	if ($crime_type_id) $ref['crime_id'] = $crime_type_id;
+	if ($punishment_type_id) $ref['type_id'] = $punishment_type_id;
+	$punishment_list = punishment_list($ref);
+
+	$avail_mode_info = make_hash($punishment_list, 'crime_id', true);
+	foreach ($avail_mode_info as $k=>$v) {
+		$avail_mode_info[$k] = make_hash($avail_mode_info[$k], 'type_id', true);
+	}
+	return $avail_mode_info;
+}
+
+//   $in['crime_id'] - тип преступления
+//   $in['type_id'] - мера пресечения (срок, деньги...)
+//   $in['days'] - срок: количество дней наказания
+//   $in['money'] - штраф: количество денег
+//   $in['money_type'] - штраф: тип денег
+//   $in['punishment_id'] - id артикула наказания
+//   $in['reason_str'] - текстовка причины
+function punishment_validate_param(&$action, &$in) {
+	global $crime_type_info, $punishment_time_interval_hash, $money_type_info;
+	$out = array('status' => false, 'error' => translate('Неверные параметры действия!'));
+
+	$action_param = array();
+	list($action_param['punishment_type'], $action_param['punishment_reason'], $action_param['punishment_money'], $action_param['punishment_time'], $action_param['ignore_kind']) = explode(',',$action['param2']);
+
+	if ($action_param['punishment_reason'] == PUNISH_INPUT_LIST) { // выгребаем папраметры с артикула
+		$punishment = punishment_get($in['punishment_id']);
+		if (!$punishment) return $out;
+		$in = array (
+			'crime_id' => $punishment['crime_id'],
+			'type_id' => $punishment['type_id'],
+			'punishment_id' => $punishment['id'],
+			'reason_str' => $punishment['reason_str'],
+			'money' => ($action_param['punishment_money'] == PUNISH_INPUT_MANUAL) ? $in['money'] : $punishment['money'],
+			'money_type' => ($action_param['punishment_money'] == PUNISH_INPUT_MANUAL) ? $in['money_type'] : $punishment['money_type'],
+			'days' => $in['days'],
+		);
+		if (($in['type_id'] == PUNISH_TYPE_TIME) && ($action_param['punishment_time'] == PUNISH_INPUT_LIST) && ($in['days'] < $punishment['days_min']) || ($in['days'] > $punishment['days_max'])) {
+			$out['error'] = translate('Неверный срок наказания!');
+			return $out;
+		}
+	} else {
+		if (!$in['reason_str']) {
+			$out['error'] = translate('Не указана причина!');
+			return $out;
+		}
+		$in = array(
+			'crime_id' => $in['crime_id'],
+			'type_id' => $in['type_id'],
+			'punishment_id' => 0,
+			'reason_str' => $in['reason_str'],
+			'money' => ($in['type_id'] == PUNISH_TYPE_MONEY ? $in['money'] : 0),
+			'money_type' => ($in['type_id'] == PUNISH_TYPE_MONEY ? $in['money_type'] : 0),
+			'days' => ($in['type_id'] == PUNISH_TYPE_TIME ? $in['days'] : 0),
+		);
+	}
+
+	if ($in['type_id'] == PUNISH_TYPE_MONEY) {
+		if (intval($in['money']*100) <= 0 || !$money_type_info[$in['money_type']]) {
+			$out['error'] = translate('Неверная сумма!');
+			return $out;
+		}
+	}
+	if ($in['type_id'] == PUNISH_TYPE_TIME) {
+		if (!$punishment_time_interval_hash[$in['days']]) {
+			$out['error'] = translate('Неверное время!');
+			return $out;
+		}
+		$in['ftime'] = time_current() + $in['days']*3600*24;
+	}
+	// проверка, могло ли действие с такими параметрами, наложить такое наказание
+	$crime_type_id = intval($action['param1']);
+	if (($crime_type_id && ($crime_type_id != $in['crime_id'])) ||
+		($action_param['punishment_type'] && ($action_param['punishment_type'] != $in['type_id']))) {
+		return $out;
+	}
+	$in['money'] = money_floatval($in['money']);
+	$out['status'] = true;
+	return $out;
+}
+
+function punishment_user_flag_sync($user_id) {
+	if (!$user_id) return;
+
+	$punishment_list = punishment_user_list(array('user_id' => $user_id), true);
+	if (!$punishment_list) {
+		user_set_flag($user_id, USER_FLAG_PUNISH | USER_FLAG_JAIL, false);
+		return;
+	}
+	$is_jail = false;
+	foreach ($punishment_list as $item) {
+		if ($item['crime_id'] == CRIME_FREEDOM) {
+			$is_jail = true;
+			break;
+		}
+	}
+	user_save(array(
+		'id' => $user_id,
+		'_set' => ' flags=(flags|'.(USER_FLAG_PUNISH | ($is_jail ? USER_FLAG_JAIL : 0)).') &~'.(!$is_jail ? USER_FLAG_JAIL : 0),
+	));
+}
+
+
+?>

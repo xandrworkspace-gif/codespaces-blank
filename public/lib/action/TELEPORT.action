@@ -1,0 +1,144 @@
+<? # $Id: TELEPORT.action,v 1.18 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "телепорт"
+require_once("lib/dungeons.lib");
+
+if (!in_array($subject['object_class'], array(OBJECT_CLASS_USER))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id'] || $subject['instance_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+
+if(dungeon_queue_get(array('user_id' => $subject['id'], 'status' => DUNGEON_QUEUE_STATUS_PENDING))){
+    $out['error'] = translate('Вы находитесь в очереди на подземелье и подтвердили заявку! В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+
+$to_area_id = false;
+if (($object['object_class'] == OBJECT_CLASS_ARTIFACT) && ($object['type_id'] == ARTIFACT_TYPE_ID_MARRIAGE)) {	// телепорт в положение супруга (свадебное кольцо)
+	$spouse = user_get($object['param1']);	// UID супруга(и)
+	if (!$spouse || !artifact_get_wedding_ring($spouse['id'],$subject['id'])) {
+		$out['error'] = translate('Невозможно выполнить телепорт, т.к. ваш брак нарушен!');
+		return;
+	}
+	
+	if ($spouse['flags'] & USER_FLAG_GHOST) {
+		$out['error'] = translate('Нельзя телепортироваться к супругу, пока он призрак!');
+		return; 
+	}
+	
+	global $SESSION_TTL;
+	NODE_PUSH(null, $spouse['id']);
+	$spouse_session = session_get(array('uid' => $spouse['id']));
+	NODE_POP();
+	
+	if (!$spouse_session || $spouse_session['stime'] < time_current() - $SESSION_TTL) {
+		$out['error'] = translate('Нельзя телепортироваться к супругу, пока он в оффлайне!');
+		return;		
+	}
+	
+	$cooldown = max($spouse_session['ctime'], $spouse_session['ressurect_time']);
+	
+	if ($cooldown + 300 > time_current()) {
+		$out['error'] = sprintf(translate('Вы сможете телепортироваться к своему супругу через %s!'), html_period_str($cooldown + 300 - time_current(), true));
+		return;
+	} 	
+	
+	$to_area_id = $spouse['area_id'];
+	$spouse_area = area_get($to_area_id);
+	if ($spouse_area['flags'] & AREA_FLAG_NO_MARRIAGE_TELEPORT ) {
+		$out['error'] = translate('Нельзя переместиться в эту локацию!');
+		return; 
+	}
+} elseif ($action['param2']) {
+	$to_area_id = intval($in['to_area_id']);
+	$valid_area = area_select(intval($action['param1']));
+	if (!$valid_area[$to_area_id]) return;
+} else {
+	$to_area_id = intval($action['param1']);
+}
+$area = area_get($to_area_id);
+if (!$area) return;
+
+$user_area = area_get($subject['area_id']);
+
+//if($user_area['flags2'] & AREA_FLAG2_CHAOT_LOCATION){
+    //$out['error'] = translate('Нельзя переместиться с локации проведения Хаотических Битв!');
+    //return;
+//}
+
+if ($user_area['code'] == 'arena') {	// выход из арены
+	require_once("lib/fight.lib");
+	$request_user = fight_request_user_get(false,$subject['id']);
+	if ($request_user) {
+		$out['error'] = translate('Вы не можете выйти, т.к. участвуете в заявке на бой!');
+		return;
+	}
+} elseif ($user_area['code'] == 'bg') {	// выход из комнаты заявок на БГ
+	$allow = true;
+	require_once("lib/bg.lib");
+	$bg = bg_get(array('t'.$subject['kind'].'_area_id' => $user_area['id']));
+	if ($bg['id']) {
+		$allow = false;
+		if ($bg['id'] && bg_lock($bg['id'], 1)) {
+			$bg_user = bg_user_get(array('user_id' => $subject['id'], 'status' => BG_USER_STATUS_PENDING));
+			if ($bg_user) $out['error'] = translate('Вы не можете выйти, т.к. подтвердили заявку на участие!');
+			else {
+				$user = user_get($subject['id']);
+				if (!$user['instance_id']) $allow = true;
+			}
+			bg_unlock($bg['id']);
+		}
+	}
+	require_once("lib/slaughter.lib");
+	$slaughter = slaughter_get(array('t'.$subject['kind'].'_area_id' => $user_area['id']));
+	if ($slaughter['id']) {
+		$allow = false;
+		if (slaughter_lock($slaughter['id'])) {
+			$slaughter_user = slaughter_user_get(array('user_id' => $subject['id'], 'status' => SLAUGHTER_USER_STATUS_PENDING));
+			if ($slaughter_user) $out['error'] = translate('Вы не можете выйти, т.к. подтвердили заявку на участие!');
+			else {
+				$user = user_get($subject['id']);
+				if (!$user['instance_id']) $allow = true;
+			}
+			slaughter_unlock($slaughter['id']);
+		}
+	}
+	if (!$allow) return;
+	
+} elseif ($user_area['code'] == 'casino') {	// выход из казино
+    area_casino_exit($subject, array('exit_cas' => true));
+}
+
+$param = array(
+	'id' => $subject['id'],
+	'area_id' => $area['id'],
+	'area_ftime' => 0,
+	'instance_id' => 0,
+	'raid_id' => 0,
+	'trade_id' => $area['trade_id'],
+	'flags2' => $subject['flags2'] & ~USER_FLAG2_IN_ESTATE,
+);
+
+// снимаем невидимость после перехода на "вражескую локацию"
+if ($subject['invisibility_time']) {
+	if ((($area['flags'] & AREA_FLAG_NO_INVISIBLE_MAGMAR) && ($subject['kind'] == KIND_MAGMAR)) ||
+	 (($area['flags'] & AREA_FLAG_NO_INVISIBLE_HUMAN) && ($subject['kind'] == KIND_HUMAN))) {
+		$param['invisibility_time'] = 0;
+		chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => "updateSwf({'lvl':''})"));
+	}
+}
+
+//user_change_chat_channels($subject, $param);
+user_save($param);
+
+$subject['area_id'] = $area['id'];
+
+if ($action_user['id'] == $subject['id']) {
+	$action_user['area_id'] = $subject['area_id'];
+}
+
+$out['status'] = ACTION_STATUS_OK;
+$out['param_success'] = array('url_close'=> 'area.php');
+
+chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $session_user['id'], array('func' => 'tProcessMenu("b06", {"force": true});'));

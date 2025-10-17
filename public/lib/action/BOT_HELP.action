@@ -1,0 +1,87 @@
+<? # $Id: BOT_HELP.action,v 1.6 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// Действие "помощь бота в бою"
+
+global $object_table_info;
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+
+if (!$subject['fight_id']) {
+	$out['error'] = translate('Вы не находитесь в бою!');
+	return;
+}
+
+$bot_artikul = bot_artikul_get($action['param1']);
+if (!$bot_artikul) {
+	return;
+}
+
+$fight_user = fight_user_get(array('fight_id' => $subject['fight_id'], $object_table_info[$subject['object_class']]['link'] => $subject['id']));
+if (!$fight_user) {
+	$out['error'] = translate('Вы не находитесь в бою!');
+	return;
+}
+$fight = fight_get($subject['fight_id']);
+
+if($fight['type'] == FIGHT_TYPE_ARENA || $fight['type'] == FIGHT_TYPE_ADV_DUEL){
+    $area = area_get($fight['area_id']);
+}else{
+    $area = area_get($subject['area_id']);
+}
+
+if($fight['type'] == FIGHT_TYPE_CHAOTIC){
+    $out['error'] = translate('Вы не можете призвать морока на помощь в Хаотичных битвах.');
+    return;
+}
+
+if($fight['type'] == FIGHT_TYPE_ARENA){
+    $out['error'] = translate('Вы не можете призвать морока на помощь в Арене равных.');
+    return;
+}
+
+if($fight['type'] == FIGHT_TYPE_ADV_DUEL){
+    $out['error'] = translate('Вы не можете призвать морока на помощь в дуэли.');
+    return;
+}
+
+if (!$fight || (($area['flags'] & AREA_FLAG_NO_MOROC_FIGHT) && !$subject['instance_id'])) {
+	$out['error'] = translate('Вы не можете призвать морока на помощь в этой локации.');	
+	return;
+}
+if ($subject['instance_id']) {
+	$object_instance = instance_get($subject['instance_id']);
+	if ($object_instance['flags'] & INST_FLAG_NO_MOROC_FIGHT) {
+		$out['error'] = translate('Вы не можете призвать морока в этой локации.');
+		return;
+	}
+}
+if ($fight['flags'] & FIGHT_FLAG_NO_GREAT){
+	$out['error'] = translate('Вы не можете призвать морока в битве драконов.');
+	return;
+}
+if (!$fight['instance_id'] && $fight['level'] && !($area['flags'] & AREA_FLAG_ALLOW_MOROC) && !($bot_artikul['flags'] & BOT_FLAG_ALLOW_GREAT_BATTLE)) { // морокам нельзя участвовать в великих битвах (при отсутствии флага на локации)
+	$out['error'] = translate('Нельзя призвать помощь в великую битву!');
+	return;
+}
+if (!$subject['instance_id']) { // "мирные" локации подразумевают что в них нет боёв, но на всякий случай
+	if ($area['flags'] & AREA_FLAG_NO_FIGHT) {
+		$out['error'] = translate('Бои в этом месте запрещены!');
+		return;
+	}
+}
+if (!bot_help($subject,intval($action['param1']))) {
+	$out['error'] = translate('Не удалось выполнить действие!');
+	return;		
+}
+
+chat_msg_send_system(sprintf(translate('Вы призвали "%s" на помощь.'), $bot_artikul['nick']), CHAT_CHF_USER, $subject['id']);
+$out['status'] = ACTION_STATUS_OK;
+
+?>

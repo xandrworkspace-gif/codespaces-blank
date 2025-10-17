@@ -1,0 +1,798 @@
+<? # $Id: action.lib,v 1.248 2010-02-09 17:04:30 vadim_b Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/include/fsclient.inc");
+require_once("/home/admin/web/dwar.fun/public_html/lib/fight.lib");
+
+// Имена и поля таблиц
+define('TABLE_ACTIONS','actions');
+define('FIELD_ACTIONS','id, title, type_id, code, param1, param2, param3, bonus_id, common, visible, description, chat_msg, flags, access, ltime');
+define('TABLE_ACTION_CODES','action_codes');
+define('FIELD_ACTION_CODES','');
+define('TABLE_ACTION_STAT','action_stat');
+define('FIELD_ACTION_STAT','');
+define('TABLE_ACTION_TYPES','action_types');
+define('FIELD_ACTION_TYPES','');
+define('TABLE_ACTION_RAND_USES','action_rand_uses');
+define('FIELD_ACTION_RAND_USES','');
+
+define('ACTION_STATUS_OK', 0);
+define('ACTION_STATUS_ERROR', -1);
+define('ACTION_STATUS_RESTRICTED', -2);
+
+// Флаги действий
+define('ACTION_FLAG_ONBEHALF',                  0x00001); // Действие от имени
+define('ACTION_FLAG_SAMEAREA',                  0x00002); // Действие от имени: в пределах местоположения
+define('ACTION_FLAG_REPORTALL',                 0x00004); // Действие от имени: cообщить в чат всем
+define('ACTION_FLAG_CONFCODE',                  0x00008); // Требутся код подтверждения
+define('ACTION_FLAG_LOG',                       0x00010); // Логирование в лог действий
+define('ACTION_FLAG_NO_GHOST',                  0x00020); // Запрет действия для призраком
+define('ACTION_FLAG_CONFIRM',                   0x00040); // Подтверждение цели
+define('ACTION_FLAG_EXCEPT_MYSELF',             0x00080); // Используется при включенном "Действие от имени", запрещая использовать на себя
+define('ACTION_FLAG_SAMEKIND',                  0x00100); // Действие от имени: только таже раса
+define('ACTION_FLAG_NO_DEAD',                   0x00200); // Запрет выполнения действия для трупов
+define('ACTION_FLAG_NO_TARGET_GHOST',           0x00400); // Запрет действия на призрака
+define('ACTION_FLAG_NO_DEAD_PVP',               0x00800); // Запрет выполнения действия для трупов в бою в BG
+define('ACTION_FLAG_NO_FIGHT',                  0x01000); // Запрет выполнения действия в бою
+define('ACTION_FLAG_STAT',                      0x02000); // Писать статистику по этому действию
+define('ACTION_FLAG_RESTRICTION_CHECK_ONSTART', 0x04000); // Проверять ограничения при запуске длительных действий
+define('ACTION_FLAG_REPORTBROADCAST',           0x08000); // Сообщить в чат всему миру
+define('ACTION_FLAG_REPORTKIND',                0x10000); // Сообщить в чат расе
+define('ACTION_FLAG_REPORT_FORCE_PRIVATE',      0x20000); // Принудительно (независимо от других REPORT флагов) сообщить в приват
+define('ACTION_FLAG_ACTING_GUARD',              0x40000); // Жетон стража
+define('ACTION_FLAG_NOCONFIRM',                 0x80000); // Не показывать окно подтверждения
+
+// Зависимости
+require_once("/home/admin/web/dwar.fun/public_html/lib/restriction.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/area.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/artifact.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/bot.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/chat.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/html.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/bg.lib");
+
+function action_get($ref=false, $code=false, $add='') {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if ($code) {
+        $ref['code'] = $code;
+        $ref['common'] = 1;
+    }
+	return common_get($db_2,TABLE_ACTIONS,$ref,$add);
+}
+
+function action_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_ACTIONS, $ref, $add);
+}
+
+function action_list($type_id=false, $add='') {
+	global $db_2;
+	$ref = false;
+	if ($type_id) $ref['type_id'] = $type_id;
+	return common_list($db_2,TABLE_ACTIONS,$ref,$add);
+}
+
+function action_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_ACTIONS,$param,FIELD_ACTIONS);
+}
+
+function action_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_ACTIONS,$ref,$add);
+}
+
+function action_type_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_ACTION_TYPES,$ref,$add);
+}
+
+function action_type_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_ACTION_TYPES,false,$add);
+}
+
+function action_type_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_ACTION_TYPES, $ref, $add);
+}
+
+function action_type_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_ACTION_TYPES,$param,FIELD_ACTION_TYPES);
+}
+
+function action_type_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_ACTION_TYPES,$ref,$add);
+}
+
+function action_code_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_ACTION_CODES,$ref,$add);
+}
+
+function action_code_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_ACTION_CODES,false,$add);
+}
+
+function action_code_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_ACTION_CODES, $ref, $add);	
+}
+
+function action_code_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_ACTION_CODES,$param,FIELD_ACTION_CODES);
+}
+
+function action_code_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_ACTION_CODES,$ref,$add);
+}
+
+function action_stat_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_ACTION_STAT,$ref,$add);
+}
+
+function action_stat_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_ACTION_STAT,false,$add);
+}
+
+function action_stat_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_ACTION_STAT,$param,FIELD_ACTION_STAT);
+}
+
+function action_stat_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_ACTION_STAT,$ref,$add);
+}
+
+function action_object_get($object_class, $object_id, $ref=false, $add='', $extended=false) {
+	global $db, $object_table_info;
+	if (!$object_class || !$object_id) return false;
+	$info = $object_table_info[$object_class]['actions'];
+	if ($object_table_info[$object_class]['artikul_class']) {
+		$object = common_object_get($object_class,$object_id);
+		if ($object['artikul_actions']) {
+			$artikul_id = $object['enchant2_id'] ? $object['enchant2_id'] : $object['artikul_id'];
+			$item = action_object_get($object_table_info[$object_class]['artikul_class'],$artikul_id,$ref,$add,$extended);
+			$item['object_class'] = $object_class;
+			$item['object_id'] = $object_id;
+			return $item;
+		}
+	}
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	$ref[$info['link']] = $object_id;
+	$item = common_get($db,$info['table'],$ref,$add);
+	if ($item) {
+		if ($extended) $item = array_merge(action_get($item['action_id']),$item);
+		$item['object_class'] = $object_class;
+		$item['object_id'] = $object_id;
+	}
+	return $item;
+}
+
+function action_object_list($object_class, $object_id, $add='', $extended=false) {
+	global $db, $object_table_info;
+	if (!$object_class || !$object_id) return false;
+	$info = $object_table_info[$object_class]['actions'];
+	if ($object_table_info[$object_class]['artikul_class']) {
+		$object = common_object_get($object_class,$object_id);
+		if ($object['artikul_actions']) {
+			$artikul_id = $object['enchant2_id'] ? $object['enchant2_id'] : $object['artikul_id'];
+			$data = action_object_list($object_table_info[$object_class]['artikul_class'],$artikul_id,$add,$extended);
+			foreach ($data as $k=>$item) {
+				$data[$k]['object_class'] = $object_class;
+				$data[$k]['object_id'] = $object_id;
+			}
+			return $data;
+		}
+	}
+	$data = common_list($db,$info['table'],array($info['link'] => $object_id),$add);
+	foreach ($data as $k=>$item) {
+		if ($extended) {
+			$action = action_get($item['action_id']);
+			if (!$action) {
+				error_log(sprintf('action_object_list: Action [%d] not found for Object [%s | %d]', $item['action_id'], $object_class, $item['id']));
+				continue;
+			} 
+			
+			$data[$k] = array_merge($action,$item);
+		}
+		$data[$k]['object_class'] = $object_class;
+		$data[$k]['object_id'] = $object_id;
+	}
+	return $data;
+}
+
+function action_object_save($object_class, $object_id, $param) {
+	global $db, $object_table_info;
+	if (!$object_class || !$object_id) return false;
+	$new_id_hash = action_object_copy_artikul_actions($object_class,$object_id,true);
+	if ($new_id_hash && $new_id_hash[$param['id']]) $param['id'] = $new_id_hash[$param['id']];
+	$info = $object_table_info[$object_class]['actions'];
+	$param[$info['link']] = $object_id;
+	return common_save($db,$info['table'],$param,$info['field']);
+}
+
+function action_object_delete($object_class, $object, $ref=false) {
+	global $db, $object_table_info;
+	if (!$object_class || !$object) return false;
+	if ($ref) {
+		$new_id_hash = action_object_copy_artikul_actions($object_class,is_array($object) ? $object['id'] : $object,true);
+		if ($new_id_hash && $new_id_hash[$ref]) $ref = $new_id_hash[$ref];
+	} else {
+		if (!is_array($object)) $object = common_object_get($object_class,$object);
+		if ($object['artikul_actions']) return true;
+	}
+	$info = $object_table_info[$object_class]['actions'];
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	$ref[$info['link']] = is_array($object) ? $object['id'] : $object;
+	// Ограничения удаляются только при удалении артикула
+	if ($object_table_info[$object_class]['artikul_class']) {
+		common_delete($db,$info['table'],$ref);
+	} else {
+		foreach (common_list($db,$info['table'],$ref) as $item) {
+			common_delete($db,$info['table'],$item['id']);
+			$restriction_list = restriction_list($object_class,$item[$info['link']],$item['action_id']);
+			foreach ($restriction_list as $restriction) restriction_delete($restriction['id']);
+		}
+	}
+	return true;
+}
+
+function action_object_copy_artikul_actions($object_class, $object_id, $check_if_copied=false) {
+	global $db, $object_table_info;
+	if (!$object_class || !$object_id) return false;
+	$info = $object_table_info[$object_class];
+	if (!$info['artikul_class']) return false;
+	$object = common_object_get($object_class,$object_id);
+	if (!$object) return false;
+	if ($check_if_copied) {
+		if (!$object['artikul_actions']) return false;
+		common_object_save($object_class, $object['id'], array('artikul_actions' => 0));
+	}
+	$new_id_hash = array();
+	$object_artikul_id = (($object_class == OBJECT_CLASS_ARTIFACT) && $object['enchant2_id']) ? $object['enchant2_id'] : $object['artikul_id'];
+	$action_list = action_object_list($info['artikul_class'],$object_artikul_id);
+	foreach ($action_list as $action) {
+		$param = $action;
+		unset($param['id'],$param['artikul_id'],$param['object_class'],$param['object_id']);
+		$param[$info['actions']['link']] = $object['id'];
+		$ref_id = common_save($db,$info['actions']['table'],$param,$info['actions']['field']);
+		$new_id_hash[$action['id']] = $ref_id;
+	}
+	return $new_id_hash;
+}
+
+// Функция проверки кол-ва действия в день
+function action_stat_check(&$action, $check_only=false, $subject = array()) {
+	global $session_user;
+	if(!$session_user) $session_user = $subject;
+	if (!$action) return false;
+	$bkey_info = date_bkey($action['per_unit'], $action['per_value']);
+	$bkey = $bkey_info[0];
+	if (!$bkey || !$action['action_id'] || !$session_user) return true;
+	$stat = action_stat_get(false,sql_pholder(" AND action_id=? AND bkey=? and user_id=?",$action['action_id'],$bkey,$session_user['id']));
+	if ($check_only) {
+		$res = ($stat['cnt'] < $action['per_value']);
+		if ($bkey_info[1] == -1) $res = $res && ($stat['dtime'] <= time_current());
+		return $res;
+	}
+	if (!$stat) {
+		$dtime = $bkey_info[1] ? $bkey_info[1] == -1 ? 0 : (time_current() + 86400 + $bkey_info[1]) : 0;
+		action_stat_save(array(
+			'_noerr' => true,
+			'action_id' => $action['action_id'],
+			'bkey' => $bkey,
+			'dtime' => $dtime,
+			'user_id' => $session_user['id'],
+		));
+	}
+
+	$add = sql_pholder(" AND action_id=? AND bkey=? and user_id=? AND cnt<?",$action['action_id'],$bkey,$session_user['id'],$action['per_value']);
+	$set = "cnt=cnt+1";
+	if ($bkey_info[1] == -1) {
+		$add .= sql_pholder(" AND dtime <=?", time_current());
+		$set .= ",dtime=".(time_current() + $action['per_value']);
+	}
+	
+	return action_stat_save(array(
+		'_cnt' => true,
+		'_set' => $set,
+		'_add' => $add,
+	));
+}
+
+// TODO: это, по идее, мертвый код, если вы наткнулись на него, удалите
+function action_stat_rollback(&$action) {
+	global $session_user;
+	if (!$action) return false;
+	$bkey_info = date_bkey($action['per_unit'], $action['per_value']);
+	$bkey = $bkey_info[0];
+	if (!$bkey || !$action['action_id'] || !$session_user) return true;
+	return action_stat_save(array(
+		'_cnt' => true,
+		'_set' => "cnt=cnt-1",
+		'_add' => sql_pholder(" AND action_id=? AND bkey=? and user_id=? AND cnt>0",$action['action_id'],$bkey,$session_user['id']),
+	));
+}
+
+// Функция выполнения действия:
+// $subject, $object - структуры с установленным полем object_class
+function action_do($action, $subject, $object=false, $in=false) {
+	global $session_user;
+	global $gag_type_info, $gag_reason_info, $money_type_info, $kind_info;
+
+	$real_user = $action_user = $session_user;
+	if (!is_array($action)) $action = action_get(false,$action);	// Действие по коду
+	$action_id = $action['action_id'] ? $action['action_id']: $action['id'];
+
+	$out['status'] = ACTION_STATUS_ERROR;
+	$out['error'] = sprintf(translate('Не удалось выполнить действие "%s"!'),$action['title']);
+	
+	if (defined('SECURE_ACTION_ID') && $action_id == SECURE_ACTION_ID && !action_security_check()) {
+		$out['error'] = translate('Не задано действие!');
+		return $out;
+	}
+	
+	if (!$action['id']) {
+		$out['error'] = translate('Не задано действие!');
+		return $out;
+	}
+	if ($action['access'] && !((int)$session_user['access'] & (int)$action['access'])) {
+		$out['error'] = translate('Не хватает прав доступа!');
+		return $out;
+	}
+	if (($action['flags'] & ACTION_FLAG_CONFCODE) && !session_code_check($in['confcode'], $check_only)) {
+		$out['error'] = translate('Неверно указан код подтверждения!');
+		return $out;
+	}
+	if (!$subject) {
+		$out['error'] = sprintf(translate('Ошибка выполнения действия "%s"!'),$action['title']);
+		return $out;
+	}
+	if ($object && $object['time_expire'] > 0 && $object['time_expire'] <= time_current()) {
+		$out['error'] = sprintf(translate('У данного предмета закончился срок годности!'),$action['title']);
+		return $out;
+	}
+	$restriction_object_list = array();
+	restriction_get_dependent($subject,$restriction_object_list);
+	if ($object) restriction_get_dependent($object,$restriction_object_list);
+
+	// Проверяем на наличие действия
+	$have_action = false;
+	if ($action['object_class']) {
+		foreach ($restriction_object_list as $obj) {
+			if (($action['object_class'] == $obj['object_class']) && ($action['object_id'] == $obj['id'])) {
+				$have_action = true;
+				break;
+			}
+		}
+	} else $have_action = !empty($action['common']);
+	if (!$have_action) {
+		$out['error'] = sprintf(translate('Нет действия "%s"!'),$action['title']);
+		return $out;
+	}
+
+	// запрет на действие для призраков
+	if (($action['flags'] & ACTION_FLAG_NO_GHOST) && ($action_user['flags'] & USER_FLAG_GHOST)) {
+		$out['error'] = translate('Вы являетесь призраком! Для того чтобы оживить себя, посетите ближайший Храм или Обелиск.');
+		return $out;
+	}
+	if ($action_user['flags'] & USER_FLAG_JAIL) {
+		$out['error'] = translate('Заключенный не может выполнять это действие!');
+		return $out;
+	}
+
+	$pers_id = false;
+	$fight_user = false;
+	
+	// запрет на действия для трупов в бою
+	if (($action['flags'] & ACTION_FLAG_NO_DEAD) && $action_user['fight_id']) {
+		$fightstate = fight_fs_get_fightstate($action_user['fight_id'],$action_user['id']);
+		if (!$pers_id) {
+			$fight_user = fight_user_get(array('fight_id' => $action_user['fight_id'], 'user_id' => $action_user['id']));
+			$pers_id = $fight_user['user_id'];
+		}
+		
+		if (!$fightstate[$pers_id]) {
+			$out['error'] = translate('Вы не можете выполнить действие в данный момент!');
+			return $out;
+		}
+		if ($fightstate[$pers_id]['persStatus'] == FS_PS_DEAD) {
+			$out['error'] = translate('Вы убиты и не можете выполнить это действие!');
+			return $out;
+		}
+	}
+
+	// запрет на действия для трупов в PVP-бою
+	if (($action['flags'] & ACTION_FLAG_NO_DEAD_PVP) && $action_user['fight_id']) {
+		$fightstate = fight_fs_get_fightstate($action_user['fight_id']);
+		
+		$fight_user_list = fight_user_list($action_user['fight_id']);
+		
+		$fight_user_hash_by_users = make_hash($fight_user_list, 'user_id');
+		$pers_id = $fight_user_hash_by_users[$action_user['id']]['user_id'];
+		
+		$fight_user_hash = make_hash($fight_user_list);
+
+		if (!$fightstate[$pers_id]) {
+			$out['error'] = translate('Вы не можете выполнить действие в данный момент!');
+			return $out;
+		}
+		if (($fightstate[$pers_id]['persStatus'] == FS_PS_DEAD)) {
+			$teams_with_players = array();
+			foreach($fightstate as $pers_id => $info) {
+				// Если не бот, то учитываем в команде
+				if (!isset($fight_user_hash[$pers_id]) || !$fight_user_hash[$pers_id]['bot_artikul_id']) {
+					$teams_with_players[$info['teamNum']] = 1;
+				}
+			}
+			// Если игроки есть с обоих сторон, значит бой PVP
+			if (count($teams_with_players) > 1) {
+				$out['error'] = translate('Вы убиты и не можете выполнить это действие!');
+				return $out;
+			}
+		}
+		
+	}
+	
+	// запрет на действия в бою
+	if (($action['flags'] & ACTION_FLAG_NO_FIGHT) && $action_user['fight_id']) {
+		$out['error'] = translate('Вы в бою и не можете выполнить это действие!');
+		return $out;
+	}
+	
+	// Подмена понятий для действия от имени
+	$target_user = false;
+	if ($action['flags'] & ACTION_FLAG_ONBEHALF) {
+		$target_user = user_get(false,trim($in['target_nick']));
+		if (!$target_user) {
+			$out['error'] = translate('Неверно задан ник цели действия!');
+			return $out;
+		}
+		if (!user_is_online($target_user['id'])) {
+			$out['error'] = translate('Пользователь находится вне досягаемости!');
+			return $out;
+		}
+		if (($action['flags'] & ACTION_FLAG_SAMEAREA) && !user_is_near($action_user,$target_user)) {
+			$out['error'] = translate('Невозможно активировать действие, т.к. цель не находится рядом!');
+			return $out;
+		}
+		if (($action['flags'] & ACTION_FLAG_SAMEKIND) && ($action_user['kind'] != $target_user['kind'])) {
+			$out['error'] = translate('Невозможно активировать действие, т.к. персонаж другой расы!');
+			return $out;
+		}
+		if (($action['flags'] & ACTION_FLAG_NO_TARGET_GHOST) && ($target_user['flags'] & USER_FLAG_GHOST)) {
+			$out['error'] = translate('Данное действие не может быть направлено на призрака!');
+			return $out;
+		}
+		if (($action['flags'] & ACTION_FLAG_EXCEPT_MYSELF) && $target_user['id'] == $action_user['id']) {
+			$out['error'] = translate('Данное действие может быть направлено только на другого игрока!');
+			return $out;
+		}
+		$action_user = $target_user;
+		$subject = $target_user;
+	}
+	// выполнение ограничений на супруге при телепорте
+	if (($action['code'] == 'TELEPORT') && ($object['object_class'] == OBJECT_CLASS_ARTIFACT) && ($object['type_id'] == ARTIFACT_TYPE_ID_MARRIAGE)) $target_user = user_get($object['param1']);
+	
+	// проверяем ограничения на действие для всех зависимых объектов
+	$out_restriction = restriction_check($action_id,$restriction_object_list,$restriction_object_list, $target_user ? array($target_user) : array());
+	if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) {
+		return array(
+			'status' => ACTION_STATUS_RESTRICTED,
+			'error' => $out_restriction['title'] ? $out_restriction['title']: sprintf(translate('Для выполнения действия "%s" требуется %s'),$action['title'],$out_restriction['error']),
+		);
+	}
+
+	// проверяем кол-во действий
+	if ($action['per_unit'] && !action_stat_check($action, true, $subject)) {
+		return array(
+			'status' => ACTION_STATUS_RESTRICTED,
+			'error' => sprintf(translate('Вы не можете выполнить действие "%s" чаще, чем %s!'),$action['title'],date_bkey($action['per_unit'],$action['per_value'],true)),
+		);
+	}
+
+	// выполняем действие
+	if (!$action['code']) $out['status'] = ACTION_STATUS_OK;
+	else {
+		include('lib/action/'.$action['code'].'.action');
+	}
+
+	if ($action['bonus_id'] && ($out['status'] == ACTION_STATUS_OK)) {	// выдаем бонус
+		require_once("lib/bonus.lib");
+		
+		// передача пользователя активировшего бонус
+		if ($real_user['id']) {
+			$in = array('activator_id' => $real_user['id']);
+		}
+		
+		$_sbj = ($in['auto'] ? $subject : $action_user);
+		$out_bonus = bonus_apply($_sbj,$action['bonus_id'], $in);
+		if ($out_bonus['status'] != BONUS_STATUS_OK) $out['status'] = ACTION_STATUS_ERROR;
+		if ($out_bonus['error']) $out['error'] = $out_bonus['error'];
+	}
+	
+	if ($out['status'] == ACTION_STATUS_OK) {
+		if (defined('SECURE_ACTION_ID') && $action_id == SECURE_ACTION_ID) {
+			action_security_commit();
+		}
+		
+		// так мы уходим на кулдаун
+		action_stat_check($action, false, $subject);
+		
+		unset($out['error']);
+		if ($action['chat_msg']) {	// сообщение в чат
+			require_once('tpl/common.tpl');
+			require_once ('lib/html.lib');
+			$msg_text = $action['chat_msg'];			
+			$msg_text = str_replace('#NICK#',user_is_invisible($session_user) ? translate('Невидимка') : $session_user['nick'],$msg_text);
+			$msg_text = str_replace('#TARGET#',$target_user['nick'],$msg_text);
+			$msg_text = str_replace('#TARGETFULL#','<span class="underline">'.html_user_info($target_user).'</span>',$msg_text);
+			$param['user_id'] = $session_user['id'];
+			$msg_text = tpl_common_tags($msg_text,$param);
+			
+			$msg_text = mb_substr($msg_text,0,1024);
+			
+			$private_chat = $action['flags'] & ACTION_FLAG_REPORT_FORCE_PRIVATE ? true : false;
+			if ($action['flags'] & ACTION_FLAG_REPORTBROADCAST || $action['flags'] & ACTION_FLAG_REPORTKIND) {
+				
+				if ($action['flags'] & ACTION_FLAG_REPORTKIND) {
+					chat_msg_send_broadcast($msg_text,$session_user,true,$session_user['kind']);
+				} else {
+					chat_msg_send_system($msg_text,CHAT_CHF_AREA,CHAT_AREA_ID_BROADCAST,true);
+				}
+			} elseif ($action['flags'] & ACTION_FLAG_REPORTALL) {
+				$area_ids = array(
+					$session_user['instance_id'] ? CHAT_AREA_ID_INST + $session_user['instance_id'] : $session_user['area_id'],
+					$target_user['instance_id'] ? CHAT_AREA_ID_INST + $target_user['instance_id'] : $target_user['area_id'],
+				);
+				chat_msg_send_system($msg_text,CHAT_CHF_AREA,array_unique($area_ids),true);
+			} else {
+				$private_chat = true;
+			}
+			if ($private_chat) {
+				$user_ids = array(($session_user['id'] ? $session_user['id'] : $subject['id']),$target_user['id']);
+				chat_msg_send_system($msg_text,CHAT_CHF_USER,array_unique($user_ids));
+			}
+		}
+
+		if ($action['n'] > 0) {	// Обрабатываем счетчики действий
+			$n = $action['n'] - 1;
+			if ($n > 0) {
+				action_object_save($action['object_class'],$action['object_id'],array('id' => $action['id'], 'n' => $n));
+			} else {
+				if ($object['object_class'] == OBJECT_CLASS_ARTIFACT) {
+					if ($object['enchant2_id']) { // действия кончились, снимаем енчант действия, если они были взяты с него
+						artifact_save(array(
+							'id' => $object['id'],
+							'enchant2_id' => 0,
+							'artikul_actions' => 1,
+							'_set' => sql_pholder(' flags = flags &~ ? ', ARTIFACT_FLAG_USE | ARTIFACT_FLAG_EXTERNAL),
+						));
+						action_object_delete(OBJECT_CLASS_ARTIFACT,$object);
+					}
+					if ($action['dispose']) { // Надо удалить артефакт
+						if ($object['cnt'] > 1) {
+							artifact_save(array(
+								'id' => $object['id'],
+								'cnt' => $object['cnt']-1,
+								'artikul_actions' => 1,
+							));
+							action_object_delete(OBJECT_CLASS_ARTIFACT,$object);
+						} else {
+							artifact_delete($action['object_id']);	// На действии предмета стоит флаг удалить по истечению счетчика
+						}
+						/*
+						// лог-сервис -----------------------
+						logserv_log_operation(array(
+							'artifact' => $object,
+							'cnt' => -1,
+							'comment' => 'Истек счетчик действия',
+						),$action_user);
+						// ----------------------------------
+						*/
+					} elseif ($object['artikul_id'] == 1324) {
+						artifact_save(array(
+							'id' => $object['id'],
+							'artikul_actions' => 0,
+							'_set' => sql_pholder(' flags = flags &~ ? ', ARTIFACT_FLAG_USE | ARTIFACT_FLAG_EXTERNAL),
+						));
+					}
+					artifact_bag_send_diff($subject['id'], $object['id']);
+				} else {
+					action_object_delete($action['object_class'],$action['object_id'],$action['id']);
+				}
+			}
+		}
+
+		if ($action['flags'] & ACTION_FLAG_LOG) {
+			require_once("lib/log.lib");
+			log_user_action_save(array(
+				'action_id' => $action_id,
+				'user_id' => ($session_user['id'] ? $session_user['id'] : $subject['id']),
+				'user_id2' => $target_user ? $target_user['id'] : 0,
+				'stime' => time_current(),
+			));
+		}
+		if ($action['flags'] & ACTION_FLAG_STAT) {
+			// собираем статистику
+			require_once('lib/user_stat.lib');
+			user_stat_update(($session_user['id'] ? $session_user['id'] : $subject['id']), USER_STAT_TYPE_ACTION, $action_id);
+		}
+	}
+	return $out;
+}
+
+function action_run_request($param) {
+	return 'action_run.php?'.common_build_request($param);
+}
+
+function action_object_copy($param, $parent_id) {
+	$object_class = $param['object_class'];
+	$object_id = $param['object_id'];
+	$old_id = $param['id'];
+	unset($param['id']);
+	unset($param['object_id']);
+	unset($param['object_class']);
+	$new_id = action_object_save($object_class, $parent_id, $param);
+	if (!$new_id) return false;
+
+	$restrictions = restriction_list($object_class, $object_id);
+	foreach($restrictions as $restriction) {
+		restriction_copy($restriction, $parent_id);
+	}
+
+	return $new_id;
+}
+function action_copy($param) {
+	$old_id = $param['id'];
+	unset($param['id']);
+	$new_id = action_save($param);
+	if (!$new_id) return false;
+
+	return $new_id;
+}
+
+
+
+
+function action_rand_use_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_ACTION_RAND_USES,$ref,$add);
+}
+
+function action_rand_use_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_ACTION_RAND_USES,false,$add);
+}
+
+function action_rand_use_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_ACTION_RAND_USES,$param,FIELD_ACTION_RAND_USES);
+}
+
+function action_rand_use_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_ACTION_RAND_USES,$ref,$add);
+}
+
+function action_shuffle_rand_digits($digits) {
+	$costs = array_flip($digits);
+
+	$sum = 0;
+	for ($i = 1; $i <= count($digits); $i++) {
+		$sum += $i;
+	}
+
+	$res = array();
+
+	for ($i = count($digits); $i >= 2; $i--) {
+		$sum += $costs[$digits[$i]];
+		$switch_pos = $sum % $i+1;
+		$switch = $digits[$switch_pos];
+		$digits[$switch_pos] = $digits[$i];
+		$digits[$i] = $switch;
+	}
+
+	return $digits;
+}
+
+function action_sort_rand_sign_digits($a, $b) {
+	$digits_str = SECURE_ACTION_DIGITS;
+	$digits = str_split($digits_str);
+	unset($digits[0]);
+	$digits_cost = array_flip($digits);
+
+	if ($digits_cost[$a] == $digits_cost[$b]) {
+		return 0;
+	}
+	return ($digits_cost[$a] < $digits_cost[$b]) ? -1 : 1;
+}
+
+function action_check_rand($rand) {
+	$digits_str = SECURE_ACTION_DIGITS;
+	
+	$rand = trim(strval($rand));
+	$str_len = 64;
+	$sign_len = 6;
+	$divider = 14;
+	$add = 5;
+
+	if (strlen($rand) != $str_len + $sign_len) return false;
+
+	$digits_orig = str_split($digits_str);
+	unset($digits_orig[0]);
+
+	$parts = array(0 => substr($rand, 0, $str_len), 1 => substr($rand, $str_len));
+
+	// Проверим основную часть
+	$main = str_split($parts[0]);
+	$symbols_count = array();
+	foreach ($main as $v) {
+		if (!isset($symbols_count[$v])) $symbols_count[$v] = 0;
+		$symbols_count[$v]++;
+		if ($symbols_count[$v] > 5) return false;
+	}
+	
+	$sign = str_split($parts[1]);
+	usort($sign, 'action_sort_rand_sign_digits');
+	if (implode('', $sign) != $parts[1]) return false;
+
+	$parts_costs = array();
+	$digits = $digits_orig;
+	foreach ($parts as $k => $v) {
+		$parts_costs[$k] = 0;
+		if ($k != 0) $digits_cost = array_flip($digits_orig);
+		foreach (str_split($v) as $pos => $digit) {
+			if ($k == 0) {
+				$digits = action_shuffle_rand_digits($digits);
+				$digits_cost = array_flip($digits);
+			}
+			$parts_costs[$k] += $digits_cost[$digit];
+		}
+	}
+	$parts_costs[1] = ($parts_costs[1] - $add) * $divider;
+
+	return $parts_costs[0] == $parts_costs[1];
+}
+
+function action_security_check() {
+	$secure_action_rand = trim(strval($_REQUEST['action_rand']));
+	$secure_action_sign = strtolower(trim(strval($_REQUEST['action_sign'])));
+
+	if (!$secure_action_rand || !$secure_action_sign) return false;
+	
+	if (false && !action_check_rand($secure_action_rand)) {
+		$log_filename = SERVER_ROOT.'/logs/secure_action.csv';
+		$have_file = @file_exists($log_filename);
+		$fout = @fopen($log_filename,"a");
+		if ($fout) {
+			$log_str = sprintf("%d;%d\n", time_current(), $session_user['id']);
+			fwrite($fout,$log_str);
+			fclose($fout);
+			if (!$have_file) @chmod($log_filename,0664);
+		}
+		return false;
+	}
+	
+	if (md5($secure_action_rand.SECURE_ACTION_SECRET) != $secure_action_sign) return false;
+
+	$rand_use = action_rand_use_get(array('rand' => $secure_action_rand));
+	if ($rand_use) return false;
+
+	return true;
+}
+
+function action_security_commit() {
+	$secure_action_rand = trim(strval($_REQUEST['action_rand']));
+	
+	action_rand_use_save(array('rand' => $secure_action_rand));
+}

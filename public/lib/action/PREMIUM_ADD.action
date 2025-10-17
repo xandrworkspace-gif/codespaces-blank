@@ -1,0 +1,77 @@
+<? # $Id: PREMIUM_ADD.action,v 1.3 2017/01/09 01:48:08 sen Exp $
+
+// действие "Выдать или обновить премиум"
+require_once("lib/adv_premium.lib");
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = 'В настоящий момент это действие выполнить нельзя!';
+    return;
+}
+
+$user_id = $subject['id'];
+$premium = user_premium_get($user_id);
+
+$days = $object['param1'];
+$points = $object['param2'];
+
+$in['prem'] = intval($in['prem']);
+
+switch ($in['prem']){
+    case 1: //Добавляем дни
+        if(!$premium || $premium['level'] == 0){
+            $out['error'] = 'Невозможно добавить дни к премиуму. Премиума не найдено.';
+            return;
+        }
+        if($premium && $premium['level'] > 0) { //Если есть премиум
+            $old_val = $premium['time_end'];
+            $premium['time_end'] += ($days * 86400);
+            adv_premium_save($premium);
+
+            chat_msg_send_system("Ваш премиум продлен с ".html_date_str($old_val)." до ".html_date_str($premium['time_end']),CHAT_CHF_USER,$subject['id']);
+
+            $out['status'] = ACTION_STATUS_OK;
+
+            // лог-сервис -----------------------
+            logserv_log_action(array(
+                'action' => $action,
+                'comment' => sprintf('Использован свиток премиума (Добавлено '.$days.' дней)'),
+            ),$action_user);
+            // ----------------------------------
+        }else{
+            $out['error'] = 'Невозможно добавить дни к премиуму.';
+            return;
+        }
+        break;
+    case 2: //Добавляем очки
+        #Функция обновления премиума)
+
+        if($premium['level'] == 5){
+            $out['error'] = 'У вас уже максимальный уровень премиума.';
+            return;
+        }
+        user_premium_update($session_user, floatval($points));
+        $out['status'] = ACTION_STATUS_OK;
+
+        // лог-сервис -----------------------
+        logserv_log_action(array(
+            'action' => $action,
+            'comment' => sprintf('Использован свиток премиума (Добавлено '.$points.' позиций)'),
+        ),$action_user);
+        // ----------------------------------
+
+        break;
+}
+
+if(!$in['prem'] || !($days || $points)){
+    $out['error'] = 'Не указаны параметры.';
+    return;
+}
+
+if($out['status'] != ACTION_STATUS_OK){
+    $out['error'] = 'Не задано действие.';
+    return;
+}
+
+?>

@@ -1,0 +1,147 @@
+<?
+
+// Имена и поля таблиц
+define('TABLE_AREA_TELEPORT','area_teleport');
+define('TABLE_AREA_TELEPORT_USER','area_teleport_user');
+
+define('AREA_TELEPORT_ARTIKUL_ID', 3);
+define('AREA_TELEPORT_ARTIKUL_CNT', 1);
+
+function area_teleport_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_AREA_TELEPORT,$ref,$add);
+}
+
+function area_teleport_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_AREA_TELEPORT,$ref,$add);
+}
+
+function area_teleport_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_AREA_TELEPORT, $ref, $add);
+}
+
+function area_teleport_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_AREA_TELEPORT,$param);
+}
+
+function area_teleport_delete($ref, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_AREA_TELEPORT,$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function area_teleport_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_AREA_TELEPORT_USER,$ref,$add);
+}
+
+function area_teleport_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_AREA_TELEPORT_USER,$ref,$add);
+}
+
+function area_teleport_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_AREA_TELEPORT_USER, $ref, $add);
+}
+
+function area_teleport_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_AREA_TELEPORT_USER,$param);
+}
+
+function area_teleport_user_delete($ref, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_AREA_TELEPORT_USER,$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function area_teleport_info($user, $area_teleport_id, $area_teleport_user_hash = array(), $no_restrictions = false) {
+    $out = array('status' => -1);
+
+    $area_teleport = (!is_array($area_teleport_id) ? area_teleport_get($area_teleport_id) : $area_teleport_id);
+    $area_teleport_id = intval($area_teleport['id']);
+    if(!$user || !$area_teleport || $area_teleport['id'] <= 0){
+        $out['error'] = 'Невозможно получить информацию о телепорте!';
+        return $out;
+    }
+
+    $out['area_teleport'] = $area_teleport;
+    if(!$area_teleport){
+        $out['error'] = 'Невозможно получить информацию о телепорте!';
+        return $out;
+    }
+    $area_teleport_user = $area_teleport_user_hash[$area_teleport_id] ? $area_teleport_user_hash[$area_teleport_id] : area_teleport_user_get(array('area_teleport_id' => $area_teleport_id, 'user_id' => $user['id']));
+    $out['area_teleport_user'] = $area_teleport_user;
+
+    if($area_teleport['kind'] != $user['kind']){
+        $out['error'] = 'Только для другой расы.';
+        $out['errors'][] = $out['error'];
+        return $out;
+    }
+
+    if($area_teleport['area_id'] == $user['area_id']){
+        $out['error'] = 'Вы находитесь в этой локации.';
+        $out['errors'][] = $out['error'];
+        return $out;
+    }
+
+    if($area_teleport['cooldown']){
+        if($area_teleport_user['ctime'] + $area_teleport['cooldown'] > time_current()){
+            $out['cd'] = ($area_teleport_user['ctime'] + $area_teleport['cooldown']) - time_current(); //Сколько еще ждать...
+            $out['error'] = 'До следующего телепорта '.html_period_str($out['cd'], true).'.';
+            $out['errors'][] = $out['error'];
+            return $out;
+        }
+    }
+    if($area_teleport['cnt_day'] && $area_teleport_user['cnt'] >= $area_teleport['cnt_day']){
+        $out['error'] = 'Вы превысили ежедневный лимит по данному телепорту.';
+        $out['errors'][] = $out['error'];
+        return $out;
+    }
+
+    if(!$no_restrictions) {
+    //Добавить огранки
+    $check_object_list = array();
+    restriction_get_dependent($user,$check_object_list);
+
+    $area_teleport['object_class'] = OBJECT_CLASS_AREA_TELEPORT_ITEM;
+    $restrinction = restriction_check(0, array($area_teleport), $check_object_list);
+    if ($restrinction['status'] == RESTRICTION_STATUS_DENY) {
+        $out['error'] = $restrinction['title'];
+        $out['errors'][] = $out['error'];
+        return $out;
+    }
+
+    //Глобальную огранку тоже проверим
+    $all_kind_port = array('id' => $user['kind'], 'object_class' => OBJECT_CLASS_AREA_TELEPORT_ITEM_KIND);
+    $restrinction = restriction_check(0, array($all_kind_port), $check_object_list);
+    if ($restrinction['status'] == RESTRICTION_STATUS_DENY) {
+        $out['error'] = $restrinction['title'];
+        $out['errors'][] = $out['error'];
+        return $out;
+    }
+    }
+
+    $out['status'] = 100;
+    return $out;
+}
+
+function area_teleport_open($user = array()) {
+    if(((defined('AREA_TELEPORT_GLOBAL_OPEN_ADMIN') && AREA_TELEPORT_GLOBAL_OPEN_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('AREA_TELEPORT_GLOBAL_OPEN') && AREA_TELEPORT_GLOBAL_OPEN)) {
+        return true;
+    }
+    return false;
+}
+
+function area_teleport_cron(){
+    area_teleport_user_save(array(
+        '_add' => sql_pholder(' AND dtime < ?',time_current()),
+        '_set' => sql_pholder(' cnt = 0, dtime= ?', mktime(23,59,59) + 1),
+    ));
+}

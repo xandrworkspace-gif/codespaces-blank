@@ -1,0 +1,366 @@
+<? # $Id: clan_stat.lib 28.04.2010 19:14:13 i.hrustalev $
+
+define('TABLE_CLAN_STATS','clan_stats');
+define('FIELD_CLAN_STATS','');
+
+define('TABLE_CLAN_STAT_ARTIKULS','clan_stat_artikuls');
+define('FIELD_CLAN_STAT_ARTIKULS','');
+define('TABLE_CLAN_STAT_ARTIKUL_LEVELS','clan_stat_artikul_levels');
+define('FIELD_CLAN_STAT_ARTIKUL_LEVELS','');
+
+// флаги артикулов клановых статистик
+define('CLAN_STAT_ARTIKUL_FLAG_SHOW',          0x0001); // показывать в статистиках клана
+define('CLAN_STAT_ARTIKUL_FLAG_SHOW_PROGRESS', 0x0002); // показывать в статистиках клана в виде прогрес бара
+define('CLAN_STAT_ARTIKUL_FLAG_SHOW_IN_INFO',  0x0004); // показывать в clan_info
+define('CLAN_STAT_ARTIKUL_FLAG_GENERAL',       0x0008); // основная статистика
+
+global $clan_stat_artikul_flag_hash;
+$clan_stat_artikul_flag_hash = array(
+	CLAN_STAT_ARTIKUL_FLAG_SHOW          => translate('Показывать'),
+	CLAN_STAT_ARTIKUL_FLAG_SHOW_PROGRESS => translate('Показывать прогресс бар'),
+	CLAN_STAT_ARTIKUL_FLAG_SHOW_IN_INFO  => translate('Показывать в clan_info'),
+	CLAN_STAT_ARTIKUL_FLAG_GENERAL       => translate('Основная статистика'),
+);
+
+global $clan_stat_dependency;
+$clan_stat_skill_dependency = array(
+    USER_STAT_SKILL_EXP => array(USER_STAT_SKILL_EXP),
+	USER_STAT_SKILL_HONOR => array(USER_STAT_SKILL_HONOR_CB)
+);
+
+function clan_stat_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_STATS,$ref,$add);
+}
+
+function clan_stat_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLAN_STATS,$ref,$add, $field_list);
+}
+
+function clan_stat_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CLAN_STATS, $ref, $add);
+}
+
+function clan_stat_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_STATS,$param,FIELD_CLAN_STATS);
+}
+
+function clan_stat_delete($ref) {
+	global $db_2;
+	common_delete($db_2,TABLE_CLAN_STATS,$ref);
+	return true;
+}
+
+// Функция переноса накопленных пользователем статов в копилку клана
+function clan_stat_save_user_stats($clan_id, $user_id) {
+	global $clan_stat_dependency;
+	if (!$clan_id || !$user_id) return false;
+
+	// Выбираем артикулы показателей клановой статистики, которые привязаны к статистике пользователей
+	$clan_stat_artikuls = make_hash(clan_stat_artikul_list(false, ' AND type_id > 0 AND object_id > 0 '));
+	if (!$clan_stat_artikuls) return false;
+
+	$object_ids = array();
+	$clan_stat_artikul_id_hash = array();
+	foreach ($clan_stat_artikuls as $stat) {
+		$object_ids = array($stat['object_id']);
+		if ($stat['type_id'] == USER_STAT_TYPE_SKILL && isset($clan_stat_dependency[$stat['object_id']])) {
+			$object_ids = array_merge($object_ids, $clan_stat_dependency[$stat['object_id']]);
+		}
+		$clan_stat_artikul_id_hash[$stat['type_id']][$stat['object_id']] = $stat['id'];
+		
+		$user_stats = user_stat_list(array('type_id' => $stat['type_id'], 'object_id' => $object_ids, 'user_id' => $user_id));
+		
+		$stat_value_inc = 0;
+		foreach ($user_stats as $user_stat) {
+			$clan_stat_artikul_id = $clan_stat_artikul_id_hash[$stat['type_id']][$stat['object_id']];
+			if (!$clan_stat_artikul_id) continue;
+		}
+		$stat_value_inc += max(0,intval($user_stat['value'] - $user_stat['before_clan_value']));
+		clan_stat_save(array(
+			'_mode' => CSMODE_INSERT,
+			'clan_id' => $clan_id,
+			'clan_stat_artikul_id' => $clan_stat_artikul_id,
+			'clan_value' => $stat_value_inc,
+			'_add' => sql_pholder(' ON DUPLICATE KEY UPDATE clan_value = clan_value + ? ', $stat_value_inc),
+		));
+	}
+
+//	сбрасываем сохранённые ранее показатели пользовательской статистики до вступления в клан
+	user_stat_save(array(
+		'clan_id' => 0,
+		'before_clan_value' => 0,
+		'_add' => sql_pholder(' AND user_id = ? AND clan_id = ? ', $user_id, $clan_id),
+	));
+	return true;
+}
+
+function clan_stat_update_levels($clan_id, $clan_stat_artikuls) {
+	if (!$clan_stat_artikuls || !$clan_id) {
+		error_log(sprintf('clan_stat_update_levels: Incorrect arguments, Clan Id [%s] or Artikuls [%s]!', $clan_id, $clan_stat_artikuls));
+		return false;
+	}
+
+	if (!is_array($clan_stat_artikuls)) {
+		$clan_stat_artikuls = array($clan_stat_artikuls);
+	}
+
+	$clan_stat_artikul_ids = get_hash($clan_stat_artikuls, 'id', 'id');
+
+	$clan = clan_get($clan_id);
+
+	$clan_stat_hash = array();
+	if ($clan_stat_artikul_ids) {
+		$clan_stat_hash = make_hash(clan_stat_list(array(
+			'clan_id' => $clan_id,
+			'clan_stat_artikul_id' => $clan_stat_artikul_ids,
+		)), 'clan_stat_artikul_id');
+	}
+
+    $exp_artikul = clan_stat_artikul_get(array('type_id'=>USER_STAT_TYPE_SKILL,'object_id'=>USER_STAT_SKILL_EXP));
+    $honor_artikul = clan_stat_artikul_get(array('type_id'=>USER_STAT_TYPE_SKILL,'object_id'=>USER_STAT_SKILL_HONOR));
+
+	foreach ($clan_stat_artikuls as $clan_stat_artikul) {
+		$clan_stat = $clan_stat_hash[$clan_stat_artikul['id']];
+		$value = intval($clan_stat['total_value']);
+
+		// получение текущего уровня
+		$actual_level = clan_stat_artikul_level_get(array('clan_stat_artikul_id' => $clan_stat_artikul['id']),
+			sql_pholder(' AND value <= ? ORDER BY value DESC', $value));
+
+		if (!$actual_level) {
+			$actual_level = array(
+				'id' => 0,
+				'level' => 0,
+			);
+		}
+
+		if($actual_level['level'] > 0 && $clan_stat_artikul['id'] == $exp_artikul['id'] && $actual_level['level'] > $clan['gl_level']){
+		    clan_save(array(
+		        'id' => $clan['id'],
+                'gl_level' => $actual_level['level'],
+            ));
+            if($actual_level['level'] > 1) clan_stat_archive($clan_id, false, CLAN_STAT_TYPE_LEVEL, $actual_level['level']);
+        }
+        if($actual_level['level'] > 0 && $clan_stat_artikul['id'] == $honor_artikul['id'] && ($actual_level['level'] - 1) > $clan['gl_rank']){
+            clan_save(array(
+                'id' => $clan['id'],
+                'gl_rank' => ($actual_level['level'] - 1),
+            ));
+            clan_stat_archive($clan_id, false, CLAN_STAT_TYPE_RANK, ($actual_level['level'] - 1));
+        }
+
+		clan_stat_save(array(
+			'_mode' => CSMODE_INSERT,
+			'clan_id' => $clan_id,
+			'clan_stat_artikul_id' => $clan_stat_artikul['id'],
+			'clan_stat_artikul_level_id' => $actual_level['id'],
+			'clan_stat_artikul_level' => $actual_level['level'],
+			'_add' => sql_pholder(' ON DUPLICATE KEY UPDATE clan_stat_artikul_level_id = ?, clan_stat_artikul_level = ?', $actual_level['id'], $actual_level['level']),
+			'_cnt' => true,
+		));
+	}
+
+	return true;
+}
+
+function clan_stat_update($clan_id, $clan_stat_artikuls) {
+	global $NODE_NUMS, $clan_stat_dependency;
+
+	if (!$clan_stat_artikuls || !$clan_id) {
+		error_log(sprintf('clan_stat_update: Incorrect arguments, Clan Id [%s] or Artikuls [%s]!', $clan_id, $clan_stat_artikuls));
+		return false;
+	}
+
+	if (!is_array($clan_stat_artikuls)) {
+		$clan_stat_artikuls = array($clan_stat_artikuls);
+	}
+
+	// результатирующий хеш
+	$object_ids = array();
+	$clan_stat_artikul_hash = array();
+	foreach ($clan_stat_artikuls as $stat) {
+		$object_ids = array($stat['object_id']);
+		if ($stat['type_id'] == USER_STAT_TYPE_SKILL && isset($clan_stat_dependency[$stat['object_id']])) {
+			$object_ids = array_merge($object_ids, $clan_stat_dependency[$stat['object_id']]);
+		}
+		$clan_stat_artikul_hash[$stat['type_id']][$stat['object_id']] = array(
+			'id' => $stat['id'],
+			'value' => 0,
+		);
+		
+		foreach ($NODE_NUMS as $nn) {
+			if (!NODE_SWITCH($nn)) {
+				error_log(sprintf('clan_stat_update: Unable to switch to Node [%d]', $nn));
+				continue;
+			}
+
+			// все подходящие статы для этого клана
+			$user_stat_list = user_stat_list(array('clan_id' => $clan_id, 'type_id' => $stat['type_id'], 'object_id' => $object_ids), '', 'before_clan_value, value, type_id, object_id, user_id, do_clan_value');
+			foreach ($user_stat_list as $user_stat) {
+				$clan_stat_artikul_hash[$stat['type_id']][$stat['object_id']]['value'] += max(0,($user_stat['value'] - $user_stat['before_clan_value']));
+                if($user_stat['type_id'] == USER_STAT_TYPE_SKILL && ($user_stat['object_id'] == USER_STAT_SKILL_EXP || $user_stat['object_id'] == USER_STAT_SKILL_HONOR) && $user_stat['do_clan_value'] > 0){
+                    //Фикс начисления!
+                    $clan_stat_artikul_hash[$stat['type_id']][$stat['object_id']]['do_value'] += max(0,$user_stat['do_clan_value']);
+                    user_stat_save(array(
+                        '_add' => sql_pholder(' AND user_id = ? AND type_id = ? AND object_id = ?', $user_stat['user_id'], $user_stat['type_id'], $user_stat['object_id']),
+                        '_set' => sql_pholder(' do_clan_value = 0'),
+                    )); //Удаляем do_clan_value у юзера
+                }
+			}
+		}
+	}
+    //logfile(DEBUG_FILE_LOG_DEV, print_r($clan_stat_artikul_hash, true));
+	foreach ($clan_stat_artikul_hash as $type_id => $clan_stat_object_ids) {
+		foreach ($clan_stat_object_ids as $object_id => $clan_stat) {
+		    if($clan_stat['do_value']){
+                clan_stat_save(array(
+                    '_mode' => CSMODE_INSERT,
+                    'clan_id' => $clan_id,
+                    'clan_stat_artikul_id' => $clan_stat['id'],
+                    'clan_value' => $clan_stat['do_value'],
+                    '_add' => sql_pholder(' ON DUPLICATE KEY UPDATE clan_value = clan_value + ? ', $clan_stat['do_value']),
+                    '_cnt' => true,
+                )); //Надеюсь все четко будет :)
+            }
+			clan_stat_save(array(
+				'_mode' => CSMODE_INSERT,
+				'clan_id' => $clan_id,
+				'clan_stat_artikul_id' => $clan_stat['id'],
+				'total_value' => $clan_stat['value'],
+				'_add' => sql_pholder(' ON DUPLICATE KEY UPDATE total_value = clan_value + ? ', $clan_stat['value']),
+				'_cnt' => true,
+			));
+		}
+	}
+
+	return true;
+}
+
+function clan_stat_multi_update($data, $data_fields, $update_fields=array()) {
+	global $db_2;
+	return common_multi_update($db_2, TABLE_CLAN_STATS, $data, $data_fields, $update_fields);
+}
+
+//////////////
+
+function clan_stat_artikul_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_STAT_ARTIKULS,$ref,$add);
+}
+
+function clan_stat_artikul_list($ref=false, $add='', $field_list ='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLAN_STAT_ARTIKULS,$ref,$add,$field_list);
+}
+
+function clan_stat_artikul_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CLAN_STAT_ARTIKULS, $ref, $add);
+}
+
+function clan_stat_artikul_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_STAT_ARTIKULS,$param,FIELD_CLAN_STAT_ARTIKULS);
+}
+
+function clan_stat_artikul_delete($ref) {
+	global $db_2;
+	if (!$ref || is_array($ref)) return false;
+	if (!is_array($ref)) $ref = array('id' => $ref);
+
+	$deleted_artikuls = common_list($db_2,TABLE_CLAN_STAT_ARTIKULS,$ref,'','id');
+
+	if (!$deleted_artikuls) {
+		return false;
+	}
+
+	if (!common_delete($db_2,TABLE_CLAN_STAT_ARTIKULS,$ref)) {
+		return false;
+	}
+
+	$deleted_artikul_ids = get_hash($deleted_artikuls, 'id', 'id');
+	clan_stat_delete(array( // удаляем все связанные статы
+		'clan_stat_artikul_id' => $deleted_artikul_ids,
+	));
+	clan_stat_artikul_level_delete(array( // удаляем все связанные уровни
+		'clan_stat_artikul_id' => $deleted_artikul_ids,
+	));
+
+
+	return true;
+}
+
+//////////////
+
+function clan_stat_artikul_level_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_STAT_ARTIKUL_LEVELS,$ref,$add);
+}
+
+function clan_stat_artikul_level_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLAN_STAT_ARTIKUL_LEVELS,$ref,$add);
+}
+
+function clan_stat_artikul_level_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CLAN_STAT_ARTIKUL_LEVELS, $ref, $add);
+}
+
+function clan_stat_artikul_level_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_STAT_ARTIKUL_LEVELS,$param,FIELD_CLAN_STAT_ARTIKUL_LEVELS);
+}
+
+function clan_stat_artikul_level_delete($ref) {
+	global $db_2;
+	if (!common_delete($db_2,TABLE_CLAN_STAT_ARTIKUL_LEVELS,$ref)) {
+		return false;
+	}
+
+	return true;
+}
+
+/*функция добавления как типа в бонусах*/
+function clan_stat_skill_add($clan_id, $user_stat, $value, $relative = true, $have_skill = false) {
+    if(!$user_stat || !$clan_id) return false;
+    $type_id = USER_STAT_TYPE_SKILL;
+    $object_id = $user_stat;
+    $clan_stat_artikul = clan_stat_artikul_get(array('type_id' => $type_id, 'object_id' => $object_id));
+    if(!$clan_stat_artikul) return false;
+    $clan_stat_artikul_id = $clan_stat_artikul['id'];
+    if(!$clan_stat_artikul_id) return false;
+
+    $clan_stat_old = clan_stat_get(array('clan_id' => $clan_id, 'clan_stat_artikul_id' => $clan_stat_artikul_id));
+    if ($have_skill && !$clan_stat_old) {
+        return false;
+    }
+    if ($clan_stat_old) {
+        if ($relative) {
+            $total_value = $clan_stat_old['total_value']+$value;
+            $value += $clan_stat_old['clan_value'];
+        } else {
+            $total_value = $clan_stat_old['total_value'] - $clan_stat_old['clan_value']+$value;
+        }
+        $clan_stat = array(
+            'id' => $clan_stat_old['id'],
+            'clan_value' => $value,
+            'total_value' => $total_value
+        );
+    } else {
+        $clan_stat = array(
+            'clan_id' => $clan_id,
+            'clan_stat_artikul_id' => $clan_stat_artikul_id,
+            'clan_value' => $value,
+            'total_value' => $value
+        );
+    }
+    $status = clan_stat_save($clan_stat);
+    return $status;
+}
+
+?>

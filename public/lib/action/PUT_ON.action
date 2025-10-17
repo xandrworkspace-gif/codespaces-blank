@@ -1,0 +1,324 @@
+<? # $Id: PUT_ON.action,v 1.23 2010-02-13 14:18:19 p.knoblokh Exp $
+
+// действие "надеть предмет"
+
+$inventory_swf_ignored_slots = array('EFFECT', 'VARIANT_EFFECT');
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if ($object['slot_id']) return;
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+if (!isset($artikul) || $artikul['id'] != $object['artikul_id']) { // может уже существовать из MOUNT.action
+    $artikul = artifact_artikul_get($object['artikul_id']);
+}
+$inventory_swf = in_array($artikul['slot_id'], $inventory_swf_ignored_slots) ? '' : "'inventory':'',";
+global $class_info;
+
+$restriction_art = artifact_artikul_restriction_check($artikul, $subject, ARTIFACT_RESTRICTIONS_FLAG_ACTION_PUTON);
+if($restriction_art['error']) {
+    $out['error'] = translate($restriction_art['error']);
+    return;
+}
+
+if (!$artikul['slot_id']) {
+    $out['error'] = translate('Эту вещь нельзя надеть!');
+    return;
+}
+
+if($artikul['slot_id'] == 'ARK'){
+    $arkat_max = user_get_slot_num_max($subject['id'], 'ARK');
+    if(user_get_artifact_count($subject['id'], 'ARK') >= $arkat_max){
+        if($arkat_max > 0) {
+            $out['error'] = translate('В вашем браслете максимум аркатов!');
+            return;
+        }else{
+            $out['error'] = translate('На вас нет браслета!');
+            return;
+        }
+    }
+}
+
+if ($artikul['class']) {
+    if ((intval($artikul['class']) & intval($subject['class'])) != intval($subject['class'])) {
+        $out['error'] = translate('Вы не можете надеть предмет данной школы магии!');
+        return;
+    }
+} elseif ($subject['class'] && ($artikul['trend'] > 0) && ($class_info[$subject['class']]['trend'] != $artikul['trend'])) {
+    $out['error'] = translate('Вы не можете одеть вещь данного стиля боя!');
+    return;
+}
+if ($object['flags'] & ARTIFACT_FLAG_ACTING_GUARD && in_array($subject['object_class'],array(OBJECT_CLASS_USER))) {
+    if ($subject['instance_id']) {
+        $out['error'] = translate('Вы не можете одеть эту вещь находясь в инстансе!');
+        return;
+    }
+    $bg_user = bg_user_get(array('user_id' => $subject['id']), sql_pholder(' AND (status = ?#BG_USER_STATUS_WAITING OR status = ?#BG_USER_STATUS_PENDING)'));
+    if ($bg_user) {
+        $out['error'] = translate('Вы не можете одеть эту вещь с активной заявкой на поле битвы!');
+        return;
+    }
+    $instance_user = instance_user_get(array('user_id' => $subject['id']));
+    if ($bg_user) {
+        $out['error'] = translate('Вы не можете одеть эту вещь с активной заявкой в инстанс!');
+        return;
+    }
+}
+if ($object['durability_max'] && ($object['durability'] <= 0)) {
+    $out['error'] = translate('Нельзя одеть вещь без прочности!');
+    return;
+}
+if ($subject['level'] < $artikul['level_min']) {
+    $out['error'] = sprintf(translate('Нельзя одеть эту вещь на персонажа ниже %d уровня!'),$artikul['level_min']);
+    return;
+}
+if (($artikul['level_max'] >= $artikul['level_min']) && ($subject['level'] > $artikul['level_max'])) {
+    $out['error'] = sprintf(translate('Нельзя одеть эту вещь на персонажа выше %d уровня!'),$artikul['level_max']);
+    return;
+}
+if ($artikul['gender'] && ($subject['gender'] != $artikul['gender'])) {
+    $gender_str = array(1 => translate('мужскую'), 2 => translate('женскую'));
+    $out['error'] = sprintf(translate('Нельзя одеть %s вещь!'),$gender_str[$artikul['gender']]);
+    return;
+}
+
+// одевание для стекающихся вещей
+if ($object['cnt'] > 0) {
+    $variant_slot_num_max = user_get_slot_num_max($subject['id'], 'VARIANT_EFFECT');
+    if ($in['variant_effect'] && $artikul['slot_id'] == 'EFFECT' && $variant_slot_num_max > 0) $artikul['slot_id'] = 'VARIANT_EFFECT';
+    $slot_num_max = user_get_slot_num_max($subject['id'], $artikul['slot_id']);
+
+    $slot_num = intval($in['slot_num']);
+    if ($artikul['weight'] > 0) {
+        $weight = max(1,$artikul['weight']);
+    } else { // Если предмет невесомый, то считаем его вес за максимальный при надевании в слот
+        $weight = SLOT_WEIGHT_MAX;
+    }
+
+    $cnt_max = intval(SLOT_WEIGHT_MAX/$weight);
+    // карман не задан, выбираем сами
+    if (!$slot_num) {
+        // пытаемся вложить уже в заполненные слоты
+        if ($artikul['slot_id'] == 'EFFECT' && $variant_slot_num_max > 0) {
+            $artifact_list_hash = make_hash(user_get_artifact_list($subject['id'],array('EFFECT','VARIANT_EFFECT')), 'slot_id', true);
+            $artifact_list = make_hash($artifact_list_hash['EFFECT'], 'slot_num');
+            $variant_effects = make_hash($artifact_list_hash['VARIANT_EFFECT'], 'slot_num');
+        } else {
+            $artifact_list = user_get_artifact_list($subject['id'],$artikul['slot_id']);
+        }
+        foreach ($artifact_list as $artifact) {
+            if (($artifact['artikul_id'] != $object['artikul_id']) || ($artifact['cnt'] >= $cnt_max)) {
+                // проверка доступных вариативных слотов с эффектами
+                if ($artikul['slot_id'] == 'EFFECT' && 1 == 2) {
+                    $sub_slots = array($artifact['slot_num'] * 2 - 1, $artifact['slot_num'] * 2);
+                    foreach ($sub_slots as $sub_slot) {
+                        if ($variant_effects[$sub_slot] && $variant_effects[$sub_slot]['cnt'] < $cnt_max
+                            && $variant_effects[$sub_slot]['artikul_id'] == $object['artikul_id'])
+                        {
+                            $artikul['slot_id'] = 'VARIANT_EFFECT';
+                            $slot_num = $artifact['slot_num'];
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+            $slot_num = $artifact['slot_num'];
+            break;
+        }
+        // все еще не нашли подходящий карман
+        // ищем пустые слоты между заполненными
+        if (!$slot_num) {
+            $slot_nums = get_hash($artifact_list,'slot_num','slot_num');
+            $t = array_diff(range(1,($slot_nums?max($slot_nums):0)+1),$slot_nums);
+            $slot_num = reset($t);
+            // для эффектов смотрим пустые вариативные
+            if ($artikul['slot_id'] == 'EFFECT' && $variant_effects) {
+                $variant_slot_nums = get_hash($variant_effects,'slot_num','slot_num');
+                $t = array_diff(range(1,($variant_slot_nums?max($variant_slot_nums):0)+1),$variant_slot_nums);
+                $variant_slot_num = reset($t);
+            }
+        }
+    }
+    $slot_num = min(max($slot_num,1),$slot_num_max);
+    // для эффектов смотрим пустые вариативные
+    if ($artikul['slot_id'] == 'EFFECT' && !intval($in['slot_num']) && 1 == 2) {
+        $variant_slot_num = min(max($variant_slot_num,1),$variant_slot_num_max);
+        if ($slot_num && $variant_slot_num && $slot_num > ceil($variant_slot_num / 2)) {
+            $artifact = $variant_effects[$variant_slot_num];
+            // Проверяем вариативный слот на заполненность
+            if (!(max($cnt_max-intval($artifact['cnt']),0) <= 0) && !($artifact && $artifact['artikul_id'] != $object['artikul_id'])
+                && !($artifact['time_expire'] > 0 && $artifact['time_expire'] < time_current()))
+            {
+                $artikul['slot_id'] = 'VARIANT_EFFECT';
+                $slot_num = $variant_slot_num;
+            }
+        }
+    }
+
+    if ($artikul['slot_id'] == 'BANNER') {
+        $in['slot_num'] = BANNER_SLOT_NUM;
+    }
+
+    $artifact = artifact_get(false,sql_pholder(" AND user_id=? AND slot_id=? AND slot_num=? AND ( time_expire = 0 OR time_expire > ? )",$subject['id'],$artikul['slot_id'],$slot_num, time_current()));
+    $cnt1 = intval($object['cnt']); // кол-во в рюкзаке
+    $cnt2 = intval($artifact['cnt']); // кол-во в кармане
+    $cnt_avail = max($cnt_max-$cnt2,0); // сколько можем еще одеть
+    $cnt_delta = min($cnt_avail,$cnt1); // сколько фактически оденем
+    if ($cnt_avail <= 0) {
+        $out['error'] = translate('Выбранный карман не может вместить эту вещь!');
+        return;
+    }
+    $artifact_id = intval($artifact['id']);
+    if (!$artifact) {
+        if ($object['cnt'] <= $cnt_max) { // помещается все полностью
+            artifact_save(array(
+                'id' => $object['id'],
+                'user_id' => $subject['id'],
+                'slot_id' => $artikul['slot_id'],
+                'slot_num' => $slot_num,
+            ));
+            $out['status'] = ACTION_STATUS_OK;
+            //chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => "updateSwf({'lvl':'','items':'".($slot_num ? "&curSlot=".$slot_num : '')."',".$inventory_swf."'items_right':''});"));
+            artifact_bag_send_diff($subject['id'], $object['id']);
+            return;
+        }
+        $artifact_id = artifact_create($object['artikul_id'],1,$subject['id'],false,$artikul['slot_id'],false,array('slot_num' => $slot_num, 'cnt' => 0));
+        if (!$artifact_id) return; // some kind of shit happened!
+    } elseif ($artifact['artikul_id'] != $object['artikul_id']) {
+        if (in_array($artikul['slot_id'], array('EFFECT', 'VARIANT_EFFECT'))) {
+            $out['error'] = translate('Выбранный карман занят вещью другого типа!');
+        } else {
+            $out['error'] = translate('Нет места под эту вещь!');
+        }
+        return;
+    }
+    if (artifact_change_cnt($object['id'],-$cnt_delta)) {
+        artifact_change_cnt($artifact_id,$cnt_delta, '', array(
+            'time_expire' => $object['time_expire'],
+        ));
+    }
+    if ($cnt_delta >= $cnt1) artifact_delete($object);
+    $out['status'] = ACTION_STATUS_OK;
+    $out['param_success'] = array('slot_num' => $slot_num);
+    //chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => "updateSwf({'lvl':'','items':'".($slot_num ? "&curSlot=".$slot_num : '')."',".$inventory_swf."'items_right':''});"));
+    artifact_bag_send_diff($subject['id'], $object['id']);
+    return;
+}
+// Одевание вещей без количества и веса, но с количеством карманов в слоте более одного
+$slot_num_max = user_get_slot_num_max($subject['id'], $artikul['slot_id']);
+if ($slot_num_max > 1) {
+    $artifact_list = user_get_artifact_list($subject['id'],$artikul['slot_id']);
+    $slot_nums = get_hash($artifact_list,'slot_num','slot_num');;
+    $t = array_diff(range(1,$slot_num_max),$slot_nums);
+    $slot_num = reset($t);
+    if (!$slot_num) {
+        $out['error'] = translate('Нет места под эту вещь!');
+        return;
+    }
+    $param = array(
+        'id' => $object['id'],
+        'user_id' => $subject['id'],
+        'slot_id' => $artikul['slot_id'],
+        'slot_num' => $slot_num,
+    );
+    if ($object['flags'] & ARTIFACT_FLAG_BOE) $param['flags'] = ($object['flags'] & ~ARTIFACT_FLAG_BOE) | ARTIFACT_FLAG_NOGIVE;
+    artifact_save($param);
+    $out['status'] = ACTION_STATUS_OK;
+    //chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => "updateSwf({'lvl':'','items':'".($slot_num ? "&curSlot=".$slot_num : '')."',".$inventory_swf."'items_right':''});"));
+    artifact_bag_send_diff($subject['id'], $object['id']);
+    return;
+}
+
+$undress_slots = array($artikul['slot_id']);
+if ($artikul['slot_id'] == 'LHAND') {
+    $rhand_arts = user_get_artifact_list($subject['id'], 'RHAND', sql_pholder(' AND ('.($artikul['flags'] & ARTIFACT_FLAG_ARMOR_STYLE ? 'flags & ?#ARTIFACT_FLAG_ARMOR_STYLE' : '1 = 1').')'));
+    //TODO: FIX 2018 чтобы артефакты не надевались много
+    if ($rhand_arts && ($rhand_arts[0]['flags'] & ARTIFACT_FLAG_WEAPON)) {
+        $rhand_art_artikul = artifact_artikul_get($rhand_arts[0]['artikul_id']);
+        if ($rhand_art_artikul['f_cfg'] & ARTIFACT_PPT_MW) {
+            $undress_slots[] = 'RHAND';
+        }
+    }
+}
+if ($artikul['slot_id'] == 'PR_BAG') {
+    //chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => 'user_show_prof_bag(1)'));
+}
+if (($artikul['slot_id'] == 'RHAND') && ($object['flags'] & ARTIFACT_FLAG_WEAPON) && ($artikul['f_cfg'] & ARTIFACT_PPT_MW)) {
+    $undress_slots[] = 'LHAND';
+}
+// Снятие ресурсов из проф. рюкзака
+if ($artikul['slot_id'] == 'PR_BAG') {
+    $bag_artifact_hash = make_hash(user_get_artifact_list($subject['id'], '', '', ARTIFACT_STORAGE_TYPE_PR_BAG));
+    if (count($bag_artifact_hash)) {
+        foreach($bag_artifact_hash as $prof_bag_artifact) {
+            artifact_move($prof_bag_artifact['id'], $prof_bag_artifact['cnt'], $subject['id'], false, false, array(), ARTIFACT_STORAGE_TYPE_USER);
+        }
+    }
+}
+
+$artifact_list = artifact_list(false, $subject['id'], $undress_slots, true, false, sql_pholder(' AND ('.($artikul['flags'] & ARTIFACT_FLAG_ARMOR_STYLE ? 'flags & ?#ARTIFACT_FLAG_ARMOR_STYLE' : '1 = 1').')'));
+$put_off_ids = array();
+$guard_putoff = false;
+while (count($artifact_list)) {
+    $artifact = array_pop($artifact_list);
+    // Шмотка в слоте травмирована и время травмы не истекло
+    if ($artifact['type_id'] == ARTIFACT_TYPE_ID_INJURY && $artifact['time_expire'] > time_current()) {
+        $out['error'] = translate('У Вас травмирована эта часть тела!');
+        return;
+    }
+    // Если одеваемая вещь - шмотка стиля, а текущая вещь (выбранная из слота) - нет, то снимать не нужно
+    if (($artikul['flags'] & ARTIFACT_FLAG_ARMOR_STYLE) && !($artifact['flags'] & ARTIFACT_FLAG_ARMOR_STYLE)) {
+        continue;
+    }
+    // Если текущая вещь - жетон стража, то нужно снять с пользователя флаг
+    if (($artifact['flags'] & ARTIFACT_FLAG_ACTING_GUARD)) $guard_putoff = true;
+    $put_off_ids[] = $artifact['id'];
+}
+if ($put_off_ids) {
+    artifact_save(array(
+        '_set' => sql_pholder(' slot_id = ?, slot_num = ? ', '', $object['slot_num']),
+        '_add' => sql_pholder(" AND id IN (?@) ", $put_off_ids),
+    ));
+}
+$param = array(
+    'id' => $object['id'],
+    'user_id' => $subject['id'],
+    'slot_id' => $artikul['slot_id'],
+);
+if ($object['flags'] & ARTIFACT_FLAG_BOE) $param['flags'] = ($object['flags'] & ~ARTIFACT_FLAG_BOE) | ARTIFACT_FLAG_NOGIVE;
+artifact_save($param);
+
+try{
+    artifact_energy_slot_change($subject['id'], $object['id'], $param['slot_id'], $artikul['farm_energy'], ENERGY_TYPE_FARM);
+}catch (Exception $artifact_energy_exception){}
+
+// Разруливаем флаг стража на пользователе
+$user_guard = $subject['flags2'] & USER_FLAG2_ACTING_GUARD;
+$item_guard = $object['flags'] & ARTIFACT_FLAG_ACTING_GUARD;
+
+// Если на юзере есть флаг, а на надеваемом предмете - нет, нам важно, был ли флаг на снимаемом
+if ($user_guard && !$item_guard && $guard_putoff) {
+    user_save(array(
+        'id' => $subject['id'],
+        'flags2' => $subject['flags2'] & ~USER_FLAG2_ACTING_GUARD,
+    ));
+}
+// Если на юзере нет флага, а на надеваемом предмете - есть, нужно поставить флаг на юзера
+if (!$user_guard && $item_guard) {
+    user_save(array(
+        'id' => $subject['id'],
+        'flags2' => $subject['flags2'] | USER_FLAG2_ACTING_GUARD,
+    ));
+}
+
+//chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => "updateSwf({'lvl':'','items':'".($slot_num ? "&curSlot=".$slot_num : '')."',".$inventory_swf."'items_right':''});"));
+if ($param['slot_id'] != 'MOUNT') {
+    $put_off_ids[] = $object['id'];
+}
+artifact_bag_send_diff($subject['id'], $put_off_ids);
+
+$out['status'] = ACTION_STATUS_OK;

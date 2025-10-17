@@ -1,0 +1,83 @@
+<?php
+require_once("lib/buildings.lib");
+define('TABLE_CRAFT_AUCTION_LOT', 'craft_auction_lot');
+define('FIELD_CRAFT_AUCTION_LOT','');
+
+//COST TYPE
+define('CRAFT_AUCTION_CTYPE_ARTIKUL', 1);
+define('CRAFT_AUCTION_CTYPE_MONEY', 2);
+
+global $craft_lot_duration_hash;
+$craft_lot_duration_hash = array(
+    2 => array('id' => 2, 'title' => translate('2 часа'), 'rate' => 1.0, 'time_left' => translate('Мало') ),
+    8 => array('id' => 8, 'title' => translate('8 часов'), 'rate' => 1.70, 'time_left' => translate('Средне')),
+    24 => array('id' => 24, 'title' => translate('24 часа'), 'rate' => 2.6, 'time_left' => translate('Много')),
+);
+
+define('CRAFT_AUCTION_FLAG2_USER_BLIND',	0x0001); //Пользователь невидим на аукционе
+define('CRAFT_AUCTION_FLAG2_USER_SUPER',	0x0002); //Выделение заявки на аукционе
+
+/////////////////////////////////////////
+function craft_auction_lot_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_CRAFT_AUCTION_LOT,$ref,$add);
+}
+
+function craft_auction_lot_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_CRAFT_AUCTION_LOT,$ref,$add);
+}
+
+function craft_auction_lot_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_CRAFT_AUCTION_LOT, $ref, $add);
+}
+
+function craft_auction_lot_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_CRAFT_AUCTION_LOT,$param,FIELD_CRAFT_AUCTION_LOT);
+}
+
+function craft_auction_lot_delete($ref=false) {
+    global $db_path;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_path,TABLE_CRAFT_AUCTION_LOT,$ref);
+}
+
+function craft_auction_lot_update_time() {
+    global $db_path;
+    $result = common_table_status($db_path, TABLE_CRAFT_AUCTION_LOT, 'UNIX_TIMESTAMP(UPDATE_TIME) AS update_time, UNIX_TIMESTAMP() AS server_time');
+    return array(
+        'update_time' => $result['update_time'],
+        'no_cache' => ($result['update_time'] >= $result['server_time']-3)
+    );
+}
+
+define('CRAFT_AUCTION_COMMISSION_START', 10);
+define('CRAFT_AUCTION_COMMISSION_END', 0.1);
+define('CRAFT_AUCTION_CANCEL_MIN_PRICE', 0.10);
+define('CRAFT_AUCTION_MIN_PRICE', 0.41);
+define('CRAFT_AUCTION_LOT_MAX', 5);
+
+function craft_auction_commission_start($duration) {
+    global $craft_lot_duration_hash;
+    $rate = $craft_lot_duration_hash[$duration]['rate'];
+    return pow(0.5, log(CRAFT_AUCTION_COMMISSION_START,10)+2)*CRAFT_AUCTION_COMMISSION_START * $rate;
+}
+
+function craft_auction_commission_end() {
+    return floatval(CRAFT_AUCTION_COMMISSION_START * CRAFT_AUCTION_COMMISSION_END);
+}
+
+function craft_auction_lot_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('CRAFT_AUCTION_LOT_'.intval($ref),$timewait,$timelock);
+}
+
+function craft_auction_lot_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('CRAFT_AUCTION_LOT_'.intval($ref));
+}

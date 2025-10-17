@@ -1,0 +1,94 @@
+<? # $Id: fbfeed.lib,v 1.16 2009-10-27 13:46:19 s.ignatenkov Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/tpl/common.tpl");
+
+define('TABLE_FBFEED','fbfeed');
+define('FIELD_FBFEED', '');
+define('FBFEED_PICTURE_COUNT', 5);
+// Флаги
+define('FBFEED_FLAG_SHOWNEWBY',  0x0001); 
+define('FBFEED_FLAG_SHOWAVATAR', 0x0002); 
+define('FBFEED_FLAG_SHOWOLDMAN', 0x0004); 
+define('FBFEED_FLAG_ONLYONE', 0x0008); 
+
+
+
+function fbfeed_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_FBFEED, $ref, $add);
+}
+
+function fbfeed_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_FBFEED, $ref, $add);
+}
+
+// Return item by id
+function fbfeed_get($ref, $add='') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_FBFEED, $ref, $add);
+}
+// Insert new item or update exists one
+function fbfeed_save($param)	{
+	global $db_diff;
+	return common_save($db_diff, TABLE_FBFEED, $param, FIELD_FBFEED);
+}
+// Delete record
+function fbfeed_delete($ref) {
+	global $db_diff;
+	return common_delete($db_diff, TABLE_FBFEED, $ref);
+}
+
+function fbfeed_json($obj, $user) {
+	global $current_site_domain, $FB_FEEDS;
+	if (!is_array($obj)) $obj = fbfeed_get($obj);
+	if (!$obj) return false;
+	if (!is_array($user)) $user = user_get($user);
+	if (!$user) return false;
+	if ($user['object_class'] != OBJECT_CLASS_USER) return false;
+	
+	if ($obj['object_class'] == OBJECT_CLASS_ARTIFACT) {
+		artifact_artikul_get_title($obj);
+	}
+	
+	require_once("include/facebook/jsonwrapper/jsonwrapper.php");
+	
+	$out = array(
+		'short' => tpl_common_fbtags($obj['short'],$user),
+		'title' => tpl_common_fbtags($obj['title'],$user),
+		'body' => tpl_common_fbtags($obj['body'],$user),
+		'link_title' => tpl_common_fbtags($obj['link_title'],$user),
+		'link_url' => $obj['link_url'],
+		'images'=>array(),
+	);
+	if ($user && ($obj['flags'] & FBFEED_FLAG_SHOWNEWBY)) {
+		array_push($out['images'], array(
+			'src'=>SERVER_URL . PATH_IMAGE_FBFEED . sprintf("newby%s%s.jpg", $user['kind'], $user['gender']), 
+			'href'=>$obj['link_url'],
+		));
+	}
+	if ($user && ($obj['flags'] & FBFEED_FLAG_SHOWAVATAR)) {
+		array_push($out['images'], array(
+			'src'=>SERVER_URL . PATH_IMAGE_FBFEED . sprintf("avatar%s%s.jpg", $user['kind'], $user['gender']), 
+			'href'=>$obj['link_url'],
+		));
+	}
+	for($i=1; $i<=FBFEED_PICTURE_COUNT; $i++) {
+		if (!$obj['picture_'.$i]) continue;
+		array_push($out['images'], array(
+			'src'=>SERVER_URL . PATH_IMAGE_FBFEED . $obj['picture_'.$i], 
+			'href'=>$obj['link_url'],
+		));
+	}
+	if ($user && ($obj['flags'] & FBFEED_FLAG_SHOWOLDMAN)) {
+		array_push($out['images'], array(
+			'src'=>SERVER_URL . PATH_IMAGE_FBFEED . sprintf("oldman%s.jpg", $user['kind']), 
+			'href'=>$obj['link_url'],
+		));
+	}
+	if ($obj['flags'] & FBFEED_FLAG_ONLYONE) $obj['id'] = -1;
+	
+	return sprintf("%s, '%s', %s", $obj['id'], $FB_FEEDS[$obj['feed_id']], common_json_encode($out));
+}
+
+?>

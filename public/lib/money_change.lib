@@ -1,0 +1,32 @@
+<? # $Id: money_change.lib,v 1.7 2007-07-16 14:33:15 sen Exp $
+
+// Имена и поля таблиц
+define('TABLE_MONEY_CHANGES','money_changes');
+define('FIELD_MONEY_CHANGES','id, user_id, money_type, amount, stime, comment');
+
+
+function money_change_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_MONEY_CHANGES,$ref,$add);
+}
+
+function money_change_list($user_id=false, $time_start=false, $time_end=false, $add='') {
+	global $db_diff;
+	$query_add = '';
+	if ($user_id) $query_add .= sql_pholder(" AND (from_user_id=? OR to_user_id=?)", $user_id, $user_id);
+	if ($time_start) $query_add .= sql_pholder(" AND stime>=?",$time_start);
+	if ($time_end) $query_add .= sql_pholder(" AND stime<=?",$time_end);
+	return common_list($db_diff,TABLE_MONEY_CHANGES,false,$query_add.$add);
+}
+
+function money_change_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_MONEY_CHANGES,$param,FIELD_MONEY_CHANGES);
+}
+
+function money_change_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_MONEY_CHANGES,$ref,$add);
+}
+
+?>

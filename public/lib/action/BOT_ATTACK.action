@@ -1,0 +1,76 @@
+<? # $Id: BOT_ATTACK.action,v 1.2 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// Действие "Атака бота"
+//	$bot_attack_flags = array(
+//		1 => 'Нападение на бота',
+//		2 => 'Персонаж вне боя',
+//		4 => 'Закрытый бой',
+//	);
+
+global $object_table_info;
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+
+if ($subject['fight_id'] && !$subject['instance_id']) {
+	$fight = fight_get($subject['fight_id']);
+	if ($fight['level']) {
+		$out['error'] = translate('Нельзя призвать помощь в великую битву!');
+		return;
+	}
+
+    if($fight['type'] == FIGHT_TYPE_ARENA){
+        $out['error'] = translate('Вы не можете натравить морока на игрока в Арене равных.');
+        return;
+    }
+
+    if($fight['type'] == FIGHT_TYPE_ADV_DUEL){
+        $out['error'] = translate('Вы не можете натравить морока на игрока в дуэли.');
+        return;
+    }
+}
+if (!$subject['instance_id']) { // "мирные" локации
+	$area = area_get($subject['area_id']);
+	if ($area['flags'] & AREA_FLAG_NO_FIGHT) {
+		$out['error'] = translate('Бои в этом месте запрещены!');
+		return;
+	}
+}
+$subject_area = area_get($subject['area_id']);
+if ($subject_area['flags'] & AREA_FLAG_NO_MOROC_SET_ON){
+	$out['error'] = translate('Вы не можете натравить морока на этой локации.');
+	return;		
+}
+
+if ($subject['instance_id']) {
+	$object_instance = instance_get($subject['instance_id']);
+	if ($object_instance['flags'] & INST_FLAG_NO_MOROC_SET_ON) {
+		$out['error'] = translate('Вы не можете натравить морока в этой локации.');
+		return;
+	}
+}
+
+$bot_artikul = bot_artikul_get($action['param1']);
+if (!$bot_artikul) {
+	return;
+}
+
+$param = array(
+	'attack_user_attack' => ($action['param2'] & 1) > 0,
+	'attack_user_avail' => ($action['param2'] & 2) > 0,
+);
+if ($item['flags'] & 4) $param['fight_flags'] = FIGHT_FLAG_PRIVATE;
+if (!bot_attack($subject,intval($bot_artikul['id']),$param)) {
+	$out['error'] = translate('Не удалось выполнить действие!');
+	return;		
+}
+
+chat_msg_send_system(sprintf(translate('Вы вызвали "%s"'), $bot_artikul['nick']), CHAT_CHF_USER, $subject['id']);
+$out['status'] = ACTION_STATUS_OK;
+
+?>

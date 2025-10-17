@@ -1,0 +1,105 @@
+<? # $Id: castle.lib,v 1.16 2010-01-15 09:50:10 p.knoblokh Exp $
+
+define('CASTLE_MIN_CLAN_LEVEL', 2);	// минимальный уровень клана для подачи заявки на атаку замка
+define('CASTLE_LOCK_COOLDOWN', 10800);	// время кулдауна на вход
+define('CASTLE_TEAM_DEFENDERS', 1);	// ID команды защитников
+define('CASTLE_TEAM_ATTACKERS', 2);	// ID команды атакующих
+define('CASTLE_TAX', 5); // Сумма налога за посещение территорий замка
+define('CASTLE_TAX_ADMIN', 0); // Доля отчислений с налога администрации
+
+$castle_hash = array(
+	CASTLE_TEAM_DEFENDERS	=>	array('name' => 'defend', 'title' => translate('Защитники')),	// Количество защитников
+	CASTLE_TEAM_ATTACKERS	=>	array('name' => 'attack', 'title' => translate('Атакующие')),	// Количество атакующих
+);
+
+// Имена и поля таблиц
+define('TABLE_CASTLES','castles');
+define('FIELD_CASTLES','');
+define('TABLE_CASTLE_INFO','castle_info');
+define('FIELD_CASTLE_INFO','');
+define('TABLE_CASTLE_USERS','castle_users');
+define('FIELD_CASTLE_USERS','');
+
+function castle_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CASTLES,$ref,$add);
+}
+
+function castle_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CASTLES,$ref,$add);
+}
+
+function castle_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CASTLES, $ref, $add);
+}
+
+function castle_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CASTLES,$param,FIELD_CASTLES);
+}
+
+function castle_delete($ref) {
+	global $db_2;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_2,TABLE_CASTLES,$ref);
+	castle_user_delete(array('castle_id' => $ref));
+	return true;
+}
+
+function castle_info_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CASTLE_INFO,$ref,$add);
+}
+
+function castle_info_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CASTLE_INFO,$ref,$add);
+}
+
+function castle_info_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CASTLE_INFO,$param,FIELD_CASTLE_INFO);
+}
+
+function castle_info_delete($ref) {
+	global $db_2;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_2,TABLE_CASTLE_INFO,$ref);
+	return true;
+}
+
+function castle_user_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CASTLE_USERS,$ref,$add);
+}
+
+function castle_user_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_CASTLE_USERS,$ref,$add,$field_list);
+}
+
+function castle_user_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CASTLE_USERS,$param,FIELD_CASTLE_USERS);
+}
+
+function castle_user_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CASTLE_USERS,$ref,$add);
+}
+
+function castle_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('CASTLE_'.intval($ref),$timewait,$timelock);
+}
+
+function castle_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('CASTLE_'.intval($ref));
+}
+
+?>

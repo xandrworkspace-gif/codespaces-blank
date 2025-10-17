@@ -1,0 +1,74 @@
+<? #(igor_pauk develop)
+
+define('TABLE_BONUS_STAT','bonus_stat');
+define('FIELD_BONUS_STAT','');
+define('TABLE_BONUS_STAT_USER','bonus_stat_user');
+define('FIELD_BONUS_STAT_USER','');
+
+function bonus_stat_get($ref=false, $add='') {
+    global $db_2;
+    $bonus_stat = common_get($db_2,TABLE_BONUS_STAT,$ref,$add);
+    return $bonus_stat;
+}
+
+function bonus_stat_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_BONUS_STAT,$ref,$add,$field_list);
+}
+
+function bonus_stat_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BONUS_STAT, $ref, $add);
+}
+
+function bonus_stat_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BONUS_STAT,$param,FIELD_BONUS_STAT);
+}
+
+function bonus_stat_delete($ref) {
+    global $db_2;
+    if (!$ref || is_array($ref)) return false;
+    common_delete($db_2,TABLE_BONUS_STAT,$ref);
+    return true;
+}
+
+function bonus_stat_user_get($ref=false, $add='') {
+    global $db_2;
+    $bonus_stat = common_get($db_2,TABLE_BONUS_STAT_USER,$ref,$add);
+    return $bonus_stat;
+}
+
+function bonus_stat_user_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_BONUS_STAT_USER,$ref,$add,$field_list);
+}
+
+function bonus_stat_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BONUS_STAT_USER, $ref, $add);
+}
+
+function bonus_stat_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BONUS_STAT_USER,$param,FIELD_BONUS_STAT_USER);
+}
+
+function bonus_stat_user_delete($ref) {
+    global $db_2;
+    if (!$ref || is_array($ref)) return false;
+    common_delete($db_2,TABLE_BONUS_STAT_USER,$ref);
+    return true;
+}
+
+function bonus_stat_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('BONUS_STAT_'.intval($ref),$timewait,$timelock);
+}
+
+function bonus_stat_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('BONUS_STAT_'.intval($ref));
+}

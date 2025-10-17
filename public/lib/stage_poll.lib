@@ -1,0 +1,269 @@
+<?
+define('TABLE_STAGE_POOL_LIST', 'stage_poll');
+define('TABLE_STAGE_POOL_ITEM_LIST', 'stage_poll_item');
+define('TABLE_STAGE_POOL_CLIENT_LIST', 'stage_poll_client');
+
+define('STAGE_POLL_FLAG_MULTI', 0x0000001); //Можно выбрать сразу несколько ответов
+define('STAGE_POLL_FLAG_STANDART', 0x0000002); //Стандартные вопросы ДА/НЕТ
+
+$stage_pool_flags_hash = array(
+    STAGE_POLL_FLAG_MULTI => translate('Можно выбрать сразу несколько ответов'),
+    //STAGE_POLL_FLAG_STANDART => translate('Стандартные вопросы ДА/НЕТ'),
+);
+
+function stage_poll_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_STAGE_POOL_LIST,$ref,$add);
+}
+
+function stage_poll_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_STAGE_POOL_LIST,$ref,$add);
+}
+
+function stage_poll_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_STAGE_POOL_LIST, $ref, $add);
+}
+
+function stage_poll_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_STAGE_POOL_LIST,$param);
+}
+
+function stage_poll_delete($ref, $add='') {
+    global $db_diff;
+    common_delete($db_diff,TABLE_STAGE_POOL_LIST,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+function stage_poll_item_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_STAGE_POOL_ITEM_LIST,$ref,$add);
+}
+
+function stage_poll_item_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_STAGE_POOL_ITEM_LIST,$ref,$add);
+}
+
+function stage_poll_item_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_STAGE_POOL_ITEM_LIST, $ref, $add);
+}
+
+function stage_poll_item_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_STAGE_POOL_ITEM_LIST,$param);
+}
+
+function stage_poll_item_delete($ref, $add='') {
+    global $db_diff;
+    common_delete($db_diff,TABLE_STAGE_POOL_ITEM_LIST,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+function stage_poll_client_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_STAGE_POOL_CLIENT_LIST,$ref,$add);
+}
+
+function stage_poll_client_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_STAGE_POOL_CLIENT_LIST,$ref,$add);
+}
+
+function stage_poll_client_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_STAGE_POOL_CLIENT_LIST, $ref, $add);
+}
+
+function stage_poll_client_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_STAGE_POOL_CLIENT_LIST,$param);
+}
+
+function stage_poll_client_delete($ref, $add='') {
+    global $db_diff;
+    common_delete($db_diff,TABLE_STAGE_POOL_CLIENT_LIST,$ref,$add);
+    return true;
+}
+
+
+function stage_pool_info($id){
+    if(!$id) return false;
+    $stage_pool = stage_poll_get($id);
+    if(!$stage_pool) return false;
+    if(!$stage_pool['active']) return false;
+    $stage_pool['multi'] = ($stage_pool['flags'] & STAGE_POLL_FLAG_MULTI ? true : false);
+    $stage_pool_items = stage_poll_item_list(array('stage_poll_id' => $stage_pool['id']), ' ORDER BY weight ASC');
+    if(!$stage_pool_items) return false;
+    $stage_pool['questions'] = $stage_pool_items;
+    return $stage_pool;
+    return false;
+}
+
+function stage_poll_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('STAGE_POLL_'.intval($ref),$timewait,$timelock);
+}
+
+function stage_poll_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('STAGE_POLL_'.intval($ref));
+}
+
+function stage_pool_get_client_info($stage_poll_id = false, $user = array()){
+    if(!$stage_poll_id) return false;
+    $ip = common_pack_ip(common_client_ip());
+    if(!$ip) return false;
+    $common_info = array(
+        'stage_poll_id' => $stage_poll_id,
+        'user_id' => ($user['id'] ? $user['id'] : 0),
+        'ip' => ($ip),
+    );
+    if($common_info['user_id']) unset($common_info['ip']);
+    return $common_info;
+}
+
+function stage_pool_print($id, $user = array(), $width = 300, $init_js = false){
+    $stage_pool_info = stage_pool_info($id);
+    if(!$stage_pool_info) return false;
+    $html = '';
+    if($init_js) $html .= '<script language="javascript" src="'.static_get('js/jquery.js').'"></script>';
+    if($init_js) $html .= '<script language="javascript" src="'.static_get('js/common.js').'"></script>';
+    $html .= '<iframe id="stage_iframe_'.$id.'" width="'.$width.'" height="0" frameborder="0" name="stage_iframe_'.$id.'" src="/stage_poll.php?w='.$width.'&stage_poll_id='.$id.'" scrolling="no" sryle="display:none;"></iframe>';
+    return $html;
+}
+
+function _stage_pool_print($stage_pool_info, $user = array(), $width = 300){
+    $html = '';
+    if(!$stage_pool_info) return $html;
+
+    $common_info = stage_pool_get_client_info($stage_pool_info['id'],$user);
+    if(!$common_info) return $html;
+    $stage_pool_client = stage_poll_client_get($common_info);
+
+    $html .= '<script language="javascript" src="'.static_get('js/jquery.js').'"></script>';
+    $html .= '<link href="'.static_get('style/poll.css').'" rel="stylesheet" type="text/css">';
+
+    $html .= '<body id="stage_body">
+    <div  class="poolAjaxBody">
+    <table id="poolAjax" width="100%" border="0" cellspacing="0" cellpadding="0">
+  <tbody><tr height="22">
+	<td width="20" align="right" valign="bottom" class="tbl-shp-sml lt"><b></b></td>
+	<td class="tbl-shp-sml tt" valign="top" align="center">
+		<table border="0" cellspacing="0" cellpadding="0">
+		  <tbody><tr height="22">
+			<td width="27" class="tbl-usi-hdr lc"><b></b></td>
+			<td align="center" class="tbl-usi-hdr mbg">Опрос #'.$stage_pool_info['id'].'</td>
+			<td width="27" class="tbl-usi-hdr rc"><b></b></td>
+		  </tr>
+		</tbody></table>
+	</td>
+	<td width="20" align="left" valign="bottom" class="tbl-shp-sml rt"><b></b></td>
+  </tr>
+  <tr>
+	<td class="tbl-shp-sides ls">&nbsp;</td>
+	<td class="tbl-usi_bg" valign="top" align="left" style="padding: 6px 4px 6px 4px;">
+	<b>'.$stage_pool_info['title'].'</b><br>
+  '.($stage_pool_info['description'] ? '<p>'.$stage_pool_info['description'].'</p>' : '').'
+	<div id="formAjax">
+    <form method="post" action="stage_poll.php?action=vote" id="formPoll">
+    <input type="hidden" name="form[id]" value="'.$stage_pool_info['id'].'">
+      ';
+
+      if($stage_pool_info['multi']) {
+          $html .= html_checkbox('form[item]', get_hash($stage_pool_info['questions']), 0);
+      }else{
+          foreach ($stage_pool_info['questions'] as $id => $question) {
+              $html .= "<div class='answer'>
+         <input type='radio' name='form[item]' value='" . $question['id'] . "' class='otvet' id='" . $question['id'] . "'> <label for='" . $question['id'] . "'>" . $question['title'] . '</label>' .
+                  "</div>\r\n";
+          }
+      }
+      $html .= '<div class="w100" style="text-align:center;">'.html_button('Голосовать', 'butt2').'</div>';
+      $html .= '
+    </form>
+    </div>
+    <div id="resaltPoll">
+    ';
+    foreach ($stage_pool_info['questions'] as $id => $question) {
+        $html .= "<div class='answer' id='res_" . $question['id'] . "'>
+           <div class='nameanswer'></div>
+           <div class='font'></div>
+           </div>\r\n";
+    }
+    $html .= '<div class="button" id="er"></div>
+  </div>
+    </td>
+	<td class="tbl-shp-sides rs">&nbsp;</td>
+	</tr>
+	<tr height="18">
+	<td width="20" align="right" valign="top" class="tbl-shp-sml lb"><b></b></td>
+	<td class="tbl-shp-sml bb" valign="top" align="center">&nbsp;</td>
+	<td width="20" align="left" valign="top" class="tbl-shp-sml rb"><b></b></td>
+	</tr>
+</tbody></table>
+</div>
+    </body>';
+
+      ob_start();
+
+      $json_questions = array();
+      foreach ($stage_pool_info['questions'] as $question){
+          $json_questions[$question['id']] = get_params($question, 'id,title,value');
+      }
+
+      ?>
+        <script>
+            var answer = <?=json_encode($json_questions);?>;
+
+            //1% полоски результатов будет занимать 2 пикселя
+            var background = <?=($width/100) * 0.85;?>;
+            //Сумма всех результатов
+            var sum = 0;
+            Object.keys(answer).forEach(function(i){
+                sum += parseInt(answer[i]['value']);
+            });
+            //Вычисляем процентное соотношение результатов
+            //и длинну полосы результатов
+            var percent = 100/sum;
+            var answerWidth = new Array();
+            var answerPercent = new Array();
+            Object.keys(answer).forEach(function(i){
+                answerPercent[i] = answer[i]['value']*percent;
+                answerWidth[i] = answerPercent[i]*background;
+            });
+
+            $(document).ready(function(){
+                <?if($stage_pool_client){ ?>
+                //Эту часть мы выводим если пользователь уже проголосовал
+                $('#formAjax').fadeOut(800, function () {
+                    parent.stable_stage_iframe($('#poolAjax').height() + 20, <?=$stage_pool_info['id'];?>);
+                });
+                $("#resaltPoll").fadeIn(300, function () {
+                    parent.stable_stage_iframe($('#resaltPoll').height() + 20, <?=$stage_pool_info['id'];?>);
+                });
+                Object.keys(answer).forEach(function(i){
+                    $("#res_" + i + " .font").animate({width: answerWidth[i]}, 800);
+                    $("#res_" + i + " .nameanswer").html(answer[i]['title'] + " <strong>" + answerPercent[i].toFixed(2) + "</strong> (" + answer[i]['value'] + ")");
+                });
+                $("#er").addClass("pollGreen").html("Спасибо за ваш голос!<br><span>Всего проголосовало: " + sum + "</span>");
+                <?}else{?>
+
+                <?} ?>
+                parent.stable_stage_iframe($('#poolAjax').height() + 20, <?=$stage_pool_info['id'];?>);
+            });
+        </script>
+        <?
+      $html .= ob_get_clean();
+
+      return $html;
+}

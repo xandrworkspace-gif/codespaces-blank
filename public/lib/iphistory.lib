@@ -1,0 +1,42 @@
+<?
+require_once("lib/common.lib");
+
+// Имена и поля таблиц
+define('TABLE_IP_HISTORY_EX','ip_history');
+
+function ip_hisroty_ex_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_IP_HISTORY_EX,$ref,$add);
+}
+
+function ip_hisroty_ex_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_IP_HISTORY_EX,$ref,$add);
+}
+
+function ip_hisroty_user_ids(){
+    global $db_path;
+    $query = "SELECT DISTINCT `user_id` FROM ".TABLE_IP_HISTORY_EX.";";
+    $db_path->db_GetQueryArray($query,$data);
+    return $data;
+}
+
+function ip_hisroty_ex_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_IP_HISTORY_EX,$param,'');
+}
+
+function ip_hisroty_ex_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_IP_HISTORY_EX,$ref,$add);
+}
+
+function ip_hisroty_ex_saver($param){
+    $hash = md5($param['cid'].$param['ip'].$param['user_id']);
+    if(ip_hisroty_ex_get(false, " AND uni_hash = '".$hash."' ")){
+        return false;
+    }else{
+        $param['uni_hash'] = $hash;
+        ip_hisroty_ex_save($param);
+    }
+}

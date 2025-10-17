@@ -1,0 +1,94 @@
+<?php
+
+
+$provocation_limits = array(
+    5 => 400,
+);
+
+define('PROVOCATION_MONSTER_CNT', 12);
+define('PROVOCATION_REMOVE_PRICE', 25);
+define('PROVOCATION_REMOVE_PRICE_TYPE', 3);
+
+define('PROVOCATION_ARTIKUL_ID', 11249);
+define('PROVOCATION_ARTIKUL_UNLIMIT_ID', 11481);
+define('PROVOCATION_ARTIKUL_CNT', 1);
+
+define('TABLE_PROVOCATION', 'provocation');
+define('TABLE_PROVOCATION_FIGHT', 'provocation_fight');
+
+function provocation_user_amount($user_id) {
+    if(!$user_id) return 0;
+    if(artifact_amount(PROVOCATION_ARTIKUL_UNLIMIT_ID, $user_id, null, null, true, false) >= 1) {
+        return 9999;
+    }
+    return floor(artifact_amount(PROVOCATION_ARTIKUL_ID, $user_id) / PROVOCATION_ARTIKUL_CNT);
+}
+
+function provocation_user_use($user_id) {
+    if(artifact_amount(PROVOCATION_ARTIKUL_UNLIMIT_ID, $user_id, null, null, true, false) >= 1) {
+        return;
+    }
+    artifact_remove(PROVOCATION_ARTIKUL_ID, PROVOCATION_ARTIKUL_CNT, $user_id);
+}
+
+#Работа с базой данных
+function provocation_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_PROVOCATION,$ref,$add);
+}
+
+function provocation_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_PROVOCATION,$ref,$add);
+}
+
+function provocation_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_PROVOCATION, $ref, $add);
+}
+
+function provocation_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_PROVOCATION,$param,'');
+}
+
+function provocation_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_PROVOCATION,$ref,$add);
+    return true;
+}
+
+function provocation_fight_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_PROVOCATION_FIGHT,$ref,$add);
+}
+
+function provocation_fight_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_PROVOCATION_FIGHT,$ref,$add);
+}
+
+function provocation_fight_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_PROVOCATION_FIGHT, $ref, $add);
+}
+
+function provocation_fight_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_PROVOCATION_FIGHT,$param,'');
+}
+
+function provocation_fight_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_PROVOCATION_FIGHT,$ref,$add);
+    return true;
+}
+
+function provocation_cron(){
+    provocation_save(array(
+        '_add' => ' AND dtime < '.time_current(),
+        '_set' => ' dtime = '.(mktime(23,59,59) + 1).', cnt = 0',
+    ));
+}

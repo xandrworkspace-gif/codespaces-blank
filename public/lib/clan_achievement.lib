@@ -1,0 +1,184 @@
+<?
+
+require_once("include/common.inc");
+require_once("lib/html.lib");
+require_once("lib/user_stat.lib");
+require_once("lib/clan_stat.lib");
+
+// Имена и поля таблиц
+define('TABLE_CLAN_ACHIEVEMENTS','clan_achievements');
+
+function clan_achievement_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,TABLE_CLAN_ACHIEVEMENTS,$ref,$add);
+}
+
+function clan_achievement_list($ref=false, $add='', $field_list='*') {
+    global $db;
+    return common_list($db,TABLE_CLAN_ACHIEVEMENTS,$ref,$add,$field_list);
+}
+
+function clan_achievement_count($ref=false, $add='') {
+    global $db;
+    return common_count($db,TABLE_CLAN_ACHIEVEMENTS,$ref,$add);
+}
+
+function clan_achievement_save($param) {
+    global $db;
+    return common_save($db,TABLE_CLAN_ACHIEVEMENTS,$param);
+}
+
+function clan_achievement_delete($ref, $add='') {
+    global $db;
+
+    if (intval($ref)) {
+        $user_achievement = clan_achievement_get($ref);
+        $achievement = achievement_get($user_achievement['achievement_id']);
+        $item_list = achievement_item_list(array('achievement_id' => $achievement['id']));
+        foreach($item_list as $item) {
+            clan_stat_save(array(
+                '_set' => 'status=0, next_value=0',
+                '_add' => sql_pholder(' AND type_id=? AND object_id=? AND user_id=?', $item['type_id'], $item['object_id'], $user_achievement['user_id']),
+            ));
+        }
+    }
+    return common_delete($db,TABLE_USER_ACHIEVEMENTS,$ref, $add);
+}
+
+function clan_achievement_check($user_id, $type_id, $object_id, $value) {
+    if (!$user_id || !$type_id || !$object_id) return false;
+
+    $achievement_item_hash = achievement_item_list(array('type_id' => $type_id, 'object_id' => $object_id), sql_pholder(' AND ((`value`<=? AND `cond` = ?#ACH_COND_GREAT) OR (`value`>=? AND `cond` = ?#ACH_COND_LESS) OR (`value`=? AND `cond` = ?#ACH_COND_EQUAL))', $value, $value, $value), 'achievement_id');
+    if (!$achievement_item_hash) return false; // ни на что это значение не влияет
+
+    $achievement_item_hash = get_hash($achievement_item_hash, 'achievement_id', 'achievement_id');
+    $user_achievement_list = user_achievement_list(array('user_id' => $user_id, 'achievement_id' => $achievement_item_hash), '', 'achievement_id');
+    $user_achievement_ids = get_hash($user_achievement_list, 'achievement_id', 'achievement_id'); // уже пройденные юзером достижения
+
+    $check_ids = array_diff($achievement_item_hash, $user_achievement_ids);
+    if (!$check_ids) return false; // все достижения из списка возможных уже были пройдены
+
+    // перепроверяем, выполнены ли все задачи у всех достижений, на которые влияет переданный параметр
+    $achievement_item_hash = achievement_item_list(array('achievement_id' => $check_ids)); // все задачи, всех проверяемых достижений
+    $achievement_item_hash = make_hash($achievement_item_hash, 'achievement_id', true);
+    $user_stat = array();
+    foreach ($achievement_item_hash as $achievement_id => $achievement_item_list) {
+        foreach ($achievement_item_list as $achievement_item) {
+            if ($achievement_item['type_id'] == ACH_TYPE_ACHIEVEMENT) {
+                $status = user_achievement_get(array('user_id' => $user_id, 'achievement_id' => $achievement_item['object_id']));
+                if (!$status) {
+                    // не выполнено необходимое достижение
+                    unset($achievement_item_hash[$achievement_id]);
+                    break;
+                }
+            }elseif ($achievement_item['type_id'] == ACH_TYPE_PET) {
+                /**/
+            } else {
+                $stat_key = $achievement_item['type_id'].'_'.$achievement_item['object_id'];
+                if (!isset($user_stat[$stat_key])) {
+                    $stat = user_stat_get(array('user_id' => $user_id, 'type_id' => $achievement_item['type_id'], 'object_id' => $achievement_item['object_id']));
+                    if (!$stat) {
+                        // нет статистики по элементу этого достижения, соответственно этот элемент не выполнен, все другие элементы нет смысла проверять
+                        unset($achievement_item_hash[$achievement_id]);
+                        break;
+                    }
+                    $user_stat[$stat_key] = $stat;
+                }
+                if (!user_stat_compare($user_stat[$stat_key], $achievement_item)) {
+                    // есть статистика по элементу, но элемент выполнен не до конца, остальные элементы не проверяем
+                    unset($achievement_item_hash[$achievement_id]);
+                    break;
+                }
+            }
+        }
+    }
+
+    // берёт минимальное значение из цепочки по этому показателю
+    $next_item = array_shift(achievement_item_list(array('type_id' => $type_id, 'object_id' => $object_id),sql_pholder(' AND value > ? GROUP BY type_id, object_id', $value), 'min(value) AS value'));
+
+    if ($next_item && $next_item['value']) {
+        // используя это минимальное значение получает сам элемент достижения
+        $next_achiev_id = achievement_item_get(array('type_id' => $type_id, 'object_id' => $object_id, 'value' => $next_item['value']));
+        $next_achiev = achievement_get($next_achiev_id['achievement_id']);
+        if ($next_achiev && !(intval($next_achiev['flags']) & ACH_FLAG_ADMIN_ONLY)) {
+            user_stat_save(array(
+                '_set' => sql_pholder(' prev_value = next_value, next_value = ? ', $next_item['value']),
+                '_add' => sql_pholder(' AND type_id = ? AND object_id = ? AND user_id =? ', $type_id, $object_id, $user_id),
+            ));
+        }
+    }
+
+    // в $achievement_item_hash осталить только достижения по котрым для всех элементов выполнены все условия
+    if (!$achievement_item_hash) return false;
+    foreach (array_keys($achievement_item_hash) as $achievement_id) {
+        $achiev = achievement_get($achievement_id);
+        if ($achiev && !($achiev['flags'] & ACH_FLAG_ADMIN_ONLY)) {
+            user_achievement_done($user_id, $achievement_id);
+        }
+    }
+    return;
+}
+
+function clan_achievement_item_status($user_id, &$achievement_item) {
+    if ($achievement_item['type_id'] == ACH_TYPE_ACHIEVEMENT) {
+        $status = user_achievement_get(array('user_id' => $user_id, 'achievement_id' => $achievement_item['object_id']));
+        return array('cur_value' => $status ? 1 : 0, 'need_value' => 1);
+    }elseif ($achievement_item['type_id'] == ACH_TYPE_PET) {
+        /**/
+        return array('cur_value' => intval(0), 'need_value' => intval(1));
+    } else {
+        $user_stat = user_stat_get(array('user_id' => $user_id, 'type_id' => $achievement_item['type_id'], 'object_id' => $achievement_item['object_id']));
+        return array('cur_value' => intval($user_stat['value']), 'need_value' => intval($achievement_item['value']));
+    }
+}
+
+// вынесено в отдельную функцию для расширяемости
+function clan_is_achievement_item_done($user_id, &$achievement_item) {
+    if ($achievement_item['type_id'] == ACH_TYPE_ACHIEVEMENT) {
+        return user_achievement_get(array('user_id' => $user_id, 'achievement_id' => $achievement_item['object_id'])) ? true : false;
+    }
+    if ($achievement_item['type_id'] == ACH_TYPE_PET) {
+        return false;
+    }
+    $user_stat = user_stat_get(array('user_id' => $user_id, 'type_id' => $achievement_item['type_id'], 'object_id' => $achievement_item['object_id']));
+    return user_stat_compare($user_stat, $achievement_item);
+}
+
+function clan_achievement_done($user_id, $achievement_id) {
+    if (!$user_id || !$achievement_id) return false;
+    $achievement = achievement_get($achievement_id);
+    if (!$achievement) return false;
+    $user = user_get($user_id);
+    if ($achievement['kind'] && ($user['kind'] != $achievement['kind'])) return false; // Ограничение по расе
+    if (($achievement['flags'] & ACH_FLAG_ADMIN_ONLY) && !(intval($user['flags']) & USER_FLAG_ADMIN)) return false; // указано ограничение "для админов"
+    if ($achievement['child_ids']) {
+        $cnt = user_achievement_count(false, sql_pholder(' AND user_id = ? AND achievement_id IN (?@)', $user_id, explode(',',$achievement['child_ids'])));
+        if ($cnt > 0) {
+            return false;
+        }
+    }
+
+    $new_id = false;
+    $new_id = user_achievement_save(array(
+        'achievement_id' => $achievement_id,
+        'user_id' => $user_id,
+        'stime' => time_current(),
+        'weight' => $achievement['total_weight'],
+        'kind' => $user['kind'],
+        '_mode' => CSMODE_INSERT,
+        '_add' => ' ON DUPLICATE KEY UPDATE stime = stime ',
+    ));
+
+    if ($new_id === false) return false;
+
+    if (!($achievement['flags'] & (ACH_FLAG_NOCHAT | ACH_FLAG_INVISIBLE))) {
+        $done_icon = '<img src="images/achievement_done.gif" width="40" height="30">';
+        chat_msg_send_system(sprintf(translate('%s <b>Выполнено достижение "%s" </b> %s'), $done_icon, $achievement['title'], $done_icon),CHAT_CHF_USER,$user_id);
+    }
+    if ($user && $achievement['bonus_id']) bonus_apply($user, $achievement['bonus_id']);
+    if ($achievement['parent_ids']) {
+        user_achievement_delete(false, sql_pholder(' AND user_id = ? AND achievement_id IN (?@)', $user_id, explode(',', $achievement['parent_ids'])));
+    }
+    user_achievement_check($user_id, ACH_TYPE_ACHIEVEMENT, $achievement_id, 1);
+    return $new_id;
+}

@@ -1,0 +1,107 @@
+<?php
+// действие - флудилка
+if (!in_array($subject['object_class'], array(OBJECT_CLASS_USER))) return;
+
+global $action;
+
+$users = array();
+
+$in['message_id'] = intval($in['message_id']);
+$message_action = action_get($in['message_id']);
+$target_direction = $message_action['param1'];
+$count_targets = $message_action['param2'];
+if (!$message_action ) {
+	$out['error'] = translate('Сообщение не найдено!');
+	return;
+}
+
+if (($target_direction & SPECIAL_FROM_CLAN) && !($subject['clan_id'])) {
+	$out['error'] = translate('Вы не состоите в клане!');
+	return;
+}
+
+if ($count_targets) {
+	if ($target_direction & SPECIAL_TO_CLAN) { // сообщение клану
+		$clans = array();
+		foreach ($in['nick'] as $k =>$nick) {
+			if ($k >= $count_targets) break;
+			$clan_name = trim(strval($nick));
+			if (empty($clan_name)) {
+				$out['error'] = sprintf(translate('Клан %s не задан!'), $k+1);
+				return;
+			}
+			$target_clan = clan_get(array('title' => $clan_name));
+			if (!$target_clan || ($target_clan['flags'] & CLAN_FLAG_DISBANDED)) {
+				$out['error'] = sprintf(translate('%s клан не найден!'),$k+1);
+				return;
+			}
+			$clans[] = $target_clan;
+		}
+	} else {
+		foreach ($in['nick'] as $k =>$nick) {
+			if ($k >= $count_targets) break;
+			$nick = trim(strval($nick));
+			if (empty($nick)) {
+				$out['error'] = sprintf(translate('Ник %s не задан!'), $k+1);
+				return;
+			}
+			$target_user = user_get(false, array('nick' => $nick));
+			if (!$target_user) {
+				$out['error'] = sprintf(translate('%s пользователь не найден!'),$k+1);
+				return;
+			}
+
+			NODE_PUSH(null, $target_user['id']);
+			if (!user_is_online($target_user['id'])) {
+					$out['error'] = translate('Пользователь находится вне досягаемости!');
+					return;
+			}
+
+			if (($action['flags'] & ACTION_FLAG_SAMEAREA) && !user_is_near($subject,$target_user)) {
+					$out['error'] = translate('Невозможно активировать действие, т.к. цель не находится рядом!');
+					return;
+			}
+
+			if (($action['flags'] & ACTION_FLAG_SAMEKIND) && ($subject['kind'] != $target_user['kind'])) {
+					$out['error'] = translate('Невозможно активировать действие, т.к. персонаж другой расы!');
+					return;
+			}
+
+			if (($action['flags'] & ACTION_FLAG_NO_TARGET_GHOST) && ($target_user['flags'] & USER_FLAG_GHOST)) {
+					$out['error'] = translate('Данное действие не может быть направлено на призрака!');
+					return;
+			}
+
+			if (($action['flags'] & ACTION_FLAG_EXCEPT_MYSELF) && $target_user['id'] == $subject['id']) {
+					$out['error'] = translate('Данное действие может быть направлено только на другого игрока!');
+					return;
+			}
+			$users[] = $target_user;
+			NODE_POP();
+		}
+	}
+}
+// подменяем чатовое сообщение с обработкой целей 
+$action['chat_msg'] =  $message_action['chat_msg'];
+
+if ($target_direction & SPECIAL_FROM_CLAN) { // сообщение от клана
+	$user_clan = clan_get(array('id' =>$subject['clan_id']));
+	$action['chat_msg'] = str_replace('#CLAN#', html_clan_info($user_clan), $action['chat_msg']);
+}
+
+if ($target_direction & SPECIAL_TO_CLAN) { // сообщение клану
+	foreach ($clans as $k=>$clan) {
+		$action['chat_msg']  = str_replace('#CLAN'. ($k + 1) .'#', html_clan_info($clan) , $action['chat_msg']);
+	}
+} else { // сообщенние пользователю
+	foreach ($users as $k=>$user) {
+		$action['chat_msg']  = str_replace('#USER'. ($k + 1) .'#', '#USER['. $user['id'] .']#', $action['chat_msg']);
+		$action['chat_msg']  = str_replace('#NICK'. ($k + 1) .'#', $user['nick'], $action['chat_msg']);
+	}
+}
+
+$out['status'] = ACTION_STATUS_OK;
+
+
+
+

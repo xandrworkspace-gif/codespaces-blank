@@ -1,0 +1,51 @@
+<? # $Id: ENGRAVE.action,v 1.9 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "выгравировать"
+// Параметры:
+//	$in['artifact_id'] - артефакт, на который наносится гравировка
+//	$in['note'] - текст
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+if (!$artifact || $artifact['slot_id']) { // неверный или одетый предмет
+	$out['error'] = translate('Нужно выбрать предмет!');
+	return;
+}
+
+global $user_weapon_slots;
+$artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+if (!in_array($artifact_artikul['slot_id'],$user_weapon_slots)) {
+	$out['error'] = translate('Невозможно выполнить действие, неверный слот!');
+	return;
+}
+if (!$in['note']) {
+	$out['error'] = translate('Вы не ввели текст надписи!');
+	return;
+}
+if (mb_strlen($in['note']) > ARTIFACT_ENGRAVE_LENGTH) {
+	$out['error'] = translate('Текст надписи превышает допустимый!');
+	return;
+}
+if (!artifact_note_is_valid($in['note'])) {
+	$out['error'] = translate('В тексте надписи встречаются недопустимые символы!');
+	return;
+}
+
+artifact_note_save(array(
+	'_mode' => CSMODE_REPLACE,
+	'artifact_id' => $artifact['id'],
+	'note' => $in['note'],
+	'type' => ARTIFACT_NOTE_TYPE_ENGRAVE,
+));
+
+$msg_text = sprintf(translate('Вы выгравировали надпись "%s" на "%s"'), $in['note'], $artifact_artikul['title']);
+chat_msg_send_system($msg_txt, CHAT_CHF_USER, $subject['id']);
+$out['status'] = ACTION_STATUS_OK;
+
+?>

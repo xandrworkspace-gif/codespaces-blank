@@ -1,0 +1,50 @@
+<? # $Id: slot.lib,v 1.9 2009-10-27 13:46:19 s.ignatenkov Exp $
+
+// Имена и поля таблиц
+define('TABLE_SLOTS','slots');
+define('FIELD_SLOTS','');
+
+global $armor_style_slots_info;
+$armor_style_slots_info = array(
+	'ARMOR' => 1,
+	'BODY' => 1,
+	'FOOT' => 1,
+	'GLOVE' => 1,
+	'HEAD' => 1,
+	'LEG' => 1,
+	'LHAND' => 1,
+	'RHAND' => 1,
+	'SHOULDER' => 1,
+	'BOW' => 1,
+	'QUIVER' => 1,
+	'RING' => 1,
+	'AMULET' => 1,
+);
+
+function slot_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_SLOTS,$ref,$add);
+}
+
+function slot_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_SLOTS,false,$add);
+}
+
+function slot_save($param) {
+	global $db_2;
+	$param['_mode'] = CSMODE_REPLACE;
+	return common_save($db_2,TABLE_SLOTS,$param,FIELD_SLOTS);
+}
+
+function slot_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_SLOTS,$ref,$add);
+}
+
+function slot_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_SLOTS, $ref, $add);
+}
+
+?>

@@ -1,0 +1,77 @@
+<? # $Id: lua_script.lib,v 1.1 2009-01-28 10:36:20 kastet Exp $
+
+// Имена и поля таблиц
+define('TABLE_LUA_SCRIPTS', 'lua_scripts');
+define('FIELD_LUA_SCRIPTS', '');
+
+function lua_script_get($ref=false, $add='') {
+	global $db;
+	return common_get($db, TABLE_LUA_SCRIPTS, $ref, $add);
+}
+
+function lua_script_list($ref=false, $add='', $field_list='*') {
+	global $db;
+	return common_list($db, TABLE_LUA_SCRIPTS, $ref, $add, $field_list);
+}
+
+function lua_script_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_LUA_SCRIPTS, $ref, $add);
+}
+
+function lua_script_save($param) {
+	global $db;
+	return common_save($db, TABLE_LUA_SCRIPTS, $param, FIELD_LUA_SCRIPTS);
+}
+
+function lua_script_delete($ref=false, $add='') {
+	global $db;
+	if (!is_array($ref)) $ref = array('id' => $ref);
+	$lua_script_list = lua_script_list($ref, $add, 'fname');
+	$status = common_delete($db, TABLE_LUA_SCRIPTS, $ref, $add);
+	if ($status) {
+		foreach ($lua_script_list as $lua_script) {
+			lua_script_delete_file($lua_script);
+		}
+	}
+	return $status;
+}
+
+// ---------------------------
+
+function lua_script_update_file($lua_script) {
+	if (!$lua_script['fname'] || !$lua_script['codetext']) return false;
+
+	$filename = PATH_SCRIPTS.$lua_script['fname'];
+	$status = file_put_contents($filename, $lua_script['codetext']);
+	@chmod(SERVER_ROOT.$filename, 0664);
+	// Сервер боев перечитывает lua-скрипты при создании каждого боя,
+	// поэтому никаких доп. действий производить не нужно
+	return $status;
+}
+
+function lua_script_delete_file($lua_script) {
+	if (!$lua_script['fname']) return false;
+
+	$filename = PATH_SCRIPTS.$lua_script['fname'];
+	return unlink($filename);
+}
+
+function lua_script_sync_files() {
+	require_once('lib/admin.lib');
+	$fs_file_hash = admin_file_hash(PATH_SCRIPTS.'*');
+	$db_file_hash = get_hash(lua_script_list(false, '', 'fname'), 'fname', 'fname');
+	if (!$db_file_hash) return false;
+
+	$del_file_hash = array_diff_key($fs_file_hash, $db_file_hash);
+	foreach ($del_file_hash as $fname) {
+		lua_script_delete_file(array('fname' => $fname));
+	}
+	foreach ($db_file_hash as $fname) {
+		// codetext может быть большим, поэтому обрабатываем по одному
+		$lua_script = lua_script_get(array('fname' => $fname));
+		lua_script_update_file($lua_script);
+	}
+	return true;
+}
+

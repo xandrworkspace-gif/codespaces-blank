@@ -1,0 +1,44 @@
+<?
+
+function cli_get_args(&$ARGS, $argv = false) {
+	if (!is_array($ARGS))
+		cli_message('$ARGS is not array!', __LINE__);
+	
+	if ($argv === false)
+		$argv = array_slice($_SERVER['argv'], 1);
+	
+	if (in_array('help', $argv))
+		cli_message('Valid arguments: '.var_export($ARGS, true), __LINE__);
+	
+	foreach ($argv as $arg_value) {
+		$r = explode('=', $arg_value);
+		if (count($r) != 2) {
+			cli_message('Wrong argument ['.$arg_value.']'."\n".'Put arg "help" for more into', __LINE__);
+		}
+		list($arg_name, $arg_value) = $r;
+		if (!$arg_name)
+			continue;
+		if (!isset($ARGS[$arg_name])) {
+			cli_message('Unknown argument ['.$arg_name.']'."\n".'Put arg "help" for more into', __LINE__);
+		}
+		// Парсим значения аргументов
+		if (is_array($ARGS[$arg_name])) {
+			// Массив целочисленных
+			$ARGS[$arg_name] = array_filter(array_map('trim', explode(',', $arg_value)), 'intval');
+		} elseif (is_bool($ARGS[$arg_name])) {
+			$ARGS[$arg_name] = (bool) $arg_value;
+		} elseif (is_int($ARGS[$arg_name])) {
+			$ARGS[$arg_name] = (int) $arg_value;
+		} elseif (is_float($ARGS[$arg_name])) {
+			$ARGS[$arg_name] = (float) $arg_value;
+		} else {
+			$ARGS[$arg_name] = $arg_value;
+		}
+	}
+}
+
+function cli_message($message, $exit = false) {
+	echo $message.PHP_EOL;
+	if ($exit)
+		exit($exit);
+}

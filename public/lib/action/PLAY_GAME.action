@@ -1,0 +1,47 @@
+<? # $Id: PLAY_GAME.action 19659 2011-07-12 14:54:30Z f.omelchanko $
+
+// действие "Сыграть в игру". Сделано для запуска мини-игры с предмета.
+// В данный момент для акции "Звезда удачи"
+
+if (!in_array($subject['object_class'], array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if (intval($object['artikul_id']) !== LUCKY_STAR_ARTIKUL_ID) {
+	$out['error'] = translate('Нельзя использовать эту вещь!');
+	return;
+}
+
+// 1. проверяем наличие артефакта и запускаем если он есть
+$user_type = lucky_star_fill_swf_vars($external_swf_vars, $multiplier);
+if ($user_type !== 1) {
+	$out['error'] = translate('Нельзя использовать эту вещь!');
+	return;
+}
+
+$ls_artifact = $object;
+artifact_artikul_get_title($ls_artifact);
+
+global $db_2;
+$lucky_star_user = array(
+	'_mode' => CSMODE_INSERT,
+	'user_id' => $ls_artifact['user_id'],
+	'turns_left' => 3,
+	'warn_time' => 0,
+	'game_field' => implode(',',array(rand(1,2),rand(1,2),rand(1,2))),
+	'_add' => ' ON DUPLICATE KEY UPDATE user_id = user_id ',
+);
+common_save($db_2, TABLE_LUCKY_STAR_USERS, $lucky_star_user);
+
+artifact_save(array(
+	'id' => $ls_artifact['id'],
+	'param2' => 1,
+));
+
+$out['status'] = ACTION_STATUS_OK;
+$out['param_success'] = array('url_close'=> 'mini_game.php');
+chat_msg_send_system(translate('Вы использовали Звезду Удачи!'), CHAT_CHF_USER, $subject['id']);
+
+?>

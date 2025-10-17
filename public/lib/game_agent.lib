@@ -1,0 +1,106 @@
+<? # $Id: game_agent.lib,v 1.12 2009-05-22 13:34:06 s.panferov Exp $
+
+define("LOGIN_RESULT_OK", "0");
+define("LOGIN_RESULT_WRONG_CREDENTIALS", "1");
+
+
+global $curlChannel;
+
+
+function parseGameAgentPostInput() {
+	$inputString = file_get_contents('php://input');
+	return deserializeBag($inputString);
+}
+
+function gameAgentUtilLog($str) {		
+	require_once("include/common.inc");
+	logfile(PATH_LOGS.'gameagent.log', getmypid().' - '.$str);
+}
+
+function deserializeBag($inputString) {
+	$l = mb_strlen($inputString);
+	$p = 0;
+	$result = array();
+	$forValue = false;
+	$key = "";
+	$value = "";
+	while ($l > $p) {
+  		$c = $inputString[$p];
+		$p += 1; 
+		switch($c) {
+			case "\r": 
+				break;
+			case "\n": 
+  				if ($forValue) {
+					$result[rawurldecode($key)] = rawurldecode($value);
+					$forValue = false;
+					$key = "";
+					$value = "";
+				} else {
+					$forValue = true;
+				}				
+				break;
+			default:
+				if ($forValue) {
+ 					$value .= $c;
+				} else {
+	  				$key .= $c;
+				}				
+				break;  				
+	  	}
+  	}
+  	
+	if ($forValue && (mb_strlen($value) > 0)) {
+ 		$result[rawurldecode($key)] = rawurldecode($value);
+  	}
+  	return $result;
+}
+	
+function serializeBag($params) {
+	$result = "";
+	foreach ($params as $key => $value) $result .= rawurlencode($key)."\n".rawurlencode($value)."\n";
+	return $result;
+}
+
+function closeCurl() {
+	global $curlChannel;
+	if ($curlChannel === FALSE) return;
+	curl_close ($curlChannel);
+}
+
+function sendGameAgent($params) {
+	global $curlChannel;
+	if (!defined('GAME_AGENT_URL') || !GAME_AGENT_URL) return false;
+	$outputString = serializeBag($params);
+
+	if ($curlChannel == null) {
+		$curlChannel = curl_init(GAME_AGENT_URL);
+		register_shutdown_function('closeCurl');
+	}
+	if ($curlChannel === FALSE) return;
+		
+	if (defined('CURL_PROXY')) curl_setopt ($curlChannel, CURLOPT_PROXY, CURL_PROXY);
+ 	
+	curl_setopt ($curlChannel, CURLOPT_TIMEOUT, 3);
+	curl_setopt ($curlChannel, CURLOPT_CONNECTTIMEOUT, 1);
+	curl_setopt ($curlChannel, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+	$curlheaders[0] = "Connection: Keep-Alive";
+	curl_setopt ($curlChannel, CURLOPT_HTTPHEADER, $curlheaders);
+	curl_setopt ($curlChannel, CURLOPT_RETURNTRANSFER, true);
+	curl_setopt ($curlChannel, CURLOPT_POSTFIELDS, $outputString);
+		
+		
+	$res = curl_exec($curlChannel);
+	if (is_string($res)) {
+		return deserializeBag($res);
+	}
+	gameAgentUtilLog("curl_exec error: ".curl_error($curlChannel));
+}
+
+function game_agent_check_ip() {
+	if (!defined("GAME_AGENT_URL")) return false;
+	$url = parse_url(GAME_AGENT_URL);
+	return ($url['host'] == common_client_ip() ? true : false);
+}
+
+?>

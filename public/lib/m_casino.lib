@@ -1,0 +1,636 @@
+<?
+
+define('TABLE_M_CASINO','m_casino');
+define('TABLE_M_CASINO_STAT','m_casino_stat');
+
+define('M_CASINO_MAX_BINDS', 1);
+
+define('M_CASINO_TIMER', 600); //10 минут
+
+//Зависимости
+require_once("include/common.inc");
+require_once("lib/common.lib");
+require_once("lib/user.lib");
+require_once("lib/chat.lib");
+
+$casino_money_limits = array(
+    MONEY_TYPE_GAME => 10,
+    MONEY_TYPE_GOLD => 5,
+);
+
+// ===========================================================================================================================
+
+function m_casino_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_M_CASINO,$ref,$add);
+}
+
+function m_casino_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_M_CASINO,$ref,$add);
+}
+
+function m_casino_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path,TABLE_M_CASINO,$ref,$add);
+}
+
+function m_casino_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_M_CASINO,$param);
+}
+
+function m_casino_delete($ref) {
+    global $db_path;
+    common_delete($db_path,TABLE_M_CASINO,$ref);
+    return true;
+}
+
+////////////////////////
+
+
+function m_casino_stat_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_M_CASINO_STAT,$ref,$add);
+}
+
+function m_casino_stat_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_M_CASINO_STAT,$ref,$add);
+}
+
+function m_casino_stat_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path,TABLE_M_CASINO_STAT,$ref,$add);
+}
+
+function m_casino_stat_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_M_CASINO_STAT,$param);
+}
+
+function m_casino_stat_delete($ref) {
+    global $db_path;
+    common_delete($db_path,TABLE_M_CASINO_STAT,$ref);
+    return true;
+}
+
+define('M_CASINO_LOGIC_TYPE_NUMBER', 1); //Ставка на конкретное число
+define('M_CASINO_LOGIC_TYPE_FLOAT', 2); //Ставка на промежуток чисел
+define('M_CASINO_LOGIC_TYPE_COLOR', 3); //Ставка цвет
+define('M_CASINO_LOGIC_TYPE_EVEN', 4); //Ставка четное-нечетное
+define('M_CASINO_LOGIC_TYPE_DOZEN', 5); //Ставка дюжина
+
+
+define('M_CASINO_STATUS_BIND', 0); //Ставка поставлена
+define('M_CASINO_STATUS_ACTIVE', 1); //Ставка учавствует в казино
+define('M_CASINO_STATUS_COMPLETE', 2); //Ставка завершена
+
+$m_casino_status_hash = array(
+    M_CASINO_STATUS_BIND => 'Ставка поставлена',
+    M_CASINO_STATUS_ACTIVE => 'Ставка учавствует в казино',
+    M_CASINO_STATUS_COMPLETE => 'Ставка завершена',
+);
+
+define('M_CASINO_BLACK', 1);
+define('M_CASINO_RED', 2);
+
+$red_numbers = array(1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36);
+$black_numbers = array(2,4,6,8,10,11,13,15,17,20,22,24,26,28,29,31,33,35);
+
+$casino_dozen = array(
+    1 => array(3,6,9,12,15,18,21,24,27,30,33,36),
+    2 => array(2,5,8,11,14,17,20,23,26,29,32,35),
+    3 => array(1,4,7,10,13,16,19,22,25,28,31,34),
+);
+
+$color_numbers = array(
+    1 => M_CASINO_BLACK,
+    3 => M_CASINO_BLACK,
+    5 => M_CASINO_BLACK,
+    7 => M_CASINO_BLACK,
+    9 => M_CASINO_BLACK,
+    12 => M_CASINO_BLACK,
+    14 => M_CASINO_BLACK,
+    16 => M_CASINO_BLACK,
+    18 => M_CASINO_BLACK,
+    19 => M_CASINO_BLACK,
+    21 => M_CASINO_BLACK,
+    23 => M_CASINO_BLACK,
+    25 => M_CASINO_BLACK,
+    27 => M_CASINO_BLACK,
+    30 => M_CASINO_BLACK,
+    32 => M_CASINO_BLACK,
+    34 => M_CASINO_BLACK,
+    36 => M_CASINO_BLACK,
+    2 => M_CASINO_RED,
+    4 => M_CASINO_RED,
+    6 => M_CASINO_RED,
+    8 => M_CASINO_RED,
+    10 => M_CASINO_RED,
+    11 => M_CASINO_RED,
+    13 => M_CASINO_RED,
+    15 => M_CASINO_RED,
+    17 => M_CASINO_RED,
+    20 => M_CASINO_RED,
+    22 => M_CASINO_RED,
+    24 => M_CASINO_RED,
+    26 => M_CASINO_RED,
+    28 => M_CASINO_RED,
+    29 => M_CASINO_RED,
+    31 => M_CASINO_RED,
+    33 => M_CASINO_RED,
+    35 => M_CASINO_RED,
+);
+
+define('CASINO_STAT_WAIT', 0);
+define('CASINO_STAT_ACTIVE', 1);
+define('CASINO_STAT_FINISH', 2);
+
+$all_mumbers = array_merge($black_numbers,$red_numbers);
+
+$casino_logic = array(
+    M_CASINO_LOGIC_TYPE_NUMBER => array(
+        'title' => 'Ставка на число',
+        'rate' => 36,
+        'numbers' => $all_mumbers,
+    ),
+    M_CASINO_LOGIC_TYPE_FLOAT => array(
+        'title' => 'Ставка на промежуток чисел',
+        'rates' => array(
+            1 => array(
+                'rate' => 2,
+                'numbers' => array(1,18),
+            ),
+            2 => array(
+                'rate' => 2,
+                'numbers' => array(19,36),
+            ),
+            3 => array(
+                'rate' => 3,
+                'numbers' => array(1,12),
+            ),
+            4 => array(
+                'rate' => 3,
+                'numbers' => array(13,24),
+            ),
+            5 => array(
+                'rate' => 3,
+                'numbers' => array(25,36),
+            ),
+        ),
+    ),
+    M_CASINO_LOGIC_TYPE_COLOR => array(
+        1 => array(
+            'title' => 'Черный',
+            'rate' => 2,
+            'numbers' => $black_numbers,
+        ),
+        2 => array(
+            'title' => 'Красный',
+            'rate' => 2,
+            'numbers' => $red_numbers,
+        ),
+    ),
+    M_CASINO_LOGIC_TYPE_EVEN => array(
+        2 => array(
+            'title' => 'Четные',
+            'rate' => 2,
+        ),
+        1 => array(
+            'title' => 'Нечетные',
+            'rate' => 2,
+        ),
+    ),
+    M_CASINO_LOGIC_TYPE_DOZEN => array(
+        1 => array(
+            'title' => 'Дюжина 1:12',
+            'rate' => 3,
+            'numbers' => $casino_dozen[1],
+        ),
+        2 => array(
+            'title' => 'Дюжина 2:12',
+            'rate' => 3,
+            'numbers' => $casino_dozen[2],
+        ),
+        3 => array(
+            'title' => 'Дюжина 3:12',
+            'rate' => 3,
+            'numbers' => $casino_dozen[3],
+        ),
+    ),
+);
+
+
+function casino_cron(){
+    global $casino_logic;
+    $casino_get = m_casino_stat_get(array('status' => CASINO_STAT_WAIT));
+
+    if(!m_casino_active_get()) {
+        return false;
+    }
+
+    if(!$casino_get){
+        //Если нет активного казино, то создаем казино :)
+        $new_casino = array(
+            'ctime' => time_current(),
+            'dtime' => time_current() + M_CASINO_TIMER,
+            'status' => CASINO_STAT_WAIT,
+        );
+        m_casino_stat_save($new_casino);
+        return;
+    }
+
+    if($casino_get['status'] == CASINO_STAT_WAIT && $casino_get['dtime'] <= time_current()){
+        //Активируем казино, чтобы не повторяли больше заявки.
+        m_casino_stat_save(array(
+            'id' => $casino_get['id'],
+            'status' => CASINO_STAT_ACTIVE,
+        ));
+
+        $m_casino_list = m_casino_list(array(
+            'status' => M_CASINO_STATUS_BIND,
+        ));
+
+        if(!$m_casino_list){
+            m_casino_stat_save(array(
+                'id' => $casino_get['id'],
+                'dtime' => time_current() + M_CASINO_TIMER,
+                'status' => CASINO_STAT_WAIT,
+            ));
+            return;
+        }
+
+        //Если все четенько и есть заявки.
+        //Разыгрываем
+        $random = mt_rand(1,36);
+
+        $true_game = true; //Игра изначально честная!
+        if(defined('M_CASINO_TRUE') && M_CASINO_TRUE){
+            $true_game = false; //Если казино работает по шансам, определим шансы.
+            //Честная игра или нет?
+            $rand = mt_rand(0,100);
+            if($rand <= M_CASINO_TRUE) {
+                $true_game = true;
+            }
+        }
+
+        if(!$true_game){
+            $casino_not_true_game = casino_game($m_casino_list);
+            $better_rand = $casino_not_true_game['better_rand'];
+            if($better_rand >= 1 && $better_rand <= 36){
+                $random = $better_rand;
+            }
+        }
+
+        //Потери казино или выйгрыш
+        $casino_summ = array();
+        $user_list_hash = array();
+        foreach($m_casino_list as $m_casino){
+            $out = casino_action($random, $m_casino);
+            if($out['win']){
+                m_casino_save(array(
+                    'id' => $m_casino['id'],
+                    'stat_id' => $casino_get['id'],
+                    'status' => M_CASINO_STATUS_COMPLETE,
+                    'win' => true,
+                    'rate' => intval($out['rate']),
+                ));
+
+                $casino_summ[$out['money_type']] -= $out['money'];
+
+                if($out['rate'] == 36){
+                    $user = cache_fetch($user_list_hash, $m_casino['user_id'], 'user_get');
+                    chat_msg_send_system('Игрок '.html_user_info($user).' Выиграл в рулетке: '.html_money_str($out['money_type'], $out['money']).' Поставив на число <b>'.$random.'</b>.', CHAT_CHF_AREA);
+                }
+
+                if($out['money_type'] && $out['money']){
+                    user_make_payment($out['money_type'], $m_casino['user_id'], $out['money']);
+                    chat_msg_send_system('Ваша ставка в рулетке сыграла. Вы выиграли: '.html_money_str($out['money_type'], $out['money']), CHAT_CHF_USER, $m_casino['user_id']);
+                }
+            }else{
+                m_casino_save(array(
+                    'id' => $m_casino['id'],
+                    'stat_id' => $casino_get['id'],
+                    'status' => M_CASINO_STATUS_COMPLETE,
+                ));
+
+                if(M_CASINO_MAX_BINDS == 1){
+                    chat_msg_send_system('К сожалению Ваша ставка в рулетке не сыграла. Для того чтобы испытать свою удачу снова нажмите <a onclick="_top().show_need_frame(\'mcasino\'); return false;"><b>[СЮДА]</b></a>', CHAT_CHF_USER, $m_casino['user_id']);
+                }
+
+                $casino_summ[$m_casino['money_type']] += $m_casino['money'];
+            }
+        }
+
+        //Обновим денюжку потерю или прибыль xD
+        if($casino_summ){
+            $save = array(
+                'id' => $casino_get['id'],
+            );
+            foreach($casino_summ as $money_type=>$summ){
+                if(!$money_type) continue;
+                $save['money_'.$money_type] = $summ;
+            }
+            m_casino_stat_save($save);
+        }
+
+        //Убрали нахуй
+        $save = m_casino_stat_save(array(
+            'id' => $casino_get['id'],
+            'rand' => $random,
+            'status' => CASINO_STAT_FINISH,
+        ));
+
+        //Создаем новое казино
+        if($save){
+            m_casino_stat_save(array(
+                'ctime' => time_current(),
+                'dtime' => time_current() + M_CASINO_TIMER,
+                'status' => CASINO_STAT_WAIT,
+            ));
+        }
+    }
+
+
+}
+
+
+function casino_action($random = 1, $m_casino = array()){
+    global $casino_logic;
+    $out = array('win' => false);
+
+    $out['rand'] = $random;
+    if($m_casino['type'] == M_CASINO_LOGIC_TYPE_NUMBER){
+        if($random == $m_casino['field']){
+            $rate = $casino_logic[$m_casino['type']]['rate'];
+            $out['rate'] = $rate;
+            $out['win'] = true;
+            $out['money'] = $m_casino['money'] * $rate;
+            $out['money_type'] = $m_casino['money_type'];
+        }
+    }
+
+    if($m_casino['type'] == M_CASINO_LOGIC_TYPE_FLOAT){
+        $logic = $casino_logic[$m_casino['type']]['rates'][$m_casino['field']];
+        //r($logic);
+        $numbers = $logic['numbers'];
+        $min = min($numbers);
+        $max = max($numbers);
+
+        //echo $min.'_'.$max;
+
+        if($min <= $random && $max >= $random){
+            $rate = $logic['rate'];
+            $out['rate'] = $rate;
+            $out['win'] = true;
+            $out['money'] = $m_casino['money'] * $rate;
+            $out['money_type'] = $m_casino['money_type'];
+        }
+    }
+    if($m_casino['type'] == M_CASINO_LOGIC_TYPE_COLOR){
+        $logic = $casino_logic[$m_casino['type']][$m_casino['field']];
+        //r($logic);
+        $numbers = $logic['numbers'];
+        if(in_array($random,$numbers)){
+            $rate = $logic['rate'];
+            $out['rate'] = $rate;
+            $out['win'] = true;
+            $out['money'] = $m_casino['money'] * $rate;
+            $out['money_type'] = $m_casino['money_type'];
+        }
+    }
+    if($m_casino['type'] == M_CASINO_LOGIC_TYPE_EVEN){
+        $logic = $casino_logic[$m_casino['type']][$m_casino['field']];
+        //r($logic);
+        if(casino_chet($random) && $m_casino['field'] == 2){
+            $rate = $logic['rate'];
+            $out['rate'] = $rate;
+            $out['win'] = true;
+            $out['money'] = $m_casino['money'] * $rate;
+            $out['money_type'] = $m_casino['money_type'];
+        }elseif(!casino_chet($random) && $m_casino['field'] == 1){
+            $rate = $logic['rate'];
+            $out['rate'] = $rate;
+            $out['win'] = true;
+            $out['money'] = $m_casino['money'] * $rate;
+            $out['money_type'] = $m_casino['money_type'];
+        }
+    }
+    if($m_casino['type'] == M_CASINO_LOGIC_TYPE_DOZEN){
+        $logic = $casino_logic[$m_casino['type']][$m_casino['field']];
+        //r($logic);
+        if(in_array($random,$logic['numbers'])){
+            $rate = $logic['rate'];
+            $out['rate'] = $rate;
+            $out['win'] = true;
+            $out['money'] = $m_casino['money'] * $rate;
+            $out['money_type'] = $m_casino['money_type'];
+        }
+    }
+    return $out;
+}
+
+function casino_chet($i) {
+    if($i & 1){return FALSE;}
+    else{return TRUE;}
+}
+
+function html_user_info_m_casino(&$user, $param=false) {
+    global $rank_info, $clan_hash, $user_info_hash;
+    $html = '';
+    $path = '/';
+    if ($param['external']) {	// external mode
+        $param['noprivate'] = $param['nopersonal'] = true;
+        unset($param['url'],$param['url_add']);
+        $path = SERVER_URL;
+    }
+    if ($param['anchor']) {
+        $html .= '<div '.($param['anchor_class'] ? 'class="'.$param['anchor_class'].'"' : '').'><a name="'.$param['anchor'].htmlspecialchars($user['nick']).'">&nbsp;</a></div>';
+    }
+
+    if ($user['clan_id']) {
+        $clan = cache_fetch($clan_hash,$user['clan_id'],'clan_get');
+        if ($clan) $html .= '<a '.($param['external'] ? 'href="'.SERVER_URL.'clan_info.php?clan_id='.$clan['id'].'" target=_blank' : 'href="#" onClick="showClanInfo('.$clan['id'].');return false;"').' title="'.htmlspecialchars($clan['title']).'"><img src="'.$path.''.PATH_IMAGE_CLANS.$clan['picture'].'" border=0 width=13 height=13 align="absmiddle"></a>&nbsp;';
+    }
+    $short_nick = ($param['nick_len'] > 0) ? common_short_nick($user['nick'], $param['nick_len']) : $user['nick'];
+    $html .= '<a'.($param['url'] ? ' href="'.$param['url'].'"': '').' '.$param['url_add'].' class="t_h_td"><span'.(!$param['nopersonal'] && !$param['url'] && (stristr($param['url_add'],'onClick') === false) ? ' onClick="userToTag(\''.$user['nick'].'\');return false;" title="'.'Персональное сообщение'.'" style="cursor:hand"': '').$style.'>'.htmlspecialchars($short_nick).'&nbsp;['.intval($user['level']).']</span></a>';
+    if (!$param['noinfo']) $html .= '&nbsp;<a '.($param['external'] ? 'href="'.SERVER_URL.'user_info.php?nick='.$user['nick'].'" target=_blank' : 'href="#" onClick="showUserInfo(\''.addslashes($user['nick']).'\');return false;"').' title="'.'Информация о персонаже'.'"><img src="'.$path.'images/player_info.gif" border=0 align="absmiddle"></a>';
+    return $html;
+}
+
+// $param:
+// 'size' - 10 - default
+// 'prefix'
+// 'format'
+function html_page_list_casino($url, $page, $page_count, $param=false) {
+    $size = $param['size'] ? $param['size']: 10;
+    $format = $param['format'] ? $param['format']: '&nbsp;%d&nbsp;';
+
+    if ($page_count < 2) return '';
+    $url .= strpos($url,'?') !== false ? '&': '?';
+    $html = $param['prefix'] ? $param['prefix']: '<span style="    color: PaleGreen;">Страницы: </span>';
+    $page_start = floor($page/$size)*$size;
+    $page_end = min($page_start+$size,$page_count);
+    if ($page_start > 0) {
+        $html .= '<a '.$param['add_style'].' href="'.$url.'page=0">'.sprintf($format,1).'</a>...';
+        $html .= '<a '.$param['add_style'].' href="'.$url.'page='.($page_start-1).'">&nbsp;&laquo;&nbsp;</a>';
+    }
+    for ($i=$page_start; $i<$page_end; $i++) {
+        $t = sprintf($format,$i+1);
+        if ($page == $i) $t = '<b>'.$t.'</b>';
+        $html .= '<a '.$param['add_style'].' href="'.$url.'page='.$i.'">'.$t.'</a>';
+    }
+    if ($page_end < $page_count) {
+        $html .= '<a '.$param['add_style'].' href="'.$url.'page='.$page_end.'">&nbsp;&raquo;&nbsp;</a>';
+        $html .= '...<a '.$param['add_style'].' href="'.$url.'page='.($page_count-1).'">'.sprintf($format,$page_count).'</a>';
+    }
+    print $html;
+}
+
+
+//$m_casino_list - Список текущих ставок
+//$output 'echo', 'array'
+function casino_game($m_casino_list = array(), $vivod = array()){
+    global $casino_logic,$red_numbers;
+    $casino_summ = array();
+
+    /*ВЫВОД для тестирования*/
+    if($vivod['echo']) {
+        foreach ($m_casino_list as $m_casino) {
+            if ($m_casino['type'] == M_CASINO_LOGIC_TYPE_NUMBER) {
+                echo "Число " . $m_casino['field'] . ' ' . html_money_str($m_casino['money_type'], $m_casino['money']) . '<br>';
+            }
+            if ($m_casino['type'] == M_CASINO_LOGIC_TYPE_COLOR) {
+                echo "Цвет " . ($m_casino['field'] == 1 ? 'Черный' : 'Красный') . ' ' . html_money_str($m_casino['money_type'], $m_casino['money']) . '<br>';
+            }
+            if ($m_casino['type'] == M_CASINO_LOGIC_TYPE_EVEN) {
+                echo ($m_casino['field'] == 1 ? 'Нечетные' : 'Четные') . ' числа ' . html_money_str($m_casino['money_type'], $m_casino['money']) . '<br>';
+            }
+            if ($m_casino['type'] == M_CASINO_LOGIC_TYPE_DOZEN) {
+                $msg = "Дюжина";
+                if ($m_casino['field'] == 1) $msg = "Дюжина 1:12";
+                if ($m_casino['field'] == 2) $msg = "Дюжина 2:12";
+                if ($m_casino['field'] == 3) $msg = "Дюжина 3:12";
+                echo $msg . ' ' . html_money_str($m_casino['money_type'], $m_casino['money']) . '<br>';
+            }
+            if ($m_casino['type'] == M_CASINO_LOGIC_TYPE_FLOAT) {
+                $msg = "От 1 до 18";
+                if ($m_casino['field'] == 1) $msg = "1-18";
+                if ($m_casino['field'] == 2) $msg = "19-36";
+                if ($m_casino['field'] == 3) $msg = "1-12";
+                if ($m_casino['field'] == 3) $msg = "13-24";
+                if ($m_casino['field'] == 3) $msg = "25-36";
+                echo $msg . ' ' . html_money_str($m_casino['money_type'], $m_casino['money']) . '<br>';
+            }
+        }
+    }
+    /*ВЫВОД для тестирования*/
+
+    /*Функционал для игры в кизино*/
+    $casino_summ_weight = array(); //Че-то с чем-то
+    for($i = 1; $i <= 36; $i++){$random = $i;
+        $casino_summ_temp = array();
+        foreach($m_casino_list as $m_casino){
+            $out = casino_action($random, $m_casino);
+            if($out['win']){
+                $casino_summ_temp[$out['money_type']] -= $out['money'];
+            }else{
+                $casino_summ_temp[$m_casino['money_type']] += $m_casino['money'];
+            }
+        }
+        $casino_summ_weight[$i] = $casino_summ_temp;
+        $weight = 0;
+        //Расчет веса монет, тут можно будет поработать из админки к примеру
+        if($casino_summ_weight[$i][MONEY_TYPE_GAME]){
+            /*ИГРАЕМ С ЭТИМИ ПАРАМЕТРАМИ ДЛЯ УПРАВЛЕНИЯ ВЕСОМ*/
+            $param_1 = 1;
+            if(defined('M_CASINO_WEIGHT_1') && M_CASINO_WEIGHT_1){
+                $param_1 = M_CASINO_WEIGHT_1;
+            }
+            $weight += $casino_summ_weight[$i][MONEY_TYPE_GAME] / 100 * $param_1;
+        }
+        if($casino_summ_weight[$i][MONEY_TYPE_GOLD]) {
+            /*ИГРАЕМ С ЭТИМИ ПАРАМЕТРАМИ ДЛЯ УПРАВЛЕНИЯ ВЕСОМ*/
+            $param_3 = 1.5;
+            if(defined('M_CASINO_WEIGHT_3') && M_CASINO_WEIGHT_3){
+                $param_3 = M_CASINO_WEIGHT_3;
+            }
+            $weight += $casino_summ_weight[$i][MONEY_TYPE_GOLD] * $param_3;
+        }
+        $casino_summ_weight[$i]['weight'] = $weight;
+    }
+    /*Функционал для игры в кизино*/
+
+    /*ВЫВОД для тестирования*/
+    if($vivod['echo']) {
+        echo "<br>Данные игры до сортировки<br>";
+        foreach ($casino_summ_weight as $k=>$casino_summ_w){
+            echo 'Проеб с числом ' . $k . ' ' . html_money_str(MONEY_TYPE_GAME, $casino_summ_w[MONEY_TYPE_GAME]) . ' ' . html_money_str(MONEY_TYPE_GOLD, $casino_summ_w[MONEY_TYPE_GOLD]) . '<br>';
+        }
+    }
+    /*ВЫВОД для тестирования*/
+
+    /*Функционал для игры в кизино*/
+    //Сортировка по весу
+    common_fldsort($casino_summ_weight, true, 'weight');
+    /*Функционал для игры в кизино*/
+
+    /*ВЫВОД для тестирования*/
+    if($vivod['echo']) {
+        echo "<br>Данные игры после сортировки<br>";
+        foreach ($casino_summ_weight as $k=>$casino_summ_w){
+            echo 'Проеб с числом ' . $k . ' ' . html_money_str(MONEY_TYPE_GAME, $casino_summ_w[MONEY_TYPE_GAME]) . ' ' . html_money_str(MONEY_TYPE_GOLD, $casino_summ_w[MONEY_TYPE_GOLD]) . '<br>';
+        }
+    }
+    /*ВЫВОД для тестирования*/
+
+    /*Функционал для игры в кизино*/
+    $last_rand_exist = array();
+    /*ИГРАЕМ С ЭТИМИ ПАРАМЕТРАМИ ДЛЯ УПРАВЛЕНИЯ ВЫЙГРЫШОМ*/
+    $iii = 1;
+    $iii_max = 1;
+    if(defined('M_CASINO_VARIATION') && M_CASINO_VARIATION){
+        $iii_max = M_CASINO_VARIATION;
+        if($iii_max >= count($casino_summ_weight)){
+            $iii_max = count($casino_summ_weight);
+        }
+    }
+    foreach($casino_summ_weight as $k=>$casino_summ_w){
+        $last_rand_exist[$k] = $casino_summ_w;
+        if($iii >= $iii_max){break;}
+        $iii++;
+    }
+    /*Функционал для игры в кизино*/
+
+    /*ВЫВОД для тестирования*/
+    if($vivod['echo']) {
+        echo "<br><br>Лучший рандом для КАЗИНО:<br><br>";
+        foreach ($last_rand_exist as $k => $casino_summ_w) {
+            echo  'Проеб с числом ' . $k . ' ' . html_money_str(MONEY_TYPE_GAME, $casino_summ_w[MONEY_TYPE_GAME]) . ' ' . html_money_str(MONEY_TYPE_GOLD, $casino_summ_w[MONEY_TYPE_GOLD]) . '<br>';
+        }
+    }
+    /*ВЫВОД для тестирования*/
+
+    /*Функционал для игры в кизино*/
+    $better_rand = array_rand($last_rand_exist);
+    $casino_summ = $last_rand_exist[$better_rand];
+    $casino_summ['better_rand'] = $better_rand;
+    /*Функционал для игры в кизино*/
+
+    /*ВЫВОД для тестирования*/
+    if($vivod['echo']){
+        //print_r($last_rand_exist[$better_rand]);
+        echo "<br>Лучший рандом это ".$better_rand;
+        echo "<br><br>";
+        echo "Доходы и убытки: " . html_money_str(MONEY_TYPE_GAME, $casino_summ[MONEY_TYPE_GAME]) . ' ' . html_money_str(MONEY_TYPE_GOLD, $casino_summ[MONEY_TYPE_GOLD]);
+    }
+    /*ВЫВОД для тестирования*/
+
+    return $casino_summ;
+}
+
+function m_casino_active_get(){
+    if(defined('M_CASINO_START') && M_CASINO_START){return true;}
+    return false;
+}

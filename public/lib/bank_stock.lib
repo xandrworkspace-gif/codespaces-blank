@@ -1,0 +1,368 @@
+<?
+
+define('TABLE_BANK_STOCK_LIST', 'bank_stock');
+define('TABLE_BANK_STOCK_ITEM_LIST', 'bank_stock_item');
+define('TABLE_BANK_STOCK_USER_LIST', 'bank_stock_user');
+
+
+define('TABLE_BANK_PACK_LIST', 'bank_pack');
+define('TABLE_BANK_PACK_USER_LIST', 'bank_pack_user');
+
+
+define('BANK_PACK_FLAG_ACTIVE', 0x0000001);
+define('BANK_PACK_FLAG_ACTIVE_ADMIN', 0x0000002);
+define('BANK_PACK_FLAG_ONE_TIME', 0x0000004);
+
+$bank_pack_flags_hash = array(
+    BANK_PACK_FLAG_ACTIVE => 'Активно',
+    BANK_PACK_FLAG_ACTIVE_ADMIN => 'Только для админов',
+    BANK_PACK_FLAG_ONE_TIME => 'Можно купить только 1 раз (можно чистить через очистку)',
+);
+
+
+/*
+ * Структура базы данных:
+ * Банк сток:
+ * 1.ID
+ * 2.Название акции
+ * 3.Дата начала
+ * 4.Дата окончания
+ * 5.Флаги
+ *
+ * Банк сток итем:
+ * 1.ID
+ * 2.Банк сток ID
+ * 3.Минимальная сумма пополнения
+ * 4.Бонус ID
+ * 5.Описание бонуса
+ * 6.Флаги
+ *
+ * Банк сток юзер:
+ * 1.ID
+ * 2.USER ID
+ * 3.Сумма платежа
+ * 4.Последний полученный Банк сток ID
+ * 5.Время удаления
+ * */
+
+#Работа с базой данных
+function bank_stock_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_BANK_STOCK_LIST,$ref,$add);
+}
+
+function bank_stock_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_BANK_STOCK_LIST,$ref,$add);
+}
+
+function bank_stock_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_BANK_STOCK_LIST, $ref, $add);
+}
+
+function bank_stock_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_BANK_STOCK_LIST,$param);
+}
+
+function bank_stock_delete($ref, $add=''){
+    global $db_diff;
+    common_delete($db_diff, TABLE_BANK_STOCK_LIST, $ref, $add);
+    return true;
+}
+
+//////////////////////////////////
+
+function bank_stock_item_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_BANK_STOCK_ITEM_LIST,$ref,$add);
+}
+
+function bank_stock_item_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_BANK_STOCK_ITEM_LIST,$ref,$add);
+}
+
+function bank_stock_item_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_BANK_STOCK_ITEM_LIST, $ref, $add);
+}
+
+function bank_stock_item_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_BANK_STOCK_ITEM_LIST,$param);
+}
+
+function bank_stock_item_delete($ref, $add='') {
+    global $db_diff;
+    common_delete($db_diff,TABLE_BANK_STOCK_ITEM_LIST,$ref,$add);
+    return true;
+}
+
+
+//////////////////////////////////
+
+function bank_stock_user_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_BANK_STOCK_USER_LIST,$ref,$add);
+}
+
+function bank_stock_user_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_BANK_STOCK_USER_LIST,$ref,$add);
+}
+
+function bank_stock_user_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_BANK_STOCK_USER_LIST, $ref, $add);
+}
+
+function bank_stock_user_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_BANK_STOCK_USER_LIST,$param);
+}
+
+function bank_stock_user_delete($ref, $add='') {
+    global $db_diff;
+    common_delete($db_diff,TABLE_BANK_STOCK_USER_LIST,$ref,$add);
+    return true;
+}
+
+function bank_stock_check_open($bank_stock = array()){
+    if($bank_stock['stime'] <= time_current() && time_current() <= $bank_stock['dtime']){
+        return true;
+    }else{
+        return false;
+    }
+}
+
+function bank_stock_current($session_user = array()){
+    if(defined('BANK_ACTION_ADMIN_ONLY') && BANK_ACTION_ADMIN_ONLY && !($session_user['flags'] & USER_FLAG_ADMIN)){
+        return false;
+    }
+    if(defined('BANK_ACTION_CURRENT_ID') && BANK_ACTION_CURRENT_ID){
+        $bank_stock = bank_stock_get(BANK_ACTION_CURRENT_ID);
+        return ($bank_stock ? $bank_stock : false);
+    }else{
+        return false;
+    }
+}
+
+function bank_stock_freekassa_action($freekassa_payment, $user){
+    do{
+        if($freekassa_payment['money_type'] != MONEY_TYPE_GOLD) break;
+
+        $current_action = bank_stock_current($user);
+        if(!$current_action) break;
+        if(!bank_stock_check_open($current_action)) break;
+        //Так так так.. Доступная акция.
+        //Сколько задонатил чел?
+        $current_action_items = bank_stock_item_list(array('bank_stock_id' => $current_action['id']),' ORDER BY money ASC');
+
+        $bank_stock_user = bank_stock_user_get(array('user_id' => $user['id'], 'bank_stock_id' => $current_action['id']));
+        if($bank_stock_user){
+            bank_stock_user_save(array(
+                'id' => $bank_stock_user['id'],
+                '_set' => sql_pholder(' money = money + ?, dtime = ?', $freekassa_payment['money'], $current_action['dtime']),
+            ));
+        }else{
+            bank_stock_user_save(array(
+                'bank_stock_id' => $current_action['id'],
+                'user_id' => $user['id'],
+                'money' => $freekassa_payment['money'],
+                'dtime' => $current_action['dtime'],
+            ));
+        }
+        $bank_stock_user = bank_stock_user_get(array('user_id' => $user['id'], 'bank_stock_id' => $current_action['id']));
+        if(!$bank_stock_user) break;
+        $current_bank_stock_user_cnt = intval($bank_stock_user['bank_stock_item_id']);
+
+        if($current_bank_stock_user_cnt >= count($current_action_items)) break; //Все ладушки! Получено все
+        foreach ($current_action_items as $k=>$v){
+            if(($k + 1) <= $current_bank_stock_user_cnt) continue;
+            if($bank_stock_user['money'] >= $v['money']){
+                //Нужно выдать!
+                if($v['artikul_list']){
+                    $arts = json_decode($v['artikul_list']);
+                    $artikul_ids = array();
+                    foreach ($arts as $art) $artikul_ids[$art[0]] = $art[0];
+                    if($artikul_ids) $artikul_hash = make_hash(artifact_artikul_list(array('id' => $artikul_ids)));
+                    $msg_give_arts = array();
+                    foreach ($arts as $art) {
+                        $msg_give_arts[] = tpl_artikul_info($artikul_hash[$art[0]], $art[1]);
+                        artifact_add($art[0], max($art[1], 1), $user['id']);
+                    }
+                    if($msg_give_arts) chat_msg_send_system('<b>Вы получили: '.implode(', ', $msg_give_arts).' за участие в акции '.$current_action['title'].'</b>', CHAT_CHF_USER, $user['id']);
+                }
+                if($v['bonus_id']) {
+                    bonus_apply($user, $v['bonus_id']);
+                    bank_stock_user_save(array(
+                        'id' => $bank_stock_user['id'],
+                        '_set' => sql_pholder(' bank_stock_item_id = ?', ($k + 1)),
+                    ));
+                    $current_bank_stock_user_cnt = ($k + 1);
+                }
+            }
+        }
+    }while(0);
+}
+
+function bank_stock_flashvars(&$vars, $user = array()){
+    $current_action = bank_stock_current($user);
+    if(!$current_action) return;
+
+    $artikul_stock = artifact_artikul_get($current_action['artikul_id']);
+
+    $vars['user_campaign'] = json_encode(array(
+        'title' => $current_action['title'],
+        'picture' => PATH_IMAGE_ARTIFACTS.$artikul_stock['picture'],
+        'time_expire' => $current_action['dtime'],
+    ));
+}
+
+///////////////////////////////////////////
+
+
+///////////////////////////////////////////////////////
+
+function bank_pack_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_BANK_PACK_LIST,$ref,$add);
+}
+
+function bank_pack_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_BANK_PACK_LIST,$ref,$add);
+}
+
+function bank_pack_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_BANK_PACK_LIST, $ref, $add);
+}
+
+function bank_pack_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_BANK_PACK_LIST,$param);
+}
+
+function bank_pack_delete($ref, $add=''){
+    global $db_diff;
+    common_delete($db_diff, TABLE_BANK_PACK_LIST, $ref, $add);
+    return true;
+}
+
+//////////////////////////////////
+
+function bank_pack_user_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_BANK_PACK_USER_LIST,$ref,$add);
+}
+
+function bank_pack_user_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_BANK_PACK_USER_LIST,$ref,$add);
+}
+
+function bank_pack_user_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_BANK_PACK_USER_LIST, $ref, $add);
+}
+
+function bank_pack_user_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_BANK_PACK_USER_LIST,$param);
+}
+
+function bank_pack_user_delete($ref, $add='') {
+    global $db_diff;
+    common_delete($db_diff,TABLE_BANK_PACK_USER_LIST,$ref,$add);
+    return true;
+}
+
+function bank_pack_check_open($bank_pack = array()){
+    if($bank_pack['stime'] <= time_current() && time_current() <= $bank_pack['dtime']){
+        return true;
+    }else{
+        return false;
+    }
+}
+
+function bank_pack_avail_list($session_user, $check_ref = false) {
+    $bank_pack_list = bank_pack_list(false, ($check_ref ? sql_pholder(' AND id = ?', $check_ref) : '').sql_pholder(' AND (flags & ?#BANK_PACK_FLAG_ACTIVE) AND (level_min = 0 OR level_min <= ?) AND (level_max = 0 OR level_max >= ?) AND (stime <= ?) AND (dtime >= ?)', $session_user['level'], $session_user['level'], time_current(), time_current()));
+    foreach ($bank_pack_list as $k=>$bank_pack) $bank_pack_list[$k]['object_class'] = OBJECT_CLASS_BANK_PACK;
+    $check_object_list = array();
+    if($bank_pack_list) restriction_get_dependent($session_user,$check_object_list);
+
+    $bank_pack_user_hash = get_hash(bank_pack_user_list(array('user_id' => $session_user['id'])), 'bank_pack_id', 'bank_pack_id');
+
+    foreach ($bank_pack_list as $k=>$bank_pack) {
+        if($bank_pack['flags'] & BANK_PACK_FLAG_ACTIVE_ADMIN && !($session_user['flags'] & USER_FLAG_ADMIN)) unset($bank_pack_list[$k]);
+        if($bank_pack_user_hash[$bank_pack['id']]) unset($bank_pack_list[$k]);
+        $restrinction = restriction_check(0, array($bank_pack), $check_object_list);
+        if ($restrinction['status'] == RESTRICTION_STATUS_DENY) {
+            unset($bank_pack_list[$k]);
+        }
+    }
+    if($check_ref) return $bank_pack_list[0];
+    return $bank_pack_list;
+}
+
+function bank_pack_freekassa_action($freekassa_payment, $user){
+    do{
+        if($freekassa_payment['money_type'] != MONEY_TYPE_GOLD) break;
+
+        $current_action = bank_stock_current($user);
+        if(!$current_action) break;
+        if(!bank_stock_check_open($current_action)) break;
+        //Так так так.. Доступная акция.
+        //Сколько задонатил чел?
+        $current_action_items = bank_stock_item_list(array('bank_stock_id' => $current_action['id']),' ORDER BY money ASC');
+
+        $bank_stock_user = bank_stock_user_get(array('user_id' => $user['id'], 'bank_stock_id' => $current_action['id']));
+        if($bank_stock_user){
+            bank_stock_user_save(array(
+                'id' => $bank_stock_user['id'],
+                '_set' => sql_pholder(' money = money + ?, dtime = ?', $freekassa_payment['money'], $current_action['dtime']),
+            ));
+        }else{
+            bank_stock_user_save(array(
+                'bank_stock_id' => $current_action['id'],
+                'user_id' => $user['id'],
+                'money' => $freekassa_payment['money'],
+                'dtime' => $current_action['dtime'],
+            ));
+        }
+        $bank_stock_user = bank_stock_user_get(array('user_id' => $user['id'], 'bank_stock_id' => $current_action['id']));
+        if(!$bank_stock_user) break;
+        $current_bank_stock_user_cnt = intval($bank_stock_user['bank_stock_item_id']);
+
+        if($current_bank_stock_user_cnt >= count($current_action_items)) break; //Все ладушки! Получено все
+        foreach ($current_action_items as $k=>$v){
+            if(($k + 1) <= $current_bank_stock_user_cnt) continue;
+            if($bank_stock_user['money'] >= $v['money']){
+                //Нужно выдать!
+                if($v['artikul_list']){
+                    $arts = json_decode($v['artikul_list']);
+                    $artikul_ids = array();
+                    foreach ($arts as $art) $artikul_ids[$art[0]] = $art[0];
+                    if($artikul_ids) $artikul_hash = make_hash(artifact_artikul_list(array('id' => $artikul_ids)));
+                    $msg_give_arts = array();
+                    foreach ($arts as $art) {
+                        $msg_give_arts[] = tpl_artikul_info($artikul_hash[$art[0]], $art[1]);
+                        artifact_add($art[0], max($art[1], 1), $user['id']);
+                    }
+                    if($msg_give_arts) chat_msg_send_system('<b>Вы получили: '.implode(', ', $msg_give_arts).' за участие в акции '.$current_action['title'].'</b>', CHAT_CHF_USER, $user['id']);
+                }
+                if($v['bonus_id']) {
+                    bonus_apply($user, $v['bonus_id']);
+                    bank_stock_user_save(array(
+                        'id' => $bank_stock_user['id'],
+                        '_set' => sql_pholder(' bank_stock_item_id = ?', ($k + 1)),
+                    ));
+                    $current_bank_stock_user_cnt = ($k + 1);
+                }
+            }
+        }
+    }while(0);
+}

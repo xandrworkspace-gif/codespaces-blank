@@ -1,0 +1,145 @@
+<? # $Id: counters.lib,v 1.7 2009-10-27 13:46:19 s.ignatenkov Exp $
+
+// Имена и поля таблиц
+define('TABLE_COUNTERS','counters');
+define('FIELD_COUNTERS','');
+
+define('COUNTER_FLAG_FIRST_LOGIN',        	0x000001); // При первом после регистрации логине
+define('COUNTER_FLAG_EVERY_LOGIN',    		0x000002); // При каждом логине
+define('COUNTER_FLAG_SECOND_REGISTER_STEP',	0x000004); // На втором шаге регистрации
+define('COUNTER_FLAG_EVERYWHERE',			0x000008); // Везде
+
+define('COUNTER_FLAG_INDEX',				0x000010); // index
+define('COUNTER_FLAG_ADV',					0x000020); // adv
+define('COUNTER_FLAG_LP',					0x000040); // lp
+
+define('COUNTER_LIST_TTL', 60*60*24); // кеш на сутки
+
+function counter_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_COUNTERS,$ref,$add);
+}
+
+function counter_macros($text){
+	global $session_user;
+	$uid = $session_user['id'];
+	$text = str_replace('%uid_code%', md5($uid.(defined('PARTNER_COUNTER_SALT') ? PARTNER_COUNTER_SALT : '')), $text);
+
+	preg_match_all('|%code\((.*)\)%|Uis', $text, $code_lengths);
+	$code_lengths_count=count($code_lengths[0]);
+
+	for($i=0;$i<$code_lengths_count;$i++){
+			$ordercode = md5(rand(0,1000000));
+			$ordercode .= md5(rand(0,1000000));
+			$ordercode .= md5(rand(0,1000000));
+			$ordercode = substr($ordercode,0,$code_lengths[1][$i]);
+			$text = str_replace($code_lengths[0][$i],$ordercode,$text);
+	}
+	//%md5()% обработка тэга мд5
+	preg_match_all('|%md5\((.*)\)%|Uis', $text, $code_lengths);
+	for($i=0;$i<count($code_lengths[0]);$i++){
+	   $text = str_replace($code_lengths[0][$i],md5($code_lengths[1][$i]),$text); 
+	}
+	
+	$text = str_replace('%random%', rand(100000000, 199999999), $text);
+	$text = str_replace('%site_url%', trim(substr(SERVER_URL, strpos(SERVER_URL, '://') + 3), '/'), $text);
+	
+	return $text;
+}
+
+function counter_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_COUNTERS,$ref,$add);
+}
+
+function counter_list_params($flags, $partner_counter = '', $site_id = '') {
+	global $SITE_CFG, $PARTNERS_CFG;
+
+	$cache = new Cache('COUNTER_LIST');
+	if ($cache->isValid()) {
+		$counters = (array)$cache->get();
+	}
+	else {
+		$counters = counter_list();
+		$cache->update($counters, COUNTER_LIST_TTL);
+	}
+/*	$current_world = array();
+	if ($SITE_CFG) {
+		$current_world = common_get_settings(array('WORLD_ID'));
+	}*/
+	
+	foreach ($counters as $k=>&$counter) {
+/*		$add = sql_pholder(' AND (flags & ?) AND (partner_counter = ?) AND (partner = ? OR partner = "0")', $flags, $partner_counter, PARTNER);
+		if ($site_id) {
+			$add .= sql_pholder(' AND (site_id = ? ) ', $site_id);
+		}
+		if ($SITE_CFG) {
+			$current_world = common_get_settings(array('WORLD_ID'));
+			$add .= sql_pholder(' AND (world_id = ? OR world_id = 0) ', $current_world['WORLD_ID']);
+		}
+*/
+		$found = false;
+		if (
+			(
+			($counter['flags'] & $flags) &&
+			($counter['flags'] & COUNTER_FLAG_EVERYWHERE || $counter['partner_counter'] == $partner_counter) &&
+			($counter['partner'] == PARTNER || $counter['partner'] == '0' )
+			)
+			&&
+//			(
+			//(!$SITE_CFG || ($SITE_CFG && ($counter['world_id'] == $current_world['WORLD_ID'] || $counter['world_id'] == '0')))
+			//&&
+
+			(
+			     $counter['flags'] & COUNTER_FLAG_EVERYWHERE
+			  || !$site_id
+			  || !$counter['site_id']
+			  || ($counter['site_id'] && $site_id && $counter['site_id'] == $site_id)
+			)
+//			)
+		) {
+			$found = true;
+		}
+		if (!$found) {
+			unset($counters[$k]);
+		}
+		else {
+			$counter['body'] = counter_macros($counter['body']);
+		}
+	}
+	return $counters;
+}
+
+function print_counters($flags, $partner_counter = '', $site_id = '') {
+	$counters = counter_list_params($flags, $partner_counter, $site_id);
+	$html = '';
+	if (count($counters)) {
+		$html .= '<div style="position: absolute; top: -10000px; left: -10000px;">';
+		foreach ($counters as $counter) {
+			$html .= $counter['body'] . " \n";
+		}
+		$html .= '</div>';
+	}
+	return $html;
+}
+
+function counter_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_COUNTERS, $ref, $add);
+}
+
+function counter_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_COUNTERS,$param,FIELD_COUNTERS);
+}
+
+function counter_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_COUNTERS,$ref,$add);
+}
+
+
+
+
+
+?>

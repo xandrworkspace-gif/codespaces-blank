@@ -1,0 +1,89 @@
+<? # $Id: DROP.action,v 1.9 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "продать предмет"
+// Параметры:
+//	$in['amount'] - кол-во
+
+require_once("lib/area_store.lib");
+
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT)) || $object['slot_id']) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+if ($object['flags'] & ARTIFACT_FLAG_NOSELL) {
+    $out['error'] = translate('Предмет нельзя продать!');
+    return;
+}
+$amount = min(intval($in['amount']),$object['cnt']);
+if (($object['cnt'] > 0) && ($amount <= 0)) {
+    $out['error'] = translate('Указано неверное количество!');
+    return;
+}
+
+if($amount == 0){ //Хот фикс ебана рот
+    $amount = 1;
+}
+
+
+$artikul = artifact_artikul_get($object['artikul_id']);
+if ($object['durability_max'] == $artikul['durability_max'] && $object['durability_max'] == $object['durability']) {
+    $price = $artikul['price'] * AREA_STORE_SELL_NEW;
+} else {
+    $price = $artikul['price'] * AREA_STORE_SELL_USED;
+}
+
+$price = min($price, AREA_STORE_SELL_LIMIT);
+$price = max(.01, $price * $amount);
+
+$price_type = MONEY_TYPE_GAME;
+$comment = sprintf(translate('за продажу "%s"'),$artikul['title']);
+$operations = ($price_type == MONEY_TYPE_GAME) ? array(MONEY_STAT_OPERATION_RECEIVE,MONEY_STAT_OPERATION_PURE_RECEIVE) : false;
+$status = user_make_payment($price_type, $subject['id'], $price,$comment, false, $operations);
+if (!$status) {
+    $out['error'] = translate('Сбой при скупке!');
+    return;
+}
+
+$out['status'] = ACTION_STATUS_OK;
+chat_msg_send_system(translate('Вы продали "'.$artikul['title'].'"! Получено: '.html_money_str(MONEY_TYPE_GAME, $price)), CHAT_CHF_USER, $subject['id']);
+
+if ($object['id'] && $amount && $amount < $object['cnt']) {
+    artifact_save(array(
+        'id' => $object['id'],
+        'cnt' => $object['cnt'] - $amount,
+        'artikul_actions' => 1,
+    ));
+    action_object_delete(OBJECT_CLASS_ARTIFACT,artifact_get($object['id']));
+} else {
+    artifact_delete($object['id']);
+    $t2[] = $object['id'];
+}
+
+//Возможность выкупить
+$artifact_s = $object;
+unset($artifact_s['object_class']);
+unset($artifact_s['id']);
+$artifact_s['cnt'] = ($object['cnt'] == 0 ? 0 : $amount);
+$artifact_s['sell_time'] = time_current();
+$artifact_s['sell_cost'] = $price;
+$artifact_s['sell_type'] = $price_type;
+$a_s_id = artifact_sell_save($artifact_s);
+$artifact_s['id'] = $a_s_id;
+$artifact_s['_mode'] = CSMODE_INSERT;
+artifact_ransom_add($artifact_s, $subject['id']);
+//////////////////////////////////////
+
+$t[] = $artikul['title'];
+// лог-сервис -----------------------
+logserv_log_operation(array(
+    'money_type' => $price_type,
+    'amount' => $price,
+),$session_user);
+logserv_log_operation(array(
+    'artifact' => $object,
+    'cnt' => -$amount,
+),$session_user);
+// ----------------------------------
+
+?>

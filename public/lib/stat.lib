@@ -1,0 +1,118 @@
+<? # $Id: stat.lib,v 1.10 2009-07-10 09:50:17 vadim_b Exp $
+
+// Имена и поля таблиц
+define('TABLE_STATS','stats');
+define('FIELD_STATS','');
+define('TABLE_STAT_USERS','stat_users');
+define('FIELD_STAT_USERS','');
+define('TABLE_STAT_USER_NEW_LOGS','stat_user_new_logs');
+define('FIELD_STAT_USER_NEW_LOGS','');
+
+function stat_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_STATS,$ref,$add,'stime');
+}
+
+function stat_list($ref=false, $add='', $field_list='*') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_STATS,$ref,$add,$field_list);
+}
+
+function stat_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_STATS,$param,FIELD_STATS,'stime');
+}
+
+function stat_delete($ref) {
+	global $db_diff;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_diff,TABLE_STATS,$ref,'', 'stime');
+	return true;
+}
+
+function stat_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff,TABLE_STATS,$ref,$add);
+}
+
+// =================================================================================================================
+
+function stat_get_stime($t=false) {
+	if (!$t) $t = time_current();
+	$t = explode('-',date('Y-m-d',$t));
+	$t = mktime(0,0,0,$t[1],$t[2],$t[0]);
+	return $t;
+}
+
+function register_status() {
+	$stat = stat_get(stat_get_stime(time_current()-86400));
+	if (intval($stat['max_online']) < intval(USER_MAX_ONLINE)) return true;
+	return false;
+}
+
+// type: 1 - inc, 2 - set, 3 - max, 4 - min
+function stat_update($fld, $val=1, $type=1) {
+	if (!$fld) return false;
+	
+	$stime = stat_get_stime();
+	if (!stat_get($stime)) {
+		stat_save(array(
+			'_mode' => CSMODE_INSERT,
+			'stime' => $stime,
+			'sdate' => date('Y-m-d', $stime),
+			'user_cnt' => user_count(),
+			'_cnt' => true,
+			$fld => 0,
+		));
+	}
+	
+	$set = '';
+	switch ($type) {
+		case 1: // inc
+			$set = sql_pholder($fld.'='.$fld.'+(?)', $val);			
+			break;
+		case 2: // set
+			$set = sql_pholder($fld.'=?', $val);
+			break;
+		case 3: // max
+			$set = sql_pholder($fld.'=if('.$fld.'>?,'.$fld.',?)', $val, $val);
+			break;
+		case 4: // min
+			$set = sql_pholder($fld.'=if('.$fld.'<?,'.$fld.',?)', $val, $val);
+			break;
+	}
+	
+	if (!$set) return false;
+	
+	$status = stat_save(array(
+		'_mode' => CSMODE_UPDATE,
+		'_set' => $set,
+		'_add' => ' AND stime = '.$stime,
+		'_cnt' => true,
+	));
+
+	return $status > 0;
+}
+
+function stat_user_new_log_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_STAT_USER_NEW_LOGS,$ref,$add,'uid');
+}
+
+function stat_user_new_log_list($add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_STAT_USER_NEW_LOGS,false,$add);
+}
+
+function stat_user_new_log_save($param, $force_insert=false) {
+	global $db_diff;
+	if ($force_insert) $param['_mode'] = CSMODE_INSERT;
+	return common_save($db_diff,TABLE_STAT_USER_NEW_LOGS,$param,FIELD_STAT_USER_NEW_LOGS,'uid');
+}
+
+function stat_user_new_log_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_STAT_USER_NEW_LOGS,$ref,$add,'uid');
+}
+
+?>

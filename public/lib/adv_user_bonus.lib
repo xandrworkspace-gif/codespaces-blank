@@ -1,0 +1,163 @@
+<?php
+
+// Имена и поля таблиц
+define('TABLE_ADV_USER_BONUS','adv_user_bonus');
+define('FIELD_ADV_USER_BONUS','');
+
+define('TABLE_ADV_USER_BONUS_STAT','adv_user_bonus_stat');
+define('FIELD_ADV_USER_BONUS_STAT','');
+
+define('ADV_USER_BONUS_ADMIN', 0x000001); //Получат только админы
+define('ADV_USER_BONUS_OPEN_DIALOG', 0x000002); //Открыть диалог принудительно
+define('ADV_USER_BONUS_CHAT', 0x000004); //Кнопка в чате на открытие диалога
+define('ADV_USER_BONUS_CRON', 0x000008); //Бонус автоматический по крону
+define('ADV_USER_BONUS_DELETE_STAT', 0x000010); //Очищать статистику по крону
+
+function adv_user_bonus_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_USER_BONUS,$ref,$add);
+}
+
+function adv_user_bonus_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_USER_BONUS,$ref,$add,$field_list);
+}
+
+function adv_user_bonus_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_USER_BONUS, $ref, $add);
+}
+
+function adv_user_bonus_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_USER_BONUS,$param,FIELD_ADV_USER_BONUS);
+}
+
+function adv_user_bonus_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_ADV_USER_BONUS,$ref);
+    return true;
+}
+
+//////////////////////////////////////
+
+function adv_user_bonus_stat_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_USER_BONUS_STAT,$ref,$add);
+}
+
+function adv_user_bonus_stat_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_USER_BONUS_STAT,$ref,$add,$field_list);
+}
+
+function adv_user_bonus_stat_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_USER_BONUS_STAT, $ref, $add);
+}
+
+function adv_user_bonus_stat_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_USER_BONUS_STAT,$param,FIELD_ADV_USER_BONUS_STAT);
+}
+
+function adv_user_bonus_stat_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_ADV_USER_BONUS_STAT,$ref);
+    return true;
+}
+
+function adv_user_bonus_cron(){
+    $adv_user_bonus_list = adv_user_bonus_list(false, sql_pholder(' AND time_start <  ? AND cron_cnt > 0 AND flags & ?#ADV_USER_BONUS_CRON', time_current()));
+    foreach ($adv_user_bonus_list as $adv_user_bonus){
+
+        if($adv_user_bonus['flags'] & ADV_USER_BONUS_DELETE_STAT){
+            adv_user_bonus_stat_delete(array('user_bonus_id' => $adv_user_bonus['id']));
+        }
+
+        //Кронирование xD
+        if($adv_user_bonus['period']) {
+            adv_user_bonus_save(array(
+                'id' => $adv_user_bonus['id'],
+                '_set' => sql_pholder(' cron_cnt = cron_cnt - 1, time_start = time_start + ?', $adv_user_bonus['period']),
+            ));
+        }else{
+            adv_user_bonus_save(array(
+                'id' => $adv_user_bonus['id'],
+                '_set' => sql_pholder(' cron_cnt = 0'),
+            ));
+        }
+        //Действие крона
+        adv_user_bonus_save(array(
+            'id' => $adv_user_bonus['id'],
+            't_create' => time_current(),
+        ));
+        adv_user_bonus_do_it($adv_user_bonus['id']);
+    }
+}
+
+function adv_user_bonus_do_it($adv_user_bonus_id){
+    $error = false;
+    $out = '';
+    do{
+        if(!$adv_user_bonus_id) {
+            $error = "Невозможно отослать бонус без ID";
+            break;
+        }
+        $adv_user_bonus = adv_user_bonus_get($adv_user_bonus_id);
+        if(!$adv_user_bonus){
+            $error = "Невозможно найти бонус игрокам";
+            break;
+        }
+        $user_ids = array();
+        global $NODE_NUMS;
+        foreach ($NODE_NUMS as $nn) {
+            NODE_SWITCH($nn);
+            $session_list = session_list(null,null,true,'');
+            foreach ($session_list as $session){
+                $user_ids[] = $session['uid'];
+            }
+        }
+        $online_users = make_hash(user_list(array('id' => $user_ids)));
+        if(!$online_users){
+            $error = "Никого нет онлайн?";
+            break;
+        }
+        if($adv_user_bonus['flags'] & ADV_USER_BONUS_ADMIN){
+            foreach ($online_users as $user_id=>$user){
+                if(!($user['flags'] & USER_FLAG_ADMIN)){
+                    unset($online_users[$user_id]);
+                }
+            }
+        }
+        if(!$online_users){
+            $error = "По нужным критериям никого не найдено!";
+            break;
+        }
+        $sends = array();
+        foreach ($online_users as $user_id=>$online_user){
+            $js_func = "popup2('adv_user_bonus.php?xxx=".rawurlencode(base64_encode($adv_user_bonus['id']))."', '".$adv_user_bonus['title']."', ".($adv_user_bonus['width'] ? $adv_user_bonus['width'] : 0).", ".(($adv_user_bonus['height'] ? $adv_user_bonus['height'] : 0)).");";
+            if($adv_user_bonus['flags'] & ADV_USER_BONUS_CHAT){
+                $button = html_button(($adv_user_bonus['btn_cht_text'] ? $adv_user_bonus['btn_cht_text'] : 'Получить бонус'), 'butt2', 'button', '', array('add' => ' onclick="'.$js_func.' return false;" '));
+                chat_msg_send_system($adv_user_bonus['cht_text'].'&nbsp;'.$button,CHAT_CHF_USER, $online_user['id']);
+                $sends[$user_id] = $online_user;
+            }
+            if($adv_user_bonus['flags'] & ADV_USER_BONUS_OPEN_DIALOG){
+                chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$online_user['id'],array('func' => $js_func,));
+                $sends[$user_id] = $online_user;
+            }
+        }
+
+        $msg = "";
+        foreach ($sends as $user){
+            $msg .= html_user_info($user,array('noprivate' => true)).'<br>';
+        }
+        $out = $msg;
+    }while(0);
+    return array(
+        'error' => $error,
+        'out' => $out,
+    );
+}

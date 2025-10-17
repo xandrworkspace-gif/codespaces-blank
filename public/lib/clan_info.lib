@@ -1,0 +1,149 @@
+<? # $Id: clan_info.lib,v 1.5 2007-07-16 14:33:14 sen Exp $
+
+// Имена и поля таблиц
+define('TABLE_CLAN_INFO','clan_info');
+define('FIELD_CLAN_INFO','clan_id, logo, description, law, law_ctime, last_clan_battle, clan_battle_season_place, totem_boost');
+define('TABLE_CLAN_NEWS','clan_news');
+define('FIELD_CLAN_NEWS','');
+define('TABLE_CLAN_POSTS','clan_posts'); // оповещения
+define('TABLE_CLAN_POSTS_ACCESS','clan_posts_access'); // доступ к оповещениям
+define('TABLE_CLAN_POSTS_LOG','clan_posts_log'); // доступ к лог
+
+
+define('CLAN_LAW_CTIME', 30*24*60*60); // изменение устава - раз в месяц
+define('CLAN_NEWS_MAX', 3); //
+
+function clan_info_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_INFO,$ref,$add,'clan_id');
+}
+
+function clan_info_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLAN_INFO,$ref,$add,$field_list);
+}
+
+function clan_info_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_INFO,$param,FIELD_CLAN_INFO,'clan_id');
+}
+
+function clan_info_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CLAN_INFO,$ref,$add,'clan_id');
+}
+
+/////////////////////////////////////////
+
+function clan_news_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_NEWS,$ref,$add);
+}
+
+function clan_news_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLAN_NEWS,$ref,$add);
+}
+
+function clan_news_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_NEWS,$param,FIELD_CLAN_NEWS);
+}
+
+function clan_news_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CLAN_NEWS,$ref,$add);
+}
+
+
+
+function clan_posts_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_POSTS,$ref,$add);
+}
+
+function clan_posts_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLAN_POSTS,$ref,$add);
+}
+
+function clan_posts_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_POSTS,$param,FIELD_CLAN_NEWS);
+}
+
+function clan_posts_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CLAN_POSTS,$ref,$add);
+}
+
+
+
+function clan_posts_access_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_POSTS_ACCESS,$ref,$add);
+}
+
+function clan_posts_access_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLAN_POSTS_ACCESS,$ref,$add);
+}
+
+function clan_posts_access_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_POSTS_ACCESS,$param,FIELD_CLAN_NEWS);
+}
+
+function clan_posts_access_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CLAN_POSTS_ACCESS,$ref,$add);
+}
+
+
+
+function clan_posts_log_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_POSTS_LOG,$ref,$add);
+}
+
+function clan_posts_log_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLAN_POSTS_LOG,$ref,$add);
+}
+
+function clan_posts_log_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_POSTS_LOG,$param,FIELD_CLAN_NEWS);
+}
+
+function clan_posts_log_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CLAN_POSTS_LOG,$ref,$add);
+}
+
+/** Возвращает количество не прочитанных сообщений у пользователя */
+function clan_posts_unread_messages_cnt($user){
+	if (empty($user['clan_id'])) return 0;
+	
+	$member = clan_member_get(array('status' => CM_STATUS_ACTIVE, 'clan_id' => $user['clan_id']), $user['id']);
+
+	if (!empty($member)){
+		$user_grade = clan_grade_get($member['grade_id']);
+		if ($user_grade['basic_id'] == CLAN_GRADE_HEAD) return 0; // для главы клана все как прочитанные
+		
+		$posts_ids = array_keys(make_hash(clan_posts_access_list(array(
+			'clan_id' => $user['clan_id'],
+			'grade_id' => $member['grade_id'],
+		)), 'post_id'));
+	}
+
+	if (empty($posts_ids)) $posts_ids=array();
+
+	if (!empty($posts_ids)) $read_posts_ids = array_keys(make_hash(clan_posts_log_list(array(
+	'user_id' => $user['id'], 
+	'post_id' => $posts_ids,
+	)), 'post_id'));
+	if (empty($read_posts_ids)) $read_posts_ids=array();
+
+	return count(array_diff($posts_ids, $read_posts_ids));
+}

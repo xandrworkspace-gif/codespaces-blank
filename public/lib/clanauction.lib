@@ -1,0 +1,326 @@
+<?
+require_once("lib/artifact.lib");
+require_once("lib/area.lib");
+require_once("lib/area_post.lib");
+require_once("lib/area_bank.lib");
+require_once("lib/clan.lib");
+
+// Имена и поля таблиц
+define('TABLE_CLANAUCTION_LOTS','clanauction_lots');
+define('TABLE_CLANAUCTION_BIDS','clanauction_bids');
+
+define('CA_STATUS_WAITING', 1);
+define('CA_STATUS_RUNNING', 2);
+define('CA_STATUS_CONFLICTED', 3);
+define('CA_STATUS_FINISHED', 4);
+define('CA_STATUS_ARCHIEVED', 5);
+
+function clanauction_lot_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CLANAUCTION_LOTS,$ref,$add);
+}
+
+function clanauction_lot_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_CLANAUCTION_LOTS,$ref,$add,$field_list);
+}
+
+function clanauction_lot_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_CLANAUCTION_LOTS,$ref,$add);
+}
+
+function clanauction_lot_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CLANAUCTION_LOTS,$param);
+}
+
+function clanauction_lot_delete($ref) {
+    global $db_2;
+    $status = common_delete($db_2,TABLE_CLANAUCTION_LOTS,$ref);
+    if ($status) clanauction_bid_delete(array('lot_id' => $ref));
+    return $status;
+}
+
+////////////////////////////////////
+
+function clanauction_bid_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CLANAUCTION_BIDS,$ref,$add);
+}
+
+function clanauction_bid_list($ref=false, $add='', $field_list = '*') {
+    global $db_2;
+    return common_list($db_2,TABLE_CLANAUCTION_BIDS,$ref,$add,$field_list);
+}
+
+function clanauction_bid_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_CLANAUCTION_BIDS,$ref,$add);
+}
+
+function clanauction_bid_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CLANAUCTION_BIDS,$param);
+}
+
+function clanauction_bid_delete($ref) {
+    global $db_2;
+    return common_delete($db_2,TABLE_CLANAUCTION_BIDS,$ref);
+}
+
+//////////////////////////////////
+
+function clanauction_bid_make($lot_id, $clan_id, $bid) {
+
+    $result = array('status' => false);
+    if (defined('CLANAUCTION_DISABLED') && CLANAUCTION_DISABLED) {
+        $result['error'] = translate('Клановый аукцион временно не работает');
+        return $result;
+    }
+
+    $lot_id = intval($lot_id);
+    $clan_id = intval($clan_id);
+    $bid = round(floatval($bid)*100)/100;
+
+    $lot = clanauction_lot_get($lot_id);
+
+    if (!$lot || !$lot['step'] || $lot['status'] != CA_STATUS_RUNNING) {
+        $result['error'] = translate('Лот не активен');
+        return $result;
+    }
+
+    if ($lot['end_time']<time_current()) {
+        $result['error'] = translate('Приём ставок завершён');
+        return $result;
+    }
+
+    if (!$bid || $bid<0 || ((100*$bid) % (100*$lot['step']) != 0)) {
+        $result['error'] = translate('Сумма не кратна шагу ставки!');
+        return $result;
+    }
+
+    $clan = clan_get($clan_id);
+    if (!$clan) {
+        $result['error'] = translate('Клан не найден');
+        return $result;
+    }
+
+    $user_head = user_get(clan_leader_id_get($clan['id']));
+    if(!$user_head){
+        $result['error'] = translate('Лидер клана не найден');
+        return $result;
+    }
+    if (defined('CLANAUCTION_ADMIN_ONLY') && CLANAUCTION_ADMIN_ONLY && !($user_head['flags'] & USER_FLAG_ADMIN)) {
+        $result['error'] = translate('Клановый аукцион временно не работает');
+        return $result;
+    }
+
+    if ($lot['kind'] && ($lot['kind']!=$user_head['kind'])) {
+        $result['error'] = translate('Лот действителен только для противоположной расы');
+        return $result;
+    }
+
+    if(!$lot['clan_stock_id']){
+        $result['error'] = translate('Лот не настроен!');
+        return $result;
+    }
+
+    $clan_stock_item = clan_stock_get(array('clan_id' => $clan_id, 'artikul_id' => $lot['clan_stock_id']));
+    $artikul = artifact_artikul_get($clan_stock_item['artikul_id']);
+
+    $balance = $clan_stock_item['cnt'];
+    if ($balance < $bid) {
+        $result['error'] = translate('У вашего клана недостаточно "'.$artikul['title'].'", чтобы сделать ставку!');
+        return $result;
+    }
+
+    if(clan_stock_remove_artikul($clan_id, $lot['clan_stock_id'], $bid) < $bid){
+        $result['error'] = translate('Не удалось сделать ставку');
+        return $result;
+    }
+
+    $bid_have = clanauction_bid_get(array(
+        'lot_id' => $lot_id,
+        'clan_id' => $clan_id,
+    ));
+    if($bid_have){
+        clanauction_bid_save(array(
+            'id'  => $bid_have['id'],
+            '_set' => sql_pholder(' bid = bid + ?, ctime = ?', $bid, time_current()),
+        ));
+    }else{
+        clanauction_bid_save(array(
+            'lot_id'  => $lot_id,
+            'clan_id' => $clan_id,
+            'bid'     => $bid,
+            'ctime'	  => time_current(),
+        ));
+    }
+
+    clanauction_lot_save(array(
+        '_set' => sql_pholder('bid_sum=bid_sum+?', $bid),
+        '_add' => sql_pholder(' and id=?', $lot_id),
+    ));
+
+    return array('status' => true);
+}
+
+function clanauction_process_lot($lot_id) {
+    global $db_2, $kind_info;
+
+    $lot_id = intval($lot_id);
+    $lot = clanauction_lot_get($lot_id);
+
+    $result = array('status' => false);
+    if (!$lot || $lot['status'] != CA_STATUS_RUNNING) {
+        $result['error'] = translate('Лот не активен');
+        return $result;
+    }
+
+    // Поставим статус что аукцион ожидает начала, чтобы в процессе определения победителя никто не пытался сделать ставку
+    clanauction_lot_save(array('id' => $lot_id, 'status' => CA_STATUS_WAITING));
+    sleep(3); // ждём немного чтобы никто не успел влезть
+
+    $winner_bid = clanauction_bid_get(array('lot_id' => $lot_id), ' ORDER BY bid DESC');
+    if (!$winner_bid) {
+        clanauction_lot_save(array('id' => $lot_id, 'status' => CA_STATUS_CONFLICTED));
+        return array('status' => true);
+    }
+
+    if (!floatval($winner_bid['bid'])) {
+        $result['error'] = 'Incorrect result';
+        return $result;
+    }
+    $winner = clanauction_bid_get(array('lot_id' => $lot_id, 'bid' => $winner_bid['bid']));
+    if (!$winner) {
+        $result['error'] = 'Error while getting winner';
+        return $result;
+    }
+
+    $clan = clan_get($winner['clan_id']);
+    if (!$clan) {
+        $result['error'] = 'Error while getting winner clan';
+        return $result;
+    }
+    $user_head = user_get(clan_leader_id_get($clan['id']));
+    if (!$user_head) {
+        $result['error'] = 'Error while getting winner user_head';
+        return $result;
+    }
+
+    $artikul = artifact_artikul_get($lot['clan_stock_id']);
+
+    NODE_PUSH(null,$user_head['id']);
+    $artifact_id = artifact_create($lot['artikul_id'], $lot['cnt']);
+    NODE_POP();
+    if (!$artifact_id) {
+        $result['error'] = 'Error while creating artifact';
+        return $result;
+    }
+
+    // функция создания артефатов может вернуть массив или 1 число, в зависимости от кол-ва созданного
+    // сделаем массив, если создался 1 арт, для унификации
+    $artifact_ids = !is_array($artifact_id) ? array($artifact_id) : $artifact_id;
+
+    $result = clanauction_lot_save(array(
+        'id' => $lot_id,
+        'status' => BA_STATUS_FINISHED,
+        'bid_winner' => $winner['bid'],
+        'clan_winner' => $winner['clan_id'],
+    ));
+
+    if (!$winner) {
+        $result['error'] = 'Error while updating lot';
+        return $result;
+    }
+
+    $artifact_artikul = artifact_artikul_get($lot['artikul_id']);
+
+    $subject = translate('Клановый аукцион: победа!');
+    $msg_text = sprintf(translate('*** Ваш клан победили в торгах по лоту "%s", %dшт в клановом аукционе! ***'),
+        $artifact_artikul['title'], $lot['cnt']);
+    foreach($artifact_ids as $artifact_id) {
+
+        $cell_add = false;
+        do{
+            artifact_save(array('id' => $artifact_id, 'user_id' => $user_head['id']));
+            $cell_area_id = $kind_info[$user_head['kind']]['city_area_id'];
+            if(!$cell_area_id) break;
+            $cell = area_bank_cell_get(array('area_id' => $cell_area_id, 'clan_id' => $clan['id']));
+            if(!$cell) break;
+            $status = clan_add_cell($artifact_id, (count($artifact_ids) > 1) ? 1 : $lot['cnt'], $cell, $clan['id'], $user_head['id']);
+            if($status['status'] == 100){
+                $cell_add = true;
+            }
+        }while(0);
+        if(!$cell_add) artifact_save(array('id' => $artifact_id, 'user_id' => 0));
+        $params = array(
+            'to_id' => $user_head['id'],
+            'from_id' => 0,
+            'subject' => $subject,
+            'text' => $msg_text,
+            'artifact_id' => (!$cell_add ? $artifact_id : 0),
+            'unread' => 1,
+            'type_id' => MSG_TYPE_SYS_NORMAL,
+            'stime' => time_current(),
+            'rtime' => time_current() + area_post_message_ttl(MSG_TYPE_SYS_NORMAL, true),
+            'flags' => POST_MSG_FLAG_ADMIN,
+            'n' => (!$cell_add ? (count($artifact_ids) > 1) ? 1 : $lot['cnt'] : 0),
+        );
+        $result = area_post_message_save($params);
+    }
+
+    $msg_text = sprintf(
+        translate('Клан %s победил в торгах по лоту "%s" в клановом аукционе! Ставка победителя: %s!'),
+        html_clan_info($clan),
+        $artifact_artikul['title'],
+        tpl_artikul_info($artikul, $winner['bid'], array('small_img' => true))
+    );
+
+    $msg = array(
+        'type' => CHAT_MSG_TYPE_BROADCAST,
+        'msg_text' => $msg_text,
+        'urgent' => true,
+    );
+
+    if ($lot['kind']) $msg['user_kind'] = $lot['kind'];
+
+    chat_msg_send($msg, CHAT_CHF_AREA);
+
+    $comment = sprintf(translate('Клановый аукцион: лот lot_id=%d'), $lot_id);
+    logserv_log_operation(array(
+        'artikul' => $lot['artikul_id'],
+        'cnt' => $lot['cnt'],
+        'comment' => $comment,
+    ),$user_head);
+
+    // Вернет все ставки обратно...
+    $bids = clanauction_bid_list(array('lot_id' => $lot_id));
+    $clan_bids = array();
+    foreach($bids as $bid) {
+        if (!isset($clan_bids[$bid['clan_id']])) {
+            $clan_bids[$bid['clan_id']] = $bid['bid'];
+        } else {
+            $clan_bids[$bid['clan_id']] += $bid['bid'];
+        }
+    }
+
+    foreach ($clan_bids as $clan_id=>$bid_amount){
+        $clan_stock = clan_stock_get(array('clan_id' => $clan_id, 'artikul_id' => $lot['clan_stock_id']));
+        if($clan_stock && $bid_amount > 0) {
+            clan_stock_save(array(
+                'id' => $clan_stock['id'],
+                '_set' => sql_pholder(' cnt = cnt + ?', $bid_amount),
+            ));
+        }
+    }
+    return array('status' => true);
+}
+
+function clanauction_get_clan_bids($lot_ids, $clan_id) {
+    $clan_id = intval($clan_id);
+    $fields = 'lot_id,count(*) as cnt,max(bid) as amount';
+    $add = ' group by lot_id order by null';
+    return clanauction_bid_list(array('lot_id' => $lot_ids, 'clan_id' => $clan_id),$add,$fields);
+}

@@ -1,0 +1,132 @@
+<?
+require_once('include/common.inc');
+
+define('TABLE_USER_METRICS', 'user_metrics');
+define('FIELD_USER_METRICS', 'id, user_id, type_id, cdate, value');
+
+define('USER_METRIC_METHOD_SUM', 1);
+define('USER_METRIC_METHOD_AVG', 2);
+
+define('USER_METRIC_TYPE_HONOR', 1);
+
+$user_metric_info = array(
+	USER_METRIC_TYPE_HONOR => array('id' => USER_METRIC_TYPE_HONOR, 'title' => translate('Доблесть'), 'method' => USER_METRIC_METHOD_SUM, 'ttl' => 7),
+);
+
+// common db interface
+function user_metric_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_USER_METRICS, $ref, $add);
+}
+
+function user_metric_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_USER_METRICS, $ref, $add);
+}
+
+// uncommon db interface
+function user_metric_aggregate_get($type_id, $user_id) {
+	global $db_diff, $user_metric_info;
+	if (!$type_id || !$user_id) return false;
+	
+	$metric = $user_metric_info[$type_id];
+	if (!$metric) return false;
+	
+	switch ($metric['method']) {
+		case USER_METRIC_METHOD_SUM:
+			$sql = sql_pholder(' SELECT SUM(`value`) AS `value` FROM ?#TABLE_USER_METRICS WHERE `user_id` = ? AND `type_id` = ? ', $user_id, $type_id);
+			break;
+		case USER_METRIC_METHOD_AVG:
+			$sql = sql_pholder(' SELECT AVG(`value`) AS `value` FROM ?#TABLE_USER_METRICS WHERE `user_id` = ? AND `type_id` = ? ', $user_id, $type_id);
+			break;
+		default:
+			return false;
+	}
+	
+	if (!$metric['ttl']) $metric['ttl'] = 7;
+	$sql.= sql_pholder(' AND `cdate` >= (DATE(?) - INTERVAL ? DAY) ', user_metric_date_key(), $metric['ttl']);
+	
+	$retval = 0;
+	$db_diff->db_getQueryVal($sql, $retval);
+	return (int)$retval;
+}
+
+function user_metric_aggregate_list($type_id) {
+	global $db_diff, $user_metric_info;
+	if (!$type_id || !isset($user_metric_info[$type_id])) return false;
+	
+	$metric = $user_metric_info[$type_id];
+	
+	switch ($metric['method']) {
+		case USER_METRIC_METHOD_SUM:
+			$sql_func = 'SUM';
+			break;
+		case USER_METRIC_METHOD_AVG:
+			$sql_func = 'AVG';
+			break;
+		default:
+			return false;
+	}
+	
+	$sql = sprintf(' SELECT `user_id`, %s(`value`) AS `value` ', $sql_func);
+	$sql.= sql_pholder(' FROM ?#TABLE_USER_METRICS WHERE `type_id` = ? ', $type_id);
+	$sql.= sql_pholder(' AND `cdate` >= (DATE(?) - INTERVAL ? DAY) ', user_metric_date_key(), $metric['ttl']);
+	$sql.= sql_pholder(' GROUP BY `user_id` ');
+	
+	$result = array();
+	$db_diff->db_GetQueryArray($sql, $result);
+	
+	return $result;
+}
+
+function user_metric_update($type_id, $user_id, $value=1) {
+	global $db_diff, $user_metric_info;
+	if (!$type_id || !$user_id || !isset($user_metric_info[$type_id])) return false;
+	
+	$cdate = user_metric_date_key();
+	//$sql = sql_pholder(' INSERT DELAYED INTO ?#TABLE_USER_METRICS (`user_id`, `type_id`, `cdate`, `value`) VALUES (?, ?, ?, ?) ', $user_id, $type_id, $cdate, $value);
+	//$sql.= sql_pholder(' ON DUPLICATE KEY UPDATE `value` = `value` + ? ', $value);
+	
+	$db_diff->execSQL($sql);
+	return $db_diff->affected_rows();
+}
+
+function user_metric_multi_update($type_id, $data) {
+	global $db_diff, $user_metric_info;
+	if (!$type_id || !isset($user_metric_info[$type_id]) || !is_array($data)) return false;
+	
+	$cdate = user_metric_date_key();
+	
+	$insert_rows = array();
+	foreach ($data as $metric_user) {
+		$insert_rows[] = sql_pholder('(?@)', array($metric_user['user_id'], $type_id, $cdate, $metric_user['value']));
+	}
+	
+	//$sql = sql_pholder(' INSERT DELAYED INTO ?#TABLE_USER_METRICS (`user_id`, `type_id`, `cdate`, `value`) VALUES '.implode(',', $insert_rows).' ');
+	//$sql.= sql_pholder(' ON DUPLICATE KEY UPDATE `value` = `value` + VALUES(`value`) ');
+	
+	$db_diff->execSQL($sql);
+	return $db_diff->affected_rows();
+}
+
+// удалить элементы метрик, которые уже устарели
+function user_metric_cleanup() {
+	global $db_diff, $user_metric_info;
+	
+	$rows = 0;
+	$cdate = user_metric_date_key();
+	foreach ($user_metric_info as $metric_id => $metric) {
+		if (!$metric['ttl']) $metric['ttl'] = 7;
+		
+		$sql = sql_pholder(' DELETE FROM ?#TABLE_USER_METRICS WHERE `type_id` = ? AND `cdate` < (DATE(?) - INTERVAL ? DAY) ', $metric['id'], $cdate, $metric['ttl']);
+		$db_diff->execSQL($sql);
+		
+		$rows += $db_diff->affected_rows();
+	}
+	
+	return $rows;
+}
+
+function user_metric_date_key() {
+	return date('Y-m-d', time_current());
+}

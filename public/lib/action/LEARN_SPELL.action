@@ -1,0 +1,46 @@
+<? # $Id: LEARN_SPELL.action,v 1.9 2010-02-02 11:08:36 p.knoblokh Exp $
+
+// действие "выучить заклинание"
+
+require_once("lib/spell.lib");
+
+if (!in_array($subject['object_class'], array(OBJECT_CLASS_USER))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+
+$spell_artikul = artifact_artikul_get($action['param1']);
+if (!$spell_artikul) {
+	$out['error'] = translate('Заклиние не определено!');
+	return;
+}
+
+$object_artikul = artifact_artikul_get($object['artikul_id']);
+if ((($object_artikul['level_min'] > 0) && ($subject['level'] < $object_artikul['level_min'])) || (($object_artikul['level_max'] > 0) && ($subject['level'] > $object_artikul['level_max']))) {
+	$out['error'] = translate('Вы не способны выучить это заклинание в данный момент!');
+	return;
+}
+
+if (spell_user_get(array('user_id' => $subject['id'], 'artikul_id' => $spell_artikul['id']))) {
+	$out['error'] = translate('Такое заклинание уже есть в книге!');
+	return;
+}
+
+if ($spell_artikul['class'] && !($subject['class'] & $spell_artikul['class'])) {
+	$out['error'] = translate('Вы не можете выучить заклинание другой школы магии');
+	return;
+}
+
+spell_user_save(array(
+	'user_id' => $subject['id'],
+	'artikul_id' => $spell_artikul['id'],
+	'class' => $spell_artikul['class'],
+));
+
+chat_msg_send_system(sprintf(translate('Вы изучили заклинание %s.'),$spell_artikul['title']), CHAT_CHF_USER, $subject['id']);
+
+$out['status'] = ACTION_STATUS_OK;
+$out['param_success'] = array('update_swf' => 1);
+
+chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => "updateSwf({'lvl': '', 'inventory': ''})"));

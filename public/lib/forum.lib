@@ -1,0 +1,510 @@
+<?
+
+//Группы категорий
+define('TABLE_FORUM_GROUPS_LIST','forum_groups');
+define('FIELD_FORUM_GROUPS_LIST','id,title,weight,flags');
+
+//Категории
+define('TABLE_FORUM_CATS_LIST','forum_cats');
+define('FIELD_FORUM_CATS_LIST','id,group_id,title,weight,flags');
+
+//Темы
+define('TABLE_FORUM_TOPIC_LIST','forum_topic');
+define('FIELD_FORUM_TOPIC_LIST','id,num,title,cat_id,text,t_create,user_id,main,flags');
+
+//Сообщения
+define('TABLE_FORUM_POST_LIST','forum_post');
+define('FIELD_FORUM_POST_LIST','id,topic_id,text,t_create,user_id,main');
+
+//Доступ
+define('TABLE_FORUM_ACCESS_LIST','forum_access');
+define('FIELD_FORUM_ACCESS_LIST','id,user_id,access,flags');
+
+//История топиков
+define('TABLE_FORUM_TOPIC_HISTORY_LIST','forum_topic_history');
+define('FIELD_FORUM_TOPIC_HISTORY_LIST','id,topic_id,user_id,t_create,text');
+
+//История сообщений
+define('TABLE_FORUM_POST_HISTORY_LIST','forum_post_history');
+define('FIELD_FORUM_POST_HISTORY_LIST','id,post_id,user_id,t_create,text');
+
+define('FORUM_POST_SIZE' , 4000); //4000 символов
+define('FORUM_POST_MAIN_SIZE' , 75); //75 символов
+define('FORUM_POST_MAIN_TITLE_SIZE' , 35); //35 символов
+define('FORUM_POST_ALL_PAGE_SIZE', 10);
+define('FORUM_TOPIC_TTL', 1800); // 30 минут на 1 топик
+define('FORUM_POST_TTL', 240); // 4 минуты на 1 сообщение
+
+define('FORUM_CATS_FLAG_ACCESS', 0x00000001); //Чтобы создавать темы в этой категории нужны права
+
+$forum_cats_flags_hash = array(
+    FORUM_CATS_FLAG_ACCESS => 'Чтобы создавать темы в этой категории нужны права',
+);
+
+define('FORUM_TOPIC_FLAG_CLOSE', 0x00000001); //Топик закрыт
+define('FORUM_TOPIC_FLAG_ACCESS', 0x00000002); //Для того чтобы писать в топик нужны права
+define('FORUM_TOPIC_FLAG_TOP', 0x00000004); //Топик вверху
+
+$forum_topic_flags_hash = array(
+    FORUM_TOPIC_FLAG_CLOSE => 'Топик закрыт',
+    FORUM_TOPIC_FLAG_ACCESS => 'Для того чтобы писать в топик нужны права',
+    FORUM_TOPIC_FLAG_TOP => 'Топик закреплен наверху',
+);
+
+define('FORUM_ACCESS_DELETE_POST',   0x00000001); //Удалять сообщения
+define('FORUM_ACCESS_DELETE_TOPIC',  0x00000002); //Удалять темы
+define('FORUM_ACCESS_BLOCK_TOPIC',   0x00000004); //Закрывать темы
+define('FORUM_ACCESS_EDIT_POST',     0x00000008); //Редактировать сообщения
+define('FORUM_ACCESS_EDIT_TOPIC',    0x00000010); //Редактировать темы
+define('FORUM_ACCESS_ADD_TOPIC',     0x00000020); //Создавать темы, если запрещено для игроков
+define('FORUM_ACCESS_HTML',          0x00000040); //Использовать HTML
+define('FORUM_ACCESS_TIME',          0x00000080); //Не действуют ограничения по времени
+define('FORUM_ACCESS_TEXT_SIZE',     0x00000100); //Не действуют ограничения по количеству символов
+
+$forum_access_flags_hash = array(
+    FORUM_ACCESS_DELETE_POST => 'Удалять сообщения',
+    FORUM_ACCESS_DELETE_TOPIC => 'Удалять темы',
+    FORUM_ACCESS_BLOCK_TOPIC => 'Закрывать темы',
+    FORUM_ACCESS_EDIT_POST => 'Редактировать сообщения',
+    FORUM_ACCESS_EDIT_TOPIC => 'Редактировать темы',
+    FORUM_ACCESS_ADD_TOPIC => 'Создавать темы, если запрещено для игроков',
+    FORUM_ACCESS_HTML => 'Использовать HTML',
+    FORUM_ACCESS_TIME => 'Не действуют ограничения по времени',
+    FORUM_ACCESS_TEXT_SIZE => 'Не действуют ограничения по количеству символов',
+);
+
+$f_ico_p = '/images/f_ico/';
+
+$smiles = array('biggrin','smile','sad','surprised','eek','confused','cool','lol','mad','razz','redface','cry','evil','twisted','rolleyes','wink','exclaim','question','idea','arrow');
+
+///////////////////////
+//LIBRARY
+define('TABLE_LIBRARY_GROUPS_LIST', 'library_groups');
+define('FIELD_LIBRARY_GROUPS_LIST','id,title,weight,flags');
+
+define('TABLE_LIBRARY_CATS_LIST', 'library_cats');
+define('FIELD_LIBRARY_CATS_LIST','id,group_id,title,weight,flags');
+
+define('TABLE_LIBRARY_LIST', 'library');
+define('FIELD_LIBRARY_LIST','id,cat_id,title,text,weight,flags,code');
+
+define('TABLE_LIBRARY_ACCESS_LIST','library_access');
+define('FIELD_LIBRARY_ACCESS_LIST','id,user_id,access,flags');
+
+define('LIBRARY_ACCESS_EDIT', 0x0000001);
+define('LIBRARY_ACCESS_DELETE', 0x0000002);
+define('LIBRARY_ACCESS_MOVE', 0x0000004);
+
+$library_access_flags_hash = array(
+    LIBRARY_ACCESS_EDIT => 'Редактировать библиотеку',
+    LIBRARY_ACCESS_DELETE => 'Удаление',
+    LIBRARY_ACCESS_MOVE => 'Перемещение',
+);
+
+#Работа с базой данных
+function forum_cats_get($ref=false, $add='', $ex = false, $count = false) {
+    global $db_info;
+    $news = common_get($db_info,TABLE_FORUM_CATS_LIST,$ref,$add);
+    if($ex){
+        $comments = forum_topic_list(array('cat_id' => $news['id']));
+        $news['topics'] = $comments;
+    }
+    if($count){
+        $news['topics_c'] = forum_topic_count(array('cat_id' => $news['id']));
+    }
+    return $news;
+}
+
+function forum_cats_list($ref=false, $add='', $ex = false, $ex2 = false, $count = false) {
+    global $db_info;
+    $list = common_list($db_info,TABLE_FORUM_CATS_LIST,$ref,$add);
+    if($ex && $list){
+        $list_hash = make_hash($list);
+        $comments = forum_topic_list(array('cat_id' => array_keys($list_hash)), '', $ex2);
+        $comments_hash = make_hash($comments,'cat_id', true);
+        foreach ($list_hash as $news_id=>$news){
+            if(!$comments_hash[$news_id]) continue;
+            $list_hash[$news_id]['topics'] = $comments_hash[$news_id];
+            if($count){
+                $list_hash['topics_c'] = count($comments_hash[$news_id]);
+            }
+        }
+        $list = $list_hash;
+    }
+    return $list;
+}
+
+function forum_cats_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_FORUM_CATS_LIST, $ref, $add);
+}
+
+function forum_cats_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_FORUM_CATS_LIST,$param,FIELD_FORUM_CATS_LIST);
+}
+
+function forum_cats_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_FORUM_CATS_LIST,$ref,$add);
+    return true;
+}
+////////////////////////////////////////////////////
+function forum_topic_get($ref=false, $add='', $ex = false, $count = false) {
+    global $db_info;
+    $news = common_get($db_info,TABLE_FORUM_TOPIC_LIST,$ref,$add);
+    if($ex){
+        $comments = forum_post_list(array('topic_id' => $news['id']), ' ORDER BY id ASC');
+        $news['posts'] = $comments;
+    }
+    if($count){
+        $news['posts_c'] = forum_post_count(array('topic_id' => $news['id']));
+    }
+    return $news;
+}
+
+function forum_topic_list($ref=false, $add='', $ex = false, $count = false) {
+    global $db_info;
+    $list = common_list($db_info,TABLE_FORUM_TOPIC_LIST,$ref,$add);
+    if($ex && $list){
+        $list_hash = make_hash($list);
+        $comments = forum_post_list(array('topic_id' => array_keys($list_hash)), ' ORDER BY id ASC');
+        $comments_hash = make_hash($comments,'topic_id', true);
+        foreach ($list_hash as $news_id=>$news){
+            if(!$comments_hash[$news_id]) continue;
+            $list_hash[$news_id]['posts'] = $comments_hash[$news_id];
+            if($count){
+                $list_hash[$news_id]['posts_c'] = count($comments_hash[$news_id]);
+            }
+        }
+        $list = $list_hash;
+    }
+    return $list;
+}
+
+function forum_topic_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_FORUM_TOPIC_LIST, $ref, $add);
+}
+
+function forum_topic_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_FORUM_TOPIC_LIST,$param,FIELD_FORUM_TOPIC_LIST);
+}
+
+function forum_topic_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_FORUM_TOPIC_LIST,$ref,$add);
+    return true;
+}
+//////////////////////////////////////////////
+function forum_post_get($ref=false, $add='') {
+    global $db_info;
+    return common_get($db_info,TABLE_FORUM_POST_LIST,$ref,$add);
+}
+
+function forum_post_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_FORUM_POST_LIST,$ref,$add);
+}
+
+function forum_post_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_FORUM_POST_LIST, $ref, $add);
+}
+
+function forum_post_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_FORUM_POST_LIST,$param,FIELD_FORUM_POST_LIST);
+}
+
+function forum_post_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_FORUM_POST_LIST,$ref,$add);
+    return true;
+}
+/////////////////////////////////////////////////////
+function forum_group_get($ref=false, $add='') {
+    global $db_info;
+    return common_get($db_info,TABLE_FORUM_GROUPS_LIST,$ref,$add);
+}
+
+function forum_group_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_FORUM_GROUPS_LIST,$ref,$add);
+}
+
+function forum_group_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_FORUM_GROUPS_LIST, $ref, $add);
+}
+
+function forum_group_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_FORUM_GROUPS_LIST,$param,FIELD_FORUM_GROUPS_LIST);
+}
+
+function forum_group_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_FORUM_GROUPS_LIST,$ref,$add);
+    return true;
+}
+////////////////////////////////////////////////////////
+function forum_access_get($ref=false, $add='') {
+    global $db_info;
+    return common_get($db_info,TABLE_FORUM_ACCESS_LIST,$ref,$add);
+}
+
+function forum_access_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_FORUM_ACCESS_LIST,$ref,$add);
+}
+
+function forum_access_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_FORUM_ACCESS_LIST, $ref, $add);
+}
+
+function forum_access_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_FORUM_ACCESS_LIST,$param,FIELD_FORUM_ACCESS_LIST);
+}
+
+function forum_access_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_FORUM_ACCESS_LIST,$ref,$add);
+    return true;
+}
+////////////////////////////////////////////////////////
+function forum_topic_history_get($ref=false, $add='') {
+    global $db_info;
+    return common_get($db_info,TABLE_FORUM_TOPIC_HISTORY_LIST,$ref,$add);
+}
+
+function forum_topic_history_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_FORUM_TOPIC_HISTORY_LIST,$ref,$add);
+}
+
+function forum_topic_history_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_FORUM_TOPIC_HISTORY_LIST, $ref, $add);
+}
+
+function forum_topic_history_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_FORUM_TOPIC_HISTORY_LIST,$param,FIELD_FORUM_TOPIC_HISTORY_LIST);
+}
+
+function forum_topic_history_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_FORUM_TOPIC_HISTORY_LIST,$ref,$add);
+    return true;
+}
+////////////////////////////////////////////////////////
+function forum_post_history_get($ref=false, $add='') {
+    global $db_info;
+    return common_get($db_info,TABLE_FORUM_POST_HISTORY_LIST,$ref,$add);
+}
+
+function forum_post_history_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_FORUM_POST_HISTORY_LIST,$ref,$add);
+}
+
+function forum_post_history_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_FORUM_POST_HISTORY_LIST, $ref, $add);
+}
+
+function forum_post_history_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_FORUM_POST_HISTORY_LIST,$param,FIELD_FORUM_POST_HISTORY_LIST);
+}
+
+function forum_post_history_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_FORUM_POST_HISTORY_LIST,$ref,$add);
+    return true;
+}
+
+/////////////////////////////////////////////////
+//LIBRARY
+function library_cats_get($ref=false, $add='', $ex = false, $count = false) {
+    global $db_info;
+    $news = common_get($db_info,TABLE_LIBRARY_CATS_LIST,$ref,$add);
+    if($ex){
+        $comments = library_list(array('cat_id' => $news['id']));
+        $news['library'] = $comments;
+    }
+    if($count){
+        $news['library_c'] = library_count(array('cat_id' => $news['id']));
+    }
+    return $news;
+}
+
+function library_cats_list($ref=false, $add='', $ex = false, $count = false) {
+    global $db_info;
+    $list = common_list($db_info,TABLE_LIBRARY_CATS_LIST,$ref,$add);
+    if($ex && $list){
+        $list_hash = make_hash($list);
+        $comments = make_hash(library_list(array('cat_id' => array_keys($list_hash))),'cat_id', 'true');
+        foreach ($list_hash as $k=>$list){
+            $list_hash[$k]['library'] = $comments[$k];
+            if($count){
+                $list_hash[$k]['library_c'] = count($comments[$k]);
+            }
+        }
+        $list = $list_hash;
+    }
+    return $list;
+}
+
+function library_cats_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_LIBRARY_CATS_LIST, $ref, $add);
+}
+
+function library_cats_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_LIBRARY_CATS_LIST,$param,FIELD_LIBRARY_CATS_LIST);
+}
+
+function library_cats_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_LIBRARY_CATS_LIST,$ref,$add);
+    return true;
+}
+////////////////////////////////////////////////////
+function library_get($ref=false, $add='') {
+    global $db_info;
+    return common_get($db_info,TABLE_LIBRARY_LIST,$ref,$add);
+}
+
+function library_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_LIBRARY_LIST,$ref,$add);
+}
+
+function library_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_LIBRARY_LIST, $ref, $add);
+}
+
+function library_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_LIBRARY_LIST,$param,FIELD_LIBRARY_LIST);
+}
+
+function library_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_LIBRARY_LIST,$ref,$add);
+    return true;
+}
+//////////////////////////////////////////////
+function library_group_get($ref=false, $add='') {
+    global $db_info;
+    return common_get($db_info,TABLE_LIBRARY_GROUPS_LIST,$ref,$add);
+}
+
+function library_group_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_LIBRARY_GROUPS_LIST,$ref,$add);
+}
+
+function library_group_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_LIBRARY_GROUPS_LIST, $ref, $add);
+}
+
+function library_group_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_LIBRARY_GROUPS_LIST,$param,FIELD_LIBRARY_GROUPS_LIST);
+}
+
+function library_group_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_LIBRARY_GROUPS_LIST,$ref,$add);
+    return true;
+}
+////////////////////////////////////////////////////////
+function library_access_get($ref=false, $add='') {
+    global $db_info;
+    return common_get($db_info,TABLE_LIBRARY_ACCESS_LIST,$ref,$add);
+}
+
+function library_access_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_LIBRARY_ACCESS_LIST,$ref,$add);
+}
+
+function library_access_count($ref=false, $add='') {
+    global $db_info;
+    return common_count($db_info, TABLE_LIBRARY_ACCESS_LIST, $ref, $add);
+}
+
+function library_access_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_LIBRARY_ACCESS_LIST,$param,FIELD_LIBRARY_ACCESS_LIST);
+}
+
+function library_access_delete($ref, $add='') {
+    global $db_info;
+    if(!$ref)return false;
+    common_delete($db_info,TABLE_LIBRARY_ACCESS_LIST,$ref,$add);
+    return true;
+}
+
+#Работа с базой данных
+
+#tpl
+$smiledir = '/images/smile/';
+$maxsmiles = 20;
+function forum_smiles_tpl($id=''){
+    global $smiles,$smiledir;
+    $smilestr = "<table border=\"0\" cellspacing=\"1\" cellpadding=\"1\"><tr>";
+    $cnt = 0;
+    if (is_array($smiles)) foreach ($smiles as $c=>$smile) {
+        if ($cnt==10&&$c!=sizeof($smiles)) {$cnt=0;$smilestr .= "<tr></tr>";}
+        $smilestr .= "<td align=center><a href='javascript:F_SMILE(\":".$smile.":\",\"".$id."\");'><img src='".$smiledir."icon_".$smile.".gif' border=0 alt=':".$smile.":'></a></td>";
+        $cnt++;
+    }
+    $smilestr .= "</tr></table>";
+    return $smilestr;
+}
+
+function decodesmiles($text) {
+    global $smiles,$smiledir,$maxsamesmile,$maxsmiles;
+    $c = 0;
+    foreach($smiles as $sm) {
+        $text1 = preg_replace('/:'.$sm.':/is','<img border=0 src='.$smiledir.'icon_'.$sm.'.gif>',$text);
+        if ($text1 != $text) { $c++; }
+        $text = $text1;
+        if ($c >= $maxsmiles) { break; }
+    }
+    return $text;
+}
+
+$hide_text_arr = array();
+$hide_text_pattern = 'ƒ';
+function hide_text($text, $hide, $index = 0, $unhide = false){
+    global $hide_text_arr,$hide_text_pattern;
+    if(!$unhide){
+        $hide_text_arr[$index]['clean'] = $text;
+        $hide_text_arr[$index]['hide'] = str_replace($hide, $hide_text_pattern, $text);
+        $hide_text_arr[$index]['hide_pattern'] = $hide;
+        return $hide_text_arr[$index]['hide'];
+    }
+    return str_replace($hide_text_pattern, $hide_text_arr[$index]['hide_pattern'], $text);
+}
+#tpl

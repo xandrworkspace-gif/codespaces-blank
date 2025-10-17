@@ -1,0 +1,240 @@
+<?
+
+define('TABLE_USER_CAMPAIGN_LIST', 'user_campaign');
+define('TABLE_USER_CAMPAIGN_ITEM_LIST', 'user_campaign_item');
+define('TABLE_USER_CAMPAIGN_USER_LIST', 'user_campaign_user');
+
+define('USER_CAMPAIGN_FLAG_ACTIVE', 0x0000001); //Активная
+define('USER_CAMPAIGN_FLAG_NEXT', 0x0000002); //После покупки этой акции следует обязательно следующая (ПО цепочке)
+define('USER_CAMPAIGN_FLAG_ARTS', 0x0000004); //Цена = Артефакты
+define('USER_CAMPAIGN_FLAG_NO_RANDOM', 0x0000008); //Нельзя выбить в рандоме
+define('USER_CAMPAIGN_FLAG_BUY', 0x0000010); //Покупная акция (Не при пополнении а купить)
+
+#Работа с базой данных
+function user_campaign_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_USER_CAMPAIGN_LIST,$ref,$add);
+}
+
+function user_campaign_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_USER_CAMPAIGN_LIST,$ref,$add);
+}
+
+function user_campaign_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_USER_CAMPAIGN_LIST, $ref, $add);
+}
+
+function user_campaign_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_USER_CAMPAIGN_LIST,$param);
+}
+
+function user_campaign_delete($ref, $add=''){
+    global $db_diff;
+    common_delete($db_diff, TABLE_USER_CAMPAIGN_LIST, $ref, $add);
+    return true;
+}
+
+//////////////////////////////////
+
+function user_campaign_item_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_USER_CAMPAIGN_ITEM_LIST,$ref,$add);
+}
+
+function user_campaign_item_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_USER_CAMPAIGN_ITEM_LIST,$ref,$add);
+}
+
+function user_campaign_item_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_USER_CAMPAIGN_ITEM_LIST, $ref, $add);
+}
+
+function user_campaign_item_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_USER_CAMPAIGN_ITEM_LIST,$param);
+}
+
+function user_campaign_item_delete($ref, $add='') {
+    global $db_diff;
+    common_delete($db_diff,TABLE_USER_CAMPAIGN_ITEM_LIST,$ref,$add);
+    return true;
+}
+
+
+//////////////////////////////////
+
+function user_campaign_user_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_USER_CAMPAIGN_USER_LIST,$ref,$add);
+}
+
+function user_campaign_user_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_USER_CAMPAIGN_USER_LIST,$ref,$add);
+}
+
+function user_campaign_user_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_USER_CAMPAIGN_USER_LIST, $ref, $add);
+}
+
+function user_campaign_user_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_USER_CAMPAIGN_USER_LIST,$param);
+}
+
+function user_campaign_user_delete($ref, $add='') {
+    global $db_diff;
+    common_delete($db_diff,TABLE_USER_CAMPAIGN_USER_LIST,$ref,$add);
+    return true;
+}
+
+function user_campaign_check_open($user_campaign = array()){
+    if($user_campaign['ntime'] >= time_current()){
+        return true;
+    }else{
+        return false;
+    }
+}
+
+function user_campaign_current($session_user = array()){
+    if(defined('USER_CAMPAIGN_ADMIN_ONLY') && USER_CAMPAIGN_ADMIN_ONLY && !($session_user['flags'] & USER_FLAG_ADMIN)){
+        return false;
+    }
+    if(!(defined('USER_CAMPAIGN_OPEN') && USER_CAMPAIGN_OPEN)){
+        return false;
+    }
+    $user_campaign_count = user_campaign_count(false,  sql_pholder(' AND min_user_lvl < '.$session_user['level'].' AND flags & ?#USER_CAMPAIGN_FLAG_ACTIVE'));
+    if($user_campaign_count <= 0) return false;
+
+    $user_campaign_user = user_campaign_user_get(array('user_id' => $session_user['id']));
+    if(time_current() > $user_campaign_user['ntime']){ //Если пришло время ставить новую акцию
+        $cur_campaign = user_campaign_generate_user($user_campaign_user, $session_user);
+        if(!$cur_campaign) return false;
+        $user_campaign_user = user_campaign_user_get(array('user_id' => $session_user['id'])); //Перепишем значения
+    }
+
+    if($user_campaign_user['status'] == 1){
+        return false;
+    }
+    //Сделать тут функционал чтобы можно было рандомно выбирать текущую акцию пользователю!
+
+    if(!$user_campaign_user['user_campaign_id']) return false;
+    $cur_campaign = user_campaign_get($user_campaign_user['user_campaign_id']);
+    if(!$cur_campaign) return false;
+    if(!($cur_campaign['flags'] & USER_CAMPAIGN_FLAG_ACTIVE)) return false;
+
+    $cur_campaign['u_ntime'] = $user_campaign_user['ntime'];
+    $cur_campaign['user_campaign_user'] = $user_campaign_user;
+    return $cur_campaign;
+}
+
+
+function user_campaign_generate_user($user_campaign_user = array(), $session_user = array()){
+    if(!$session_user) return false;
+
+    if($user_campaign_user && $user_campaign_user['dtime'] > time_current()){
+        return user_campaign_get($user_campaign_user['user_campaign_id']);
+    }elseif($user_campaign_user && $user_campaign_user['dtime'] < time_current()){
+        /*user_campaign_user_save(array(
+            'id' => $user_campaign_user['id'],
+            'user_campaign_id' => 0,
+            'picture' => '',
+            'dtime' => 0,
+            'ntime' => 0,
+            'status' => 0,
+        ));
+        $user_campaign_user = array(
+            'id' => $user_campaign_user['id'],
+        );*/
+    }
+
+    $user_campaign_hash = make_hash(user_campaign_list(false,  sql_pholder(' AND min_user_lvl < '.$session_user['level'].' AND flags & ?#USER_CAMPAIGN_FLAG_ACTIVE AND !(flags & ?#USER_CAMPAIGN_FLAG_NO_RANDOM)')));
+
+    $user_campaign_ids = array_keys($user_campaign_hash);
+
+    $next_id = intval($user_campaign_ids[array_rand($user_campaign_ids)]);
+    if(!$next_id) return false;
+
+    $next_campaign = $user_campaign_hash[$next_id];
+    if(!$next_campaign) return false;
+
+    if($next_campaign['partikul_id']) $artikul = artifact_artikul_get($next_campaign['partikul_id']);
+    if(!$user_campaign_user){
+
+        user_campaign_user_save(array(
+            'user_id' => $session_user['id'],
+            'user_campaign_id' => $next_id,
+            'picture' => ($artikul ? $artikul['picture'] : ''),
+            'dtime' => time_current() + $next_campaign['atime'],
+            'ntime' => time_current() + $next_campaign['atime'],
+            'status' => 0,
+        ));
+    }else{
+        user_campaign_user_save(array(
+            'id' => $user_campaign_user['id'],
+            'user_campaign_id' => $next_id,
+            'picture' => ($artikul ? $artikul['picture'] : ''),
+            'dtime' => time_current() + $next_campaign['atime'],
+            'ntime' => time_current() + $next_campaign['atime'],
+            'status' => 0,
+        ));
+    }
+
+    return $next_campaign;
+}
+
+function user_campaign_flashvars(&$vars, $user = array()){
+    $cur_campaign = user_campaign_current($user);
+    if(!$cur_campaign) return;
+    $user_campaign_user = $cur_campaign['user_campaign_user'];
+    if(!$user_campaign_user) return;
+
+    $vars['user_campaign'] = json_encode(array(
+        'title' => $cur_campaign['title'],
+        'picture' => PATH_IMAGE_ARTIFACTS.$user_campaign_user['picture'],
+        'time_expire' => $user_campaign_user['dtime'],
+    ));
+}
+
+
+function user_campaign_buy($campaign = array(), $money_type = 0, $money = 0, $user_campaign_user = array()){
+    if(!$campaign || !$user_campaign_user) return false;
+    if($money_type <= 0 || $money <= 0) return false;
+    $user = user_get($user_campaign_user['user_id']);
+    if(!$user) return false;
+    do{
+        if($user_campaign_user['status'] == 1) break; //Второй раз не получишь!
+
+        $msg_text = '<b class=grnn>Акция</b> <b>'.$campaign['title'].'</b>:';
+        chat_msg_send_system($msg_text, CHAT_CHF_USER, $user['id']);
+
+        //Нужно начислить бонус, если есть next_id, перекинуть на след акцию, если нет то установить статус 1
+        if($campaign['bonus_id']) bonus_apply($user, $campaign['bonus_id']);
+
+        if($campaign['next_id'] && $campaign['flags'] & USER_CAMPAIGN_FLAG_NEXT){
+            $next_campaign = user_campaign_get($campaign['next_id']);
+            if($next_campaign && $next_campaign['flags'] & USER_CAMPAIGN_FLAG_ACTIVE){
+                if($next_campaign['partikul_id']) $artikul = artifact_artikul_get($next_campaign['partikul_id']);
+                user_campaign_user_save(array(
+                    'id' => $user_campaign_user['id'],
+                    'user_campaign_id' => $next_campaign['id'],
+                    'picture' => ($artikul ? $artikul['picture'] : ''),
+                    'dtime' => time_current() + $next_campaign['atime'],
+                    'status' => 0,
+                    'ntime' => time_current() + $next_campaign['atime'],
+                ));
+            }
+        }else{
+            user_campaign_user_save(array(
+                'id' => $user_campaign_user['id'],
+                'status' => 1,
+            ));
+        }
+    }while(0);
+}

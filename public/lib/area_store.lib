@@ -1,0 +1,493 @@
+<? # $Id: area_store.lib,v 1.29 2010-02-02 11:08:36 p.knoblokh Exp $
+
+require_once("lib/artifact.lib");
+require_once("lib/skill.lib");
+require_once("lib/user_stat.lib");
+require_once("lib/restriction.lib");
+
+// Имена и поля таблиц
+define('TABLE_AREA_STORE_ARTIKULS','area_store_artikuls');
+define('FIELD_AREA_STORE_ARTIKULS','');
+define('TABLE_AREA_STORE_CART','area_store_cart');
+define('FIELD_AREA_STORE_CART','');
+define('TABLE_AREA_STORE_LOG','area_store_log');
+define('FIELD_AREA_STORE_LOG','');
+define('TABLE_AREA_STORE_USER_LIMITS','area_store_user_limits');
+define('TABLE_AREA_STORE_USER_BUY_LIMITS','area_store_user_buy_limit');
+define('TABLE_AREA_STORE_CATEGORIES', 'area_store_categories');
+define('FIELD_AREA_STORE_CATEGORIES', '');
+
+
+define('TABLE_AREA_STORE_USER_MONEY', 'area_store_user_money');
+define('FIELD_AREA_STORE_USER_MOBEY', '');
+
+define('AREA_STORE_ARTIKUL_FLAG_ON_SALE',  0x0001); // Артикул выставлен на продажу
+define('AREA_STORE_ARTIKUL_FLAG_NOGIVE',   0x0002); // Непередаваемый
+define('AREA_STORE_ARTIKUL_FLAG_DURAB30',  0x0004); // 30% прочности
+define('AREA_STORE_ARTIKUL_FLAG_BOE',      0x0008); // становится непередаваемым после надевания
+define('AREA_STORE_ARTIKUL_FLAG_NEW',      0x0010); // новое
+define('AREA_STORE_ARTIKUL_FLAG_BEST',     0x0020); // лучшее
+define('AREA_HUCKSTER_FLAG_SELL_NOGIVE',   0x0040); // можно продавать непередаваемые вещи
+define('AREA_STORE_ARTIKUL_FLAG_TIME_BUY',			0x0080); // действует ограничение на покупку по времени
+define('AREA_STORE_ARTIKUL_FLAG_TIME_BUY_REST',		0x0100); // +Время меняется после каждой покупки
+
+define('RANSOM_COST_ADD', 7.00); //Добавочная стоимость к выкупу
+define('RANSOM_MAX_CNT', 4); //4 вещи
+define('RANSOM_TIME',10800); //3 часа
+
+$area_store_artikul_flag_hash = array(
+	AREA_STORE_ARTIKUL_FLAG_ON_SALE => translate('Артикул выставлен на продажу'),
+	AREA_STORE_ARTIKUL_FLAG_NOGIVE => translate('Непередаваемый'),
+	AREA_STORE_ARTIKUL_FLAG_DURAB30 => translate('30% прочности'),
+	AREA_STORE_ARTIKUL_FLAG_BOE => translate('Становится непередаваемым после надевания'),
+	AREA_STORE_ARTIKUL_FLAG_NEW => translate('Иконка: новое'),
+	AREA_STORE_ARTIKUL_FLAG_BEST => translate('Иконка: лучшее'),
+    AREA_STORE_ARTIKUL_FLAG_TIME_BUY => translate('Действует ограничение на покупку по времени'),
+    AREA_STORE_ARTIKUL_FLAG_TIME_BUY_REST => translate('+Время меняется после каждой покупки'),
+);
+
+$area_store_artikul_user_marks_hash = array(
+	USER_MARK_GUARD => translate('Ментор'),
+	USER_MARK_FOOL => translate('Арлекин'),
+	USER_MARK_MARRIAGE => translate('Обрядник'),
+	USER_MARK_SUBDEALER => translate('Субдилер'),
+	USER_MARK_JOKER => translate('Балагур'),
+	USER_MARK_POSITIVE => translate('ПозитиФФщик'),
+	USER_MARK_ADMIN => translate('Администратор'),
+    USER_MARK_ORDEN_GUARD => 'Страж',
+);
+
+function area_store_cart_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_AREA_STORE_CART,$ref,$add);
+}
+
+function area_store_cart_list($area_id=false, $user_id=false, $type=0, $add='', $extended=false) { # $extended= TABLE_ARTIFACT_ARTIKULS,  TABLE_ARTIFACTS,  TABLE_AREA_STORE_ARTIKULS
+	global $db;
+	if (!$area_id && !$user_id && !$add) return false;
+	$query_add = '';
+	if ($area_id) $query_add .= sql_pholder(" AND t.area_id=?",$area_id);
+	if ($user_id) $query_add .= sql_pholder(" AND t.user_id=?",$user_id);
+	if ($type) $query_add .= sql_pholder(" AND t.type=?", $type);
+	$data = common_list($db,TABLE_AREA_STORE_CART,false,$query_add.$add);
+	if ($data && $extended) {
+		foreach ($data as $k=>$item) {
+
+			$extend = array();
+			switch ($extended) {
+				case TABLE_AREA_STORE_ARTIKULS:
+					$store_item = area_store_artikul_get($item['item_id']);
+					$item['artikul_id'] = $store_item['artikul_id'];
+					$item['badge_data'] = $store_item['badge_data'];
+					$extend = artifact_artikul_get($store_item['artikul_id']);
+					//$item['item_id'] = $store_item['artikul_id'];
+					break;
+				case TABLE_ARTIFACT_ARTIKULS:
+					$extend = artifact_artikul_get($item['item_id']);
+			    break;
+				default:
+					$extend = artifact_get($item['item_id']);
+			    break;
+			}
+
+			$data[$k] = array_merge($extend, $item);
+		}
+	}
+	return $data;
+}
+
+function area_store_cart_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_STORE_CART,$param,FIELD_AREA_STORE_CART);
+}
+
+function area_store_cart_delete($ref, $add='') {
+	global $db;
+	return common_delete($db,TABLE_AREA_STORE_CART,$ref,$add);
+}
+
+function area_store_artikul_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_AREA_STORE_ARTIKULS,$ref,$add);
+}
+
+function area_store_artikul_list($area_id=false, $cat_id=false, $add='') {
+	global $db;
+	$query_add = '';
+	if ($area_id) $query_add .= sql_pholder(" AND area_id=?",$area_id);
+	if ($cat_id) $query_add .= sql_pholder(" AND cat_id=?",$cat_id);
+	$query = sql_pholder("SELECT aa.*,t.* FROM ?#TABLE_AREA_STORE_ARTIKULS AS t LEFT JOIN ?#TABLE_ARTIFACT_ARTIKULS AS aa ON t.artikul_id=aa.id WHERE 1");
+	$query .= $query_add.$add;
+	$db->db_GetQueryArray($query,$data);
+	translate_data_all_rows($data, TABLE_ARTIFACT_ARTIKULS);
+	return $data;
+}
+
+function area_store_artikul_count($area_id=false, $cat_id=false, $add='') {
+	global $db;
+	$query_add = '';
+	if ($area_id) $query_add .= sql_pholder(" AND area_id=?",$area_id);
+	if ($cat_id) $query_add .= sql_pholder(" AND cat_id=?",$cat_id);
+	$query = sql_pholder("SELECT count(*) FROM ?#TABLE_AREA_STORE_ARTIKULS AS t LEFT JOIN ?#TABLE_ARTIFACT_ARTIKULS AS aa ON t.artikul_id=aa.id WHERE 1");
+	$query .= $query_add.$add;
+	$val = 0;
+	$db->db_GetQueryVal($query,$val);
+	return intval($val);
+}
+
+function area_store_artikul_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_STORE_ARTIKULS,$param,FIELD_AREA_STORE_ARTIKULS);
+}
+
+function area_store_artikul_delete($ref=false) {
+	global $db;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if (!$ref) return false;
+	$data = common_list($db,TABLE_AREA_STORE_ARTIKULS,$ref);
+	foreach ($data as $k=>$item) $data[$k]['object_class'] = OBJECT_CLASS_STORE_ITEM;
+	restriction_objects_list($data);
+	foreach ($data as $item) {
+		foreach ($item['object_restrictions'] as $restriction) restriction_delete($restriction['id']);
+	}
+	return common_delete($db,TABLE_AREA_STORE_ARTIKULS,$ref);
+}
+
+
+function area_store_get_category_list($area_id, $no_cache=false) {
+	global $db;
+	if (!$area_id) return false;
+	
+	$lang = translate_default_language();
+	
+	$cache = new Cache('AREA_STORE_CATEGORIES_'.$area_id.'_'.$lang);
+	if (!$no_cache && $cache->isValid()) {
+		$data = unserialize($cache->get());
+		
+		if ($data) return $data;
+	}
+	
+	$query = sql_pholder("SELECT ac.* FROM ?#TABLE_AREA_STORE_ARTIKULS AS asa, ?#TABLE_AREA_STORE_CATEGORIES AS ac WHERE asa.area_id=? AND asa.cat_id=ac.id AND (asa.time_start<=? && (asa.time_end>=? || asa.time_end=0)) AND asa.store_flags & ?#AREA_STORE_ARTIKUL_FLAG_ON_SALE GROUP BY asa.cat_id ORDER BY ac.ord ASC, ac.title",$area_id,time_current(),time_current());
+	$db->db_GetQueryArray($query, $data);
+	translate_data_all_rows($data, TABLE_AREA_STORE_CATEGORIES);
+	
+	$cache->update(serialize($data), 600);
+	
+	return $data;
+}
+
+function area_store_log_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_AREA_STORE_LOG,$ref,$add);
+}
+
+function area_store_log_list($ref, $add='') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_AREA_STORE_LOG, $ref, $add);
+}
+
+function area_store_log_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_AREA_STORE_LOG,$param,FIELD_AREA_STORE_LOG);
+}
+
+function area_store_log_delete($ref, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_AREA_STORE_LOG,$ref,$add);
+}
+
+// ===========================================================================================================================
+
+function area_store_artikul_restriction_check(&$store_artikul, &$user, &$error) {
+	if (!$store_artikul || !$user) return false;
+	$check_object_list = array();
+	restriction_get_dependent($user,$check_object_list,array(OBJECT_CLASS_AREA));
+	$store_artikul['object_class'] = OBJECT_CLASS_STORE_ITEM;
+	$out_restriction = restriction_check(0,array($store_artikul),$check_object_list);
+	if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) {
+		$error = $out_restriction['title'] ? $out_restriction['title'] : sprintf(translate('Для покупки этой вещи требуется %s'),$out_restriction['error']);
+		return false;
+	}
+	return true;
+}
+
+function area_store_user_limits_get($ref, $add='') {
+	global $db;
+	return common_get($db, TABLE_AREA_STORE_USER_LIMITS, $ref, $add);
+}
+
+function area_store_user_limits_list($ref, $add='') {
+	global $db;
+	return common_list($db, TABLE_AREA_STORE_USER_LIMITS, $ref, $add);
+}
+
+function area_store_user_limits_delete($ref, $add='') {
+    global $db;
+    return common_delete($db, TABLE_AREA_STORE_USER_LIMITS, $ref, $add);
+}
+
+function area_store_user_limits_save($param) {
+	global $db;
+	return common_save($db, TABLE_AREA_STORE_USER_LIMITS, $param);
+}
+
+function area_store_user_limits_truncate() {
+	global $db;
+	return common_truncate($db, TABLE_AREA_STORE_USER_LIMITS);
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+function area_store_user_buy_limits_get($ref, $add='') {
+    global $db;
+    return common_get($db, TABLE_AREA_STORE_USER_BUY_LIMITS, $ref, $add);
+}
+
+function area_store_user_buy_limits_list($ref, $add='') {
+    global $db;
+    return common_list($db, TABLE_AREA_STORE_USER_BUY_LIMITS, $ref, $add);
+}
+
+function area_store_user_buy_limits_save($param) {
+    global $db;
+    $db->my_script_debugger = true;
+    return common_save($db, TABLE_AREA_STORE_USER_BUY_LIMITS, $param);
+}
+
+function area_store_user_buy_limits_delete($ref, $add='') {
+    global $db;
+    return common_delete($db,TABLE_AREA_STORE_USER_BUY_LIMITS,$ref,$add);
+}
+
+function area_store_clear_cache($area_id, $cat_id_or_ids =null) {
+	global $known_languages;
+
+	if (!isset($cat_id_or_ids)) {
+		$store_cat_hash = make_hash(area_store_get_category_list($area_id, true));
+		$cat_ids = array_keys($store_cat_hash);
+	} elseif (is_array($cat_id_or_ids)) {
+		$cat_ids = $cat_id_or_ids;
+	} else {
+		$cat_ids = array($cat_id_or_ids);
+	}
+
+	foreach ($known_languages as $lang_key => $lang_title) {
+		foreach ($cat_ids as $cat_id) {
+			$cache_store = new Cache('AREA_STORE_'.$area_id.'_'.$cat_id.'_'.$lang_key);
+			$cache_store->remove();
+		}
+	}
+}
+
+function area_store_artikul_badges($artikuls_hash, &$artikul_badge_hash, &$badge_artikuls_list, $without_bonus_id = false, &$badge_skill_list = array()){
+    global $user_stat_skill_hash;
+	$badge_artikul_ids = array();
+    $badge_skill_ids = array();
+    $badge_stat_ids = array();
+	foreach ($artikuls_hash as $artikul){
+		// отключить если цена берется с бонуса
+		if ( !$without_bonus_id && $artikul['bonus_id'])
+			continue;
+		if ($artikul['badge_data']) {
+			$badge_data = json_decode($artikul['badge_data'],true);
+			$badge_data = is_array($badge_data['badges']) ? $badge_data['badges'] : array();
+			$artikul_badge_hash[$artikul['store_artikul_id']] = array('badge_artifacts'=>array());
+			foreach ($badge_data as $b_data) {
+				switch ($b_data['type']) {
+					case 'artifact' :
+						$artikul_badge_hash[$artikul['store_artikul_id']]['badge_artifacts'][$b_data['artikul_id']] += $b_data['cnt'];
+						$badge_artikul_ids[] = $b_data['artikul_id'];
+						break;
+					case 'money':
+						if (!isset($artikul_badge_hash[$artikul['store_artikul_id']]['money'])) {
+							$artikul_badge_hash[$artikul['store_artikul_id']]['money'] = 0;
+						}
+						$artikul_badge_hash[$artikul['store_artikul_id']]['money'] += $b_data['cnt'];
+						break;
+                    case 'money_2':
+                        if (!isset($artikul_badge_hash[$artikul['store_artikul_id']]['money_2'])) {
+                            $artikul_badge_hash[$artikul['store_artikul_id']]['money_2'] = 0;
+                        }
+                        $artikul_badge_hash[$artikul['store_artikul_id']]['money_2'] += $b_data['cnt'];
+                        break;
+                    case 'money_3':
+                        if (!isset($artikul_badge_hash[$artikul['store_artikul_id']]['money_3'])) {
+                            $artikul_badge_hash[$artikul['store_artikul_id']]['money_3'] = 0;
+                        }
+                        $artikul_badge_hash[$artikul['store_artikul_id']]['money_3'] += $b_data['cnt'];
+                        break;
+                    case 'skill':
+                        $badge_skill_ids[] = $b_data['skill_id'];
+                        $artikul_badge_hash[$artikul['store_artikul_id']]['badge_skills'][$b_data['skill_id']]['cnt'] += $b_data['cnt'];
+                        $artikul_badge_hash[$artikul['store_artikul_id']]['badge_skills'][$b_data['skill_id']]['name'] = $b_data['skill_name'];
+                        break;
+                    case 'skill_stat':
+                        $badge_stat_ids[] = $b_data['stat_id'];
+                        $artikul_badge_hash[$artikul['store_artikul_id']]['badge_stats'][$b_data['stat_id']]['cnt'] += $b_data['cnt'];
+                        $artikul_badge_hash[$artikul['store_artikul_id']]['badge_stats'][$b_data['stat_id']]['name'] = $b_data['stat_name'];
+                        break;
+					case 'work':
+						if (!isset($artikul_badge_hash[$artikul['store_artikul_id']]['work'])) {
+							$artikul_badge_hash[$artikul['store_artikul_id']]['work'] = 0;
+						}
+						$artikul_badge_hash[$artikul['store_artikul_id']]['work'] += $b_data['cnt'];
+						break;
+				}
+			}
+		}
+	}
+	// проверяем все ли артикулы которые мы нарыли в badge_data существуют на самом деле
+	if (!empty($badge_artikul_ids)){
+		$badge_artikuls_list = make_hash(artifact_artikul_list(array('id' => $badge_artikul_ids))) ;
+		foreach ($artikul_badge_hash as $key_badge => $artikul_badge) {
+			foreach( $artikul_badge['badge_artifacts'] as $k =>$badge_artikul_cnt) {
+			if (empty($badge_artikuls_list[$k])) {
+					unset($artikul_badge_hash[$key_badge]['badge_artifacts'][$k]);
+				}
+			}
+		}
+	}
+    // проверяем все ли характеристики которые мы нарыли в badge_data существуют на самом деле
+    if (!empty($badge_skill_ids)){
+        $badge_skill_list = make_hash(skill_list(array('id' => $badge_skill_ids))) ;
+        foreach ($artikul_badge_hash as $key_badge => $artikul_badge) {
+            foreach( $artikul_badge['badge_skills'] as $k =>$badge_skill_cnt) {
+                if (empty($badge_skill_list[$k])) {
+                    unset($artikul_badge_hash[$key_badge]['badge_skills'][$k]);
+                }
+            }
+        }
+    }
+    // проверяем все ли статистики характеристики которые мы нарыли в badge_data существуют на самом деле
+    if (!empty($badge_stat_ids)){
+        foreach ($artikul_badge_hash as $key_badge => $artikul_badge) {
+            foreach( $artikul_badge['badge_stats'] as $k =>$badge_skill_stat_cnt) {
+                if (empty($user_stat_skill_hash[$k])) {
+                    unset($artikul_badge_hash[$key_badge]['badge_stats'][$k]);
+                }
+            }
+        }
+    }
+	tpl_artifact_alt_prepare($badge_artikuls_list, OBJECT_CLASS_ARTIFACT_ARTIKUL);
+}
+
+function area_store_copy($store_from_id,$store_to_id){
+	$artikul_list = area_store_artikul_list($store_from_id);
+	foreach($artikul_list as $artikul){
+		$data = array(
+						'area_id' => $store_to_id,
+						'artikul_id' => $artikul['artikul_id'],
+						'time_start'=> $artikul['time_start'],
+						'time_end'=> $artikul['time_end'],
+						'limit_group_id'=> intval($artikul['limit_group_id']),
+						'limit'=> intval($artikul['limit']),
+						'stack_cnt'=> intval($artikul['stack_cnt']),
+						'stack_price'=> $artikul['stack_price'],
+						'bonus_id'=> $artikul['bonus_id'],
+						'store_flags'=> $artikul['store_flags'],
+						'flags'=> $artikul['flags'],
+						'user_marks'=> intval($artikul['user_marks']),
+						'badge_data'=> $artikul['badge_data']			
+					);
+		$insert_artikul_id = area_store_artikul_save($data);
+		$artikul_restriction_list = restriction_list(OBJECT_CLASS_STORE_ITEM,$artikul);
+		foreach ($artikul_restriction_list as $artikul_restriction) restriction_copy($artikul_restriction, $insert_artikul_id);
+	}
+	area_store_clear_cache($store_to_id);
+}
+
+function area_store_category_get($ref=false, $add='') {
+	global $db;
+	return common_get($db, TABLE_AREA_STORE_CATEGORIES, $ref, $add);
+}
+
+function area_store_category_list($ref=false, $add='') {
+	global $db;
+	return common_list($db, TABLE_AREA_STORE_CATEGORIES, $ref, $add);
+}
+
+function area_store_category_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_AREA_STORE_CATEGORIES, $ref, $add);
+}
+
+function area_store_category_save($param) {
+	global $db;
+	return common_save($db, TABLE_AREA_STORE_CATEGORIES, $param, FIELD_AREA_STORE_CATEGORIES);
+}
+
+function area_store_category_delete($ref, $add='') {
+	global $db;
+	return common_delete($db, TABLE_AREA_STORE_CATEGORIES, $ref, $add);
+}
+
+
+function area_store_user_money_get($ref, $add='') {
+    global $db;
+    return common_get($db, TABLE_AREA_STORE_USER_MONEY, $ref, $add);
+}
+
+function area_store_user_money_list($ref, $add='') {
+    global $db;
+    return common_list($db, TABLE_AREA_STORE_USER_MONEY, $ref, $add);
+}
+
+function area_store_user_money_delete($ref, $add='') {
+    global $db;
+    return common_delete($db, TABLE_AREA_STORE_USER_MONEY, $ref, $add);
+}
+
+function area_store_user_money_save($param) {
+    global $db;
+    return common_save($db, TABLE_AREA_STORE_USER_MONEY, $param);
+}
+
+function area_store_user_money_truncate() {
+    global $db;
+    return common_truncate($db, TABLE_AREA_STORE_USER_MONEY);
+}
+
+function area_store_user_buy_control($user_id, $area_id, $money_type, $money){
+    if(!$user_id || !$area_id || !$money_type || $money < 0) return false;
+
+    $area_setting_list = get_hash(area_setting_list($area_id), 'name', 'value');
+    if(!($area_setting_list['STORE_UM_MONEY_TYPE'] && $area_setting_list['STORE_UM_MONEY'] && $area_setting_list['STORE_UM_ARTIKUL_ID'] && $area_setting_list['STORE_UM_ARTIKUL_CNT'])) return false;
+    if($area_setting_list['STORE_UM_MONEY_TYPE'] != $money_type) return false;
+
+    $artikul = artifact_artikul_get($area_setting_list['STORE_UM_ARTIKUL_ID']);
+    if($area_setting_list['STORE_UM_ARTIKUL_ID2']) $artikul2 = artifact_artikul_get($area_setting_list['STORE_UM_ARTIKUL_ID2']);
+
+    $area_store_user_money = area_store_user_money_get(array('user_id' => $user_id, 'area_id' => $area_id, 'money_type' => $money_type));
+    if($area_store_user_money){
+        area_store_user_money_save(array(
+            'id' => $area_store_user_money['id'],
+            '_set' => sql_pholder(' money = money + ?', $money),
+        ));
+    }else{
+        area_store_user_money_save(array(
+            'user_id' => $user_id,
+            'area_id' => $area_id,
+            'money_type' => $money_type,
+            'money' => $money,
+        ));
+    }
+    $area_store_user_money = area_store_user_money_get(array('user_id' => $user_id, 'area_id' => $area_id, 'money_type' => $money_type));
+    if($area_store_user_money['money'] >= $area_setting_list['STORE_UM_MONEY']){
+        $multi_cnt = floor($area_store_user_money['money'] / $area_setting_list['STORE_UM_MONEY']);
+        $money_minus = $multi_cnt * $area_setting_list['STORE_UM_MONEY'];
+
+        $out_money = area_store_user_money_save(array(
+            'id' => $area_store_user_money['id'],
+            '_set' => sql_pholder(' money = money - ?', $money_minus),
+        ));
+        if($out_money){
+            artifact_add($area_setting_list['STORE_UM_ARTIKUL_ID'], $multi_cnt * $area_setting_list['STORE_UM_ARTIKUL_CNT'], $user_id);
+            $msg_art = '<b>'.$artikul['title'].' '.($multi_cnt * $area_setting_list['STORE_UM_ARTIKUL_CNT']).'шт.</b> ';
+            if($area_setting_list['STORE_UM_ARTIKUL_ID2']){
+                artifact_add($area_setting_list['STORE_UM_ARTIKUL_ID2'], $multi_cnt * $area_setting_list['STORE_UM_ARTIKUL_CNT2'], $user_id);
+                $msg_art .= '<b>'.$artikul2['title'].' '.($multi_cnt * $area_setting_list['STORE_UM_ARTIKUL_CNT2']).'шт.</b> ';
+            }
+            chat_msg_send_system('За совершенную покупку в магазине вы получили: '.$msg_art, CHAT_CHF_USER, $user_id);
+        }
+    }
+}

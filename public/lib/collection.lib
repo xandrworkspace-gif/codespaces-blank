@@ -1,0 +1,184 @@
+<?
+require_once("/home/admin/web/dwar.fun/public_html/lib/common.lib");
+define('TABLE_COLLECTION_LIST','collection');
+define('FIELD_COLLECTION_LIST','');
+define('TABLE_COLLECTION_GROUP','collection_group');
+define('FIELD_COLLECTION_GROUP','');
+define('TABLE_COLLECTION_STAT','collection_stat');
+define('FIELD_COLLECTION_STAT','');
+define('TABLE_COLLECTION_FAVARITE', 'collection_favarite');
+define('FIELD_COLLECTION_FAVARITE','');
+
+define('COLLECTION_CNT', 7); //Кол-во мест в коллекции
+define('COLLECTION_CNT_ADD', 4); //Кол-во мест во второй маленькой
+
+define('FLAG_COLLECTION_ADMIN', 	0x00001); //Видна только администратору
+define('FLAG_COLLECTION_NOTUSE', 	0x00002); //Нельзя использовать
+define('FLAG_COLLECTION_NOT_ARTIFACT', 	0x00004); //Не выдавать артефакт
+
+define('FILTER_FLAG_COLL_SELECT',	0x00001); //Избранность
+define('FILTER_FLAG_COLL_ACTIVE',	0x00002); //Собранность
+define('FILTER_FLAG_COLL_USEFULL',  0x00004); //Доступность
+
+$filter_flags = array(
+    FILTER_FLAG_COLL_SELECT => 'Избранность',
+    FILTER_FLAG_COLL_ACTIVE => 'Собранность',
+    FILTER_FLAG_COLL_USEFULL => 'Доступность',
+);
+
+define('FILTE_COLL_TITLE', 1);
+define('FILTE_COLL_ACTIVE', 2);
+
+$filter_sort = array(
+    FILTE_COLL_TITLE => 'по названию',
+    FILTE_COLL_ACTIVE => 'по собранности',
+);
+
+define('FLAG_COLLECTION_GROUP_HIDE', 0x00001); //Скрывать группу
+
+#Работа с базой данных коллекций
+function collection_get($ref=false, $add='') {
+    global $db_path;
+    $collection = common_get($db_path,TABLE_COLLECTION_LIST,$ref,$add);
+    return $collection;
+}
+
+function collection_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_COLLECTION_LIST,$ref,$add,$field_list);
+}
+
+function collection_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_COLLECTION_LIST, $ref, $add);
+}
+
+function collection_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_COLLECTION_LIST,$param,FIELD_COLLECTION_LIST);
+}
+
+function collection_delete($ref, $add = '') {
+    global $db_path;
+    if (is_array($ref)) return false;
+    if($ref){
+        $collection = collection_get($ref);
+        if(!$collection){
+            return false;
+        }
+    }
+    common_delete($db_path,TABLE_COLLECTION_LIST,$ref,$add);
+    return true;
+}
+#Работа с базой данных коллекций завершена
+#Работа с базой групп коллекций данных
+function collection_group_get($ref=false, $add='') {
+    global $db_path;
+    $collection_group = common_get($db_path,TABLE_COLLECTION_GROUP,$ref,$add);
+    return $collection_group;
+}
+
+function collection_group_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_COLLECTION_GROUP,$ref,$add,$field_list);
+}
+
+function collection_group_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_COLLECTION_GROUP, $ref, $add);
+}
+
+function collection_group_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_COLLECTION_GROUP,$param,FIELD_COLLECTION_GROUP);
+}
+
+function collection_group_delete($ref, $add = '') {
+    global $db_path;
+    if (is_array($ref)) return false;
+    if($ref){
+        $collection_group = collection_group_get($ref);
+        if(!$collection_group){
+            return false;
+        }
+    }
+    common_delete($db_path,TABLE_COLLECTION_GROUP,$ref,$add);
+    return true;
+}
+#Работа с базой данных групп коллекций завершена
+
+#Работа с базой данных органок по времени
+
+function collection_stat_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_COLLECTION_STAT,$ref,$add);
+}
+
+function collection_stat_list($add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_COLLECTION_STAT,false,$add);
+}
+
+function collection_stat_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_COLLECTION_STAT,$param,FIELD_COLLECTION_STAT);
+}
+
+function collection_stat_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_COLLECTION_STAT,$ref,$add);
+}
+
+#Работа с базой данных органок по времени
+
+// Функция проверки кол-ва коллекций в день
+function collection_stat_check(&$collection, $check_only=false, $session_user) {
+    if (!$collection) return false;
+    $bkey_info = date_bkey($collection['per_unit']);
+    $bkey = $bkey_info[0];
+    if (!$bkey || !$collection['id'] || !$session_user) return true;
+    $bkey .= '_U'.$session_user['id'];
+    $stat = collection_stat_get(false,sql_pholder(" AND collection_id=? AND bkey=?",$collection['id'],$bkey));
+    if ($check_only) return ($stat['cnt'] < $collection['per_value']);
+    if (!$stat) {
+        collection_stat_save(array(
+            '_noerr' => true,
+            'collection_id' => $collection['id'],
+            'bkey' => $bkey,
+            'dtime' => $bkey_info[1] ? time_current() + 86400 + $bkey_info[1] : 0,
+        ));
+    }
+    return collection_stat_save(array(
+        '_cnt' => true,
+        '_set' => "cnt=cnt+1",
+        '_add' => sql_pholder(" AND collection_id=? AND bkey=? AND cnt<?",$collection['id'],$bkey,$collection['per_value']),
+    ));
+}
+
+
+
+function collection_favarite_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_COLLECTION_FAVARITE,$ref,$add);
+}
+
+function collection_favarite_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_COLLECTION_FAVARITE,$ref,$add,$field_list);
+}
+
+function collection_favarite_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_COLLECTION_FAVARITE, $ref, $add);
+}
+
+function collection_favarite_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_COLLECTION_FAVARITE,$param,FIELD_COLLECTION_FAVARITE);
+}
+
+function collection_favarite_delete($ref, $add = '') {
+    global $db_path;
+    common_delete($db_path,TABLE_COLLECTION_FAVARITE,$ref,$add);
+    return true;
+}

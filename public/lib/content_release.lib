@@ -1,0 +1,284 @@
+<?php
+
+define('CONTENT_RELEASE_BASE_DIR', '/tmp/content_releases/');
+define('CONTENT_RELEASE_DIFF_ADDED', 'ADDED');
+define('CONTENT_RELEASE_DIFF_MODIFIED', 'MODIFIED');
+define('CONTENT_RELEASE_DIFF_DELETED', 'DELETED');
+
+$content_release_colors = array(
+	CONTENT_RELEASE_DIFF_DELETED   => '#cc0000',
+	CONTENT_RELEASE_DIFF_ADDED     => '#007700',
+	CONTENT_RELEASE_DIFF_MODIFIED  => '#0000cc',
+);
+
+function content_release_create_release() {
+	global $exp_imp_entities;
+	$filename = date('Ymd_Hi_').$_SERVER['SERVER_NAME'].'.dat';
+
+	$entities = array();
+	foreach ($exp_imp_entities as $k=>$v) {
+  	if (is_array($v)) {
+  		$entities[$k] = $k;
+  	}
+  }
+	unset($entities['admin_profiles']);
+
+	exp_imp_export(rtrim(SERVER_ROOT, '/').CONTENT_RELEASE_BASE_DIR.$filename, array('entities' => $entities));
+}
+
+function content_release_make_diff($data) {
+	$skip_tables = array('smiles');
+
+	$basedir = rtrim(SERVER_ROOT, '/').CONTENT_RELEASE_BASE_DIR;
+	$cache_name = $basedir.'diff_'.md5(md5_file($basedir.$data['diff_from']).md5_file($basedir.$data['diff_to'])).'.obj';
+	if (!isset($data['diff_from']) || !file_exists($basedir.$data['diff_from']) || !isset($data['diff_to']) || !file_exists($basedir.$data['diff_to'])) return false;
+
+	if (!$diff = content_release_diff_cache_get($cache_name)) {
+		$compare = false;
+		$dump_from = content_release_read_compare($basedir.$data['diff_from'], $compare, true, false, $skip_tables);
+		if ($dump_from['error']) return false;
+
+		$diff = content_release_read_compare($basedir.$data['diff_to'], $dump_from['res'], true, false, $skip_tables);
+		$diff = $diff['res'];
+
+		$dump_from = null;
+		if ($diff['error']) return false;
+		$modifs = array();
+		foreach ($diff['diff'] as $table => $items) {
+			if (empty($diff['diff'][$table])) {
+				unset($diff['diff'][$table]);
+				continue;
+			}
+			$modifs[$table] = array();
+			foreach($items as $i => $status) {
+				if ($status != CONTENT_RELEASE_DIFF_ADDED) {
+					$modifs[$table]['changed'][$i] = $i;
+				}
+				if ($status == CONTENT_RELEASE_DIFF_DELETED) {
+					$modifs[$table]['deleted'][$i] = $i;
+				}
+			}
+		}
+
+		$ids = array();
+		$del_ids = array();
+		foreach ($modifs as $table => $statuses) {
+			if (isset($statuses['changed']) && !empty($statuses['changed'])) $ids[$table] = $statuses['changed'];
+			if (isset($statuses['deleted']) && !empty($statuses['deleted'])) $del_ids[$table] = $statuses['deleted'];
+		}
+		$old_values = !empty($ids) ? content_release_read_compare($basedir.$data['diff_from'], $compare = false, false, $ids) : array();
+		$diff['old_values'] = $old_values['res']['data'];
+
+		$diff['filename'] = 'diff_'.$data['diff_from'].'_'.$data['diff_to'].'.dat';
+		content_release_write($diff, $basedir.$diff['filename'], $del_ids);
+
+		content_release_diff_cache($cache_name, $diff);
+	}
+
+	return $diff;
+}
+
+function content_release_diff_cache($cache_name, $diff) {
+	file_put_contents($cache_name, serialize($diff));
+}
+
+function content_release_diff_cache_get($cache_name) {
+	if (!file_exists($cache_name)) return false;
+
+	$contents = file_get_contents($cache_name);
+	if (!$contents) return false;
+
+	return unserialize($contents);
+}
+
+function content_release_write($data, $fn, $delete = false) {
+	global $exp_imp_entities, $db, $db_2, $db_diff, $exp_imp_localesafe_exclusions;
+	$error = false;
+	$log = array();
+	do {
+		if (!$data || !is_array($data)) {
+			$error = "Nothing to export";
+			break;
+		}
+		$fd = fopen($fn,"wb");
+		if (!$fd) {
+			$error = "Can't open file for output: $fn";
+			break;
+		}
+		exp_imp_write($fd,array('header',charset_code()));	// header
+		foreach ($exp_imp_entities as $ent) {
+			list($cont,,$tables) = $ent;
+			$cur_db = $$cont;
+			$cur_db->die_on_error = false;
+			$tables = preg_split("/[\s,;]+/",$tables);
+			foreach ($tables as $table) {
+				if ((!isset($data['data'][$table]) || empty($data['data'][$table])) && !($delete && isset($delete[$table]) && !empty($delete[$table]))) continue;
+				$fields = $data['structure'][$table]['fields'];
+				$ref = $data['structure'][$table]['ref'];
+				$field_names = array_keys($fields);
+				$chunk_id = md5(uniqid(rand(),true));
+				exp_imp_write($fd,array('start',$chunk_id));	// chunk start
+				exp_imp_write($fd,array($cont,$table,$ref));	// table information
+				exp_imp_write($fd,$field_names);	// field names
+				exp_imp_write($fd,$fields);	// field types
+				$cnt = count($data['data'][$table]);
+				foreach ($data['data'][$table] as $item) {
+					exp_imp_write($fd,$item);
+				}
+				if ($delete && isset($delete[$table]) && !empty($delete[$table])) {
+					exp_imp_write($fd,array('delete_items',implode(',', $delete[$table])));
+				}
+
+				exp_imp_write($fd,array('end',$chunk_id));	// chunk end
+				$log[] = "Table <b>$table</b>: <b>$cnt</b> ".common_decline($cnt,'record','records','records')." exported";
+			}
+		}
+		fclose($fd);
+		if ($error) @unlink($fn);
+	} while (0);
+	return array($error, $log);
+}
+
+function content_release_read_compare($fn, &$compare = false, $serialize = true, $filter_items = false, $skip_tables = array()) {
+	global $db, $db_2, $db_diff, $exp_imp_localesafe_exclusions;
+
+	$error = false;
+	$local_charset = charset_code();
+	$res = array();
+
+	do {
+
+		$fd = @fopen($fn,"rb");
+		if (!$fd) {
+			$error = "Can't open file for input: $fn";
+			break;
+		}
+
+		$charset = charset_code();
+		$row = exp_imp_read($fd);
+		if ($row[0] == 'start') rewind($fd);	// compatibility with old datafiles without a header
+		else {
+			if (($row[0] != 'header') || !$row[1]) {
+				$error = "Invalid header";
+				break;
+			}
+			$res['charset'] = $row[1];
+		}
+
+		while (1) {
+			$pos = ftell($fd);
+			$row = exp_imp_read($fd);
+			if ($row === false) break;
+			if (($row[0] != 'start') || !$row[1]) {
+				$error = "Invalid chunk start at position $pos";
+				break;
+			}
+			$chunk_id = $row[1];
+			list($cont,$table,$ref) = exp_imp_read($fd);
+			$field_names = exp_imp_read($fd);
+			$field_types = exp_imp_read($fd);
+			if (!$cont || !$table || !$ref || !$field_names || !$field_types || !is_array($field_names) || !is_array($field_types) || (count($field_names) != count($field_types))) {
+				$error = "Invalid table information at position $pos";
+				break;
+			}
+			$fields = array_combine($field_names,$field_types);
+			$res['structure'][$table]['fields'] = $fields;
+			$res['structure'][$table]['ref'] = $ref;
+			$cur_db = $$cont;
+			$cur_db->die_on_error = false;
+			if (!$cur_db->db_GetQueryArray("DESCRIBE `$table`",$data)) {
+				$error = "Can't describe table `$table`: ".$cur_db->last_error;
+				break;
+			}
+			$local_ref = false;
+			$local_fields = array();
+			foreach ($data as $item) {
+				if ($item['Key'] == 'PRI') $local_ref = $item['Field'];
+				$local_fields[$item['Field']] = str_replace('var','',$item['Type']);
+			}
+			if ($ref != $local_ref) {
+				$error = "Primary keys don't match for table `$table`";
+				break;
+			}
+			foreach ($fields as $k=>$v) {
+				if ($local_fields[$k] == $v) continue;
+				if ($local_fields[$k]) $error = "Field `$k` of type `$v` is marked to be of type `${local_fields[$k]}` in local table `$table`";
+				else $error = "Field `$k` of type `$v` is absent in local table `$table`";
+				break 2;
+			}
+			$field_count = count($field_names);
+			$cnt = 0;
+
+			$res['data'][$table] = array();
+			if ($compare) $res['diff'][$table] = array();
+
+			$pass = $filter_items && (!isset($filter_items[$table]) || empty($filter_items[$table])) || in_array($table, $skip_tables);
+
+			while (1) {
+				$pos = ftell($fd);
+				$row = exp_imp_read($fd);
+				if ($row === false) {
+					$error = "Premature end-of-file reached while importing table `$table`";
+					break 2;
+				}
+				if ($row[0] == 'delete_items') continue;
+				
+				if (($row[0] == 'end') && ($row[1] == $chunk_id)) break;
+				if (count($row) != $field_count) {
+					$error = "Value count doesn't match field count while importing table `$table` at position $pos";
+					break 2;
+				}
+				$values = array_combine($field_names,$row);
+
+				if ($pass || ($filter_items && !in_array($values[$ref], $filter_items[$table]))) continue;
+
+				if ($charset == $local_charset) $values_conv = $values;
+				else {	// converting data if charsets differ
+					$values_conv = array();
+					foreach ($values as $k=>$v) {
+						$v = iconv($charset,$local_charset,$v);
+						if ($v === false) {
+							$error = "iconv() from '$charset' to '$local_charset' failed";
+							break 3;
+						}
+						$values_conv[$k] = $v;
+					}
+				}
+
+				if ($compare) {
+					if (isset($compare['data'][$table][$values[$ref]])) {
+						$values_sort = $values_conv;
+						ksort($values_sort);
+						if (md5(serialize($values_sort)) != $compare['data'][$table][$values[$ref]]) {
+							$res['diff'][$table][$values[$ref]] = CONTENT_RELEASE_DIFF_MODIFIED;
+							$res['data'][$table][$values[$ref]] = $values_conv;
+						}
+						$values_sort = null;
+						unset($values_sort);
+						unset($compare['data'][$table][$values[$ref]]);
+					} else {
+						$res['diff'][$table][$values[$ref]] = CONTENT_RELEASE_DIFF_ADDED;
+						$res['data'][$table][$values[$ref]] = $values_conv;
+					}
+				} else {
+					if ($serialize) {
+						$values_sort = $values_conv;
+						ksort($values_sort);
+					}
+					$res['data'][$table][$values[$ref]] = $serialize ? md5(serialize($values_sort)) : $values_conv;
+					$values_sort = null;
+					unset($values_sort);
+				}
+			}
+		}
+
+		if ($compare) {
+			foreach ($compare['data'] as $k => $items) {
+				foreach ($items as $item_id => $item) $res['diff'][$k][$item_id] = CONTENT_RELEASE_DIFF_DELETED;
+			}
+		}
+		fclose($fd);
+	} while (0);
+	
+	return array('error' => $error, 'res' => $res);
+}

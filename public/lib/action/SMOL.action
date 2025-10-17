@@ -1,0 +1,70 @@
+<?
+
+// действие "наложить смолу"
+// Параметры:
+//	$in['artifact_id'] - артефакт на который нужно наложить руну
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+
+$object_artikul = artifact_artikul_get($object['artikul_id']);
+
+if (!$artifact || $artifact['slot_id']) { // неверный или одетый предмет
+    $out['error'] = translate('Нужно выбрать предмет на который накладывается смола!');
+    return;
+}
+
+if($artifact['flags2'] & ARTIFACT_FLAG2_NO_BREAK){
+    $out['error'] = translate('Выбранный предмет уже улучшен смолой!');
+    return;
+}
+
+$artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+
+if(!$artifact_artikul || !$object_artikul){
+    $out['error'] = translate('На Данный артефакт невозможно наложить смолу!');
+    return;
+}
+
+if (!($artifact_artikul['flags2'] & ARTIFACT_FLAG2_CAN_SMOL)) {
+    $out['error'] = translate('На Данный артефакт невозможно наложить смолу!');
+    return;
+}
+
+if($artifact_artikul['quality'] != $object_artikul['quality']){
+    $out['error'] = translate('На Данный артефакт невозможно наложить данную смолу!');
+    return;
+}
+
+if($artifact_artikul['kind_id'] != $object_artikul['kind_id']){
+    $out['error'] = translate('На Данный артефакт невозможно наложить данную смолу!');
+    return;
+}
+
+
+if (!$artifact_artikul['slot_id']) {
+    $out['error'] = translate('Невозможно заточить этот предмет!');
+    return;
+}
+
+artifact_save(array(
+    'id' => $artifact_id,
+    '_set' => sql_pholder(' flags2 = flags2 | ?#ARTIFACT_FLAG2_NO_BREAK, flags = flags | ?#ARTIFACT_FLAG_NOGIVE'),
+));
+
+artifact_save(array(
+    'id' => $artifact_id,
+    '_set' => sql_pholder(' flags2 = flags2 ^ ?#ARTIFACT_FLAG2_CAN_SMOL'),
+));
+
+$out['status'] = ACTION_STATUS_OK;
+
+
+
+?>

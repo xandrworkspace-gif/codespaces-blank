@@ -1,0 +1,49 @@
+<? # $Id: scheduler.lib,v 1.4 2009-10-27 13:46:19 s.ignatenkov Exp $
+
+// Имена и поля таблиц
+define('TABLE_SCHEDULER_TASKS','scheduler_tasks');
+define('FIELD_SCHEDULER_TASKS','');
+
+define('SCHEDULER_TASK_TYPE_BROADCAST', 1);	// Пользовательский broadcast
+define('SCHEDULER_TASK_TYPE_SYSTEM', 2);	// Системный broadcast
+define('SCHEDULER_TASK_TYPE_TITLE', 3);	// Смена title
+
+define('SCHEDULER_TASK_FLAG_HELP', 0x00000001);	// Помощь
+define('SCHEDULER_TASK_FLAG_DELAY', 0x00000002);	// Задержка
+
+
+
+function scheduler_task_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_SCHEDULER_TASKS,$ref,$add);
+}
+
+function scheduler_task_list($type=false, $add='') {
+	global $db_diff;
+	$ref = false;
+	if ($type) $ref['type'] = $type;
+	return common_list($db_diff,TABLE_SCHEDULER_TASKS,$ref,$query_add.$add);
+}
+
+function scheduler_task_count($type=false, $add='') {
+	global $db_diff;
+	$ref = false;
+	if ($type) $ref = array('type' => $type);	
+	return common_count($db_diff, TABLE_SCHEDULER_TASKS, $ref, $add);
+}
+
+function scheduler_task_save($param) {
+	global $db_diff;
+	if ($param['help']) $param['flags']|=SCHEDULER_TASK_FLAG_HELP;
+	if ($param['delay']) $param['flags']|=SCHEDULER_TASK_FLAG_DELAY;
+	unset($param['help']);
+	unset($param['delay']);
+	return common_save($db_diff,TABLE_SCHEDULER_TASKS,$param,FIELD_SCHEDULER_TASKS);
+}
+
+function scheduler_task_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_SCHEDULER_TASKS,$ref,$add);
+}
+
+?>

@@ -1,0 +1,215 @@
+<? # $Id: fight.lib,v 1.528 2009/12/05 14:32:29 i.hrustalev Exp $
+
+require_once("lib/common.lib");
+
+// Имена и поля таблиц
+define('TABLE_ARCHIVES','archives');
+define('FIELD_ARCHIVES','');
+define('TABLE_ARCHIVE_USERS','archive_users');
+define('FIELD_ARCHIVE_USERS','');
+
+// Типы архивов
+define('ARCHIVE_TYPE_FIGHT',       1);
+define('ARCHIVE_TYPE_INSTANCE',    2);
+define('ARCHIVE_TYPE_CLAN_BATTLE', 3);
+
+// Флаги
+define('ARCHIVE_FLAG_NODELETE', 0x01); // не удалять никогда
+
+define('MAX_SAVED', 5);
+
+define('PRICE_MONEY_GAME', 50); // цена записи в игровых деньгах 50 серебрянных
+
+global $fight_type_image_hash;
+$fight_type_image_hash = array(
+	ARCHIVE_TYPE_FIGHT => array(
+		0 => '/images/fighttype_pve.gif',
+		1 => '/images/fighttype_pvp.gif',
+	),
+	ARCHIVE_TYPE_INSTANCE => array(
+		0 => '/images/fighttype_bg.gif',
+		1 => '/images/fighttype_castle.gif',
+		2 => '/images/fighttype_bg.gif',
+	),
+	ARCHIVE_TYPE_CLAN_BATTLE => array(
+		0 => '/images/fighttype_pvp.gif'
+	)
+);
+
+global $fight_type_title_hash;
+$fight_type_title_hash = array(
+	ARCHIVE_TYPE_FIGHT => array(
+		0 => translate('Бой с монстрами'),
+		1 => translate('Бой с враждебной расой'),
+	),
+	ARCHIVE_TYPE_INSTANCE => array(
+		0 => translate('Поле битвы'), 
+		1 => translate('Захват замка'),
+		2 => translate('Поле битвы'),
+	),
+	ARCHIVE_TYPE_CLAN_BATTLE => array(
+		0 => translate('Клановые битвы'), 
+	)
+);
+
+// Сохраненные бои
+function archive_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2, TABLE_ARCHIVES, $ref, $add);
+}
+
+function archive_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2, TABLE_ARCHIVES, $ref, $add, $field_list);
+}
+
+function archive_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_ARCHIVES, $ref, $add);
+}
+
+function archive_save($param) {
+	global $db_2;
+	return common_save($db_2, TABLE_ARCHIVES, $param, FIELD_ARCHIVES);
+}
+
+function archive_delete($ref, $add='') {
+	global $db_2;
+	if (!isset($ref['object_type']) || !isset($ref['object_id'])) return false;
+	common_delete($db_2, TABLE_ARCHIVES, $ref, $add);
+	archive_user_delete($ref);
+	return true;
+}
+
+function archive_lock($ref, $timewait=20, $timelock=600) {
+	global $tq;
+	if (!isset($ref['object_type']) || !isset($ref['object_id'])) return false;
+	return $tq->capture('ARCHIVE_'.(int)$ref['object_type'].'_'.(int)$ref['object_id'], $timewait, $timelock);
+}
+
+function archive_unlock($ref) {
+	global $tq;
+	if (!isset($ref['object_type']) || !isset($ref['object_id'])) return false;
+	return $tq->release('ARCHIVE_'.(int)$ref['object_type'].'_'.(int)$ref['object_id']);
+}
+
+
+// Связи с сохраненными архивами
+function archive_user_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2, TABLE_ARCHIVE_USERS, $ref, $add);
+}
+
+function archive_user_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2, TABLE_ARCHIVE_USERS, $ref,$add, $field_list);
+}
+
+function archive_user_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_ARCHIVE_USERS, $ref, $add);
+}
+
+function archive_user_save($param) {
+	global $db_2;
+//	if (!isset($param['object_type']) || !isset($param['object_id']) || !isset($param['user_id'])) return false;
+//	$add = '';
+//	if (isset($param['_mode']) && $param['_mode'] == CSMODE_UPDATE) {
+//		$add = sql_pholder(" AND object_type = ? AND object_id = ? AND user_id = ?", $param['object_type'], $param['object_id'], $param['user_id']);
+//	}
+	return common_save($db_2, TABLE_ARCHIVE_USERS, $param, FIELD_ARCHIVE_USERS);
+}
+
+function archive_user_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2, TABLE_ARCHIVE_USERS ,$ref, $add);
+}
+
+//---
+
+function archive_generate($object_type, $object_id) {
+	$object_archive = archive_get(array('object_type' => $object_type, 'object_id' => $object_id));
+	if (!$object_archive) {
+		if ($object_type == ARCHIVE_TYPE_FIGHT) {
+			$object = fight_get($object_id);
+			$object_archive_user_list = fight_user_list($object_id);
+			$object['user_list'] = $object_archive_user_list;
+			if ($object['instance_id']) {
+				$instance_info = instance_get($object['instance_id']);
+				$object['instance_artikul_id'] = $instance_info['artikul_id'];
+			}
+		} elseif ($object_type == ARCHIVE_TYPE_INSTANCE) {
+			$object = instance_get($object_id);
+			$object_archive_user_list = instance_user_list(array('instance_id' => $object_id));
+			$object['user_list'] = $object_archive_user_list;
+			$object['skill_list'] = skill_object_list(OBJECT_CLASS_INSTANCE, $object_id);
+		} elseif ($object_type == ARCHIVE_TYPE_CLAN_BATTLE) {
+			require_once('lib/clan_battle.lib');
+			$clan_battle_area = area_get(CLAN_BATTLE_PREP_AREA_ID);
+			if (!$clan_battle_area) common_redirect('index.php');
+			
+			$object['clan_battle'] = clan_battle_get(array('id' => $object_id, 'server_id' => SERVER_ID));
+			$object['clan_battle_rooms'] = clan_battle_room_list(array('clan_battle_id' => $object['clan_battle']['id']));
+			$object['clan_battle_users'] = clan_battle_user_list(array('clan_battle_id' => $object['clan_battle']['id']));
+			$fight_ids = get_hash($object['clan_battle_rooms'], 'fight_id', 'fight_id');
+			unset($fight_ids[''], $fight_ids['0']);
+			$object['fights'] = !empty($fight_ids) ? make_hash(fight_list(null, null, null, sql_pholder(' AND id in (?@)', $fight_ids))) : array();
+			$object['fight_users'] = !empty($fight_ids) ? fight_user_list(false, false, sql_pholder(' AND fight_id in (?@)', $fight_ids)) : array();
+		}
+		
+		$object_archive = array(
+			'object_type' => $object_type,
+			'object_id' => $object_id,
+			'ctime' => time_current(),
+			'data_serialize' => serialize($object),
+			'_mode' => CSMODE_INSERT,
+		);
+		archive_save($object_archive);
+	}
+	
+	return $object_archive;
+}
+
+function archive_object_get($object_type, $object_id) {
+	if ($object_type == ARCHIVE_TYPE_FIGHT) {
+		$object = fight_get($object_id);
+		if (!$object) {
+			$object_archive = archive_get(array('object_type' => $object_type, 'object_id' => $object_id));
+			if ($object_archive) {
+				$in_archive = true;
+	
+				$object = unserialize($object_archive['data_serialize']);
+				$object_archive_user_list = $object['user_list'];
+				unset($object['user_list']);
+			}
+		}
+	} elseif ($object_type == ARCHIVE_TYPE_INSTANCE) {
+		$object = instance_get($object_id);
+		if (!$object) {
+			$object_archive = archive_get(array('object_type' => $object_type, 'object_id' => $object_id));
+			if ($object_archive) {
+				$in_archive = true;
+	
+				$object = unserialize($object_archive['data_serialize']);
+				$object_archive_user_list = $object['user_list'];
+				$object_archive_skill_list = $object['skill_list'];
+				unset($object['user_list']);
+				unset($object['skill_list']);
+			}
+		}
+	} elseif ($object_type == ARCHIVE_TYPE_CLAN_BATTLE) {
+		require_once('lib/clan_battle.lib');
+		$clan_battle_area = area_get(CLAN_BATTLE_PREP_AREA_ID);
+		if (!$clan_battle_area) common_redirect('index.php');
+
+		$object = clan_battle_get(array('id' => $object_id, 'server_id' => SERVER_ID));
+
+		if (!$object) {
+			$object_archive = archive_get(array('object_type' => $object_type, 'object_id' => $object_id));
+			$object = unserialize($object_archive['data_serialize']);
+			$object = $object['clan_battle'];
+		}
+	}
+	return $object;
+}
+?>

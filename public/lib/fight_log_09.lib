@@ -1,0 +1,174 @@
+<? # $Id: fight_log.lib,v 1.26 2007/07/16 14:33:15 sen Exp $
+
+require_once("lib/common.lib");
+require_once("lib/fight.lib");
+
+// Имена и поля таблиц
+define('TABLE_FIGHT_LOG','fight_log');
+define('FIELD_FIGHT_LOG','');
+define('TABLE_FIGHT_LOG_TPLS','fight_log_tpls');
+define('FIELD_FIGHT_LOG_TPLS','');
+
+
+function fight_log_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_FIGHT_LOG,$ref,$add);
+}
+
+function fight_log_list($fight_id, $add='') {
+	global $db;
+	if (!$fight_id && !$add) return false;
+	$ref = false;
+	if ($fight_id) $ref['fight_id'] = $fight_id;
+	return common_list($db,TABLE_FIGHT_LOG,$ref,$add);
+}
+
+function fight_log_count($fight_id, $add='') {
+	global $db;
+	if (!$fight_id && !$add) return false;
+	$ref = false;
+	if ($fight_id) $ref['fight_id'] = $fight_id;
+	return common_count($db,TABLE_FIGHT_LOG,$ref,$add);
+}
+
+function fight_log_save($param) {
+	global $db;
+	if (!$param['id'] && !$param['fight_id']) return false;
+	return common_save($db,TABLE_FIGHT_LOG,$param,FIELD_FIGHT_LOG);
+}
+
+function fight_log_delete($ref=false, $fight_id=false, $add='') {
+	global $db;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($fight_id) $ref['fight_id'] = $fight_id;
+	return common_delete($db,TABLE_FIGHT_LOG,$ref,$add);
+}
+
+function fight_log_tpl_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_FIGHT_LOG_TPLS,$ref,$add);
+}
+
+function fight_log_tpl_list($add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_FIGHT_LOG_TPLS,false,$add);
+}
+
+function fight_log_tpl_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_FIGHT_LOG_TPLS,$param,FIELD_FIGHT_LOG_TPLS);
+}
+
+function fight_log_tpl_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_FIGHT_LOG_TPLS,$ref,$add);
+}
+
+// ===========================================================================================================================
+
+function fight_log_update(&$fight, &$fight_log, &$fight_state) {
+	if (!$fight) return false;
+	$stack = array();
+	$log_idx = 0;
+	foreach ($fight_log as $idx=>$log) {
+		$persId = $log['persId'];
+		$oppId = $log['oppId'];
+		if (($log['code'] == FS_FLC_KICK) && !$stack[$persId] && !$stack[$oppId]) {
+			$stack[$persId] = $log;
+			continue;
+		}
+		if ($idx >= $fight['log_idx']) {
+			if ($stack[$oppId]) {	// группируем по две со временем последнего события
+				fight_log_save(array(
+					'fight_id' => $fight['id'],
+					'str1' => fight_log_get_str($stack[$oppId],$fight_state),
+					'str2' => fight_log_get_str($log,$fight_state),
+					'stime' => $log['ctime'],
+				));
+			} else {	// не получилось сгруппировать
+				if ($stack[$persId]) {	// записываем отсроченный лог
+					fight_log_save(array(
+						'fight_id' => $fight['id'],
+						'str1' => fight_log_get_str($stack[$persId],$fight_state),
+						'stime' => $stack[$persId]['ctime'],
+					));
+				}
+				fight_log_save(array(	// текущий лог
+					'fight_id' => $fight['id'],
+					'str1' => fight_log_get_str($log,$fight_state),
+					'stime' => $log['ctime'],
+				));
+			}
+		}
+		unset($stack[$persId],$stack[$oppId]);
+		$log_idx = $idx + 1;
+	}
+	fight_save(array(
+		'id' => $fight['id'],
+		'log_idx' => $log_idx,
+	));
+}
+
+function fight_log_get_str(&$log, &$fight_state) {
+	global $user_hash, $artifact_hash, $quality_info;
+	$_cl = array(
+		1 => 'evade',
+		2 => 'crit',
+		3 => 'kick',
+		4 => 'block',
+	);
+
+	if (!$log) return '';
+	$pers_id = $log['persId'];
+	$opp_id = $log['oppId'];
+	$bot_pers_id = _get_bot_id($pers_id);
+	$bot_opp_id = _get_bot_id($opp_id);
+	$target_id = false;
+	$effect_id = false;
+	$s_pers = $pers_id ? ($bot_pers_id ? bot_get_info($bot_pers_id): cache_fetch($user_hash,$pers_id,'user_get')): false;
+	$d_pers = $opp_id ? ($bot_opp_id ? bot_get_info($bot_opp_id): cache_fetch($user_hash,$opp_id,'user_get')): false;
+	$s_gender = intval($s_pers['gender']);
+	$d_gender = intval($d_pers['gender']);
+	switch ($log['code']) {
+		case FS_FLC_KICK:
+			$event = intval($log['i1']);
+			$part = intval($log['i2']);
+			$dmg = intval($log['i3']);
+			$tpl_list = fight_log_tpl_list(sql_pholder(" AND (gender1=? OR gender1=0) AND (gender2=? OR gender2=0) AND event=? AND part=?",$s_gender,$d_gender,$event,$part));
+			$tpl = $tpl_list[array_rand($tpl_list)]['tpl'];
+			if ($tpl && $dmg) $tpl .= sprintf(' <nobr class="%s b">-%d [%d/%d]</nobr>',$_cl[$event],$dmg,$log['oppHp'],$log['oppHpMax']);
+			break;
+		case FS_FLC_DEATH:
+			$timeout = $log['i1'];
+			if ($timeout) $tpl = concat('%SNICK% ',($s_gender == 1 ? 'убит': 'убита'),' по таймауту.');
+			else {
+				$tpl_list = fight_log_tpl_list(sql_pholder(" AND (gender1=? OR gender1=0) AND event=?",$s_gender,5));
+				$tpl = $tpl_list[array_rand($tpl_list)]['tpl'];
+			}
+			break;
+		case FS_FLC_INTRUSION:
+			$tpl = concat('%SNICK% ',($s_gender == 1 ? 'вмешался': 'вмешалась'),' в бой.');
+			break;
+		case FS_FLC_EFFECTUSE:
+			$target_id = $log['i1'];
+			$effect_id = $log['i2'];
+			$effect_title = $log['s1'];
+			$tpl = concat('%SNICK% ',($s_gender == 1 ? 'использовал': 'использовала'),' %EFFECT%',($pers_id != $target_id ? ' на %TNICK%': ''),'.');
+			break;
+	}
+	$bot_target_id = _get_bot_id($target_id);
+	$t_pers = $target_id ? ($bot_target_id ? bot_get_info($bot_target_id): cache_fetch($user_hash,$target_id,'user_get')): false;
+	$effect = $effect_id ? cache_fetch($artifact_hash,$effect_id,'artifact_get'): false;
+	if (!$tpl) {
+		$tpl = '[%SNICK% -> %DNICK%, code='.$log['code'].' (%TNICK%, %EFFECT%)]';
+#		error_log("[fight_log_get_str]: Template not found!");
+#		vardump($log,true);
+	}
+	$tpl = str_replace('%SNICK%','<b class="team_'.$fight_state[$pers_id]['teamNum'].'">'.$s_pers['nick'].'</b>',$tpl);
+	$tpl = str_replace('%DNICK%','<b class="team_'.$fight_state[$opp_id]['teamNum'].'">'.$d_pers['nick'].'</b>',$tpl);
+	$tpl = str_replace('%TNICK%','<b class="team_'.$fight_state[$target_id]['teamNum'].'">'.$t_pers['nick'].'</b>',$tpl);
+	$tpl = str_replace('%EFFECT%','<b style="color:'.$quality_info[$effect['quality']]['color'].'">['.$effect_title.']</b>',$tpl);
+	return $tpl;
+}
+
+?>

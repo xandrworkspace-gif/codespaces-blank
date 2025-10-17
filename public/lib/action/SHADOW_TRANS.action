@@ -1,0 +1,58 @@
+<?
+// действие "Теневое преображение"
+// Параметры:
+//	$in['artifact_id'] - артефакт который нужно преобразовать
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+
+if (!$artifact || $artifact['slot_id']) {
+    $out['error'] = translate('Нужно выбрать предмет который будет преображен в теневой!');
+    return;
+}
+
+if ($artifact['flags'] & ARTIFACT_FLAG_ARMOR_STYLE) {
+    $out['error'] = translate('Нельзя преобразовать данный предмет!');
+    return;
+}
+
+if (!($artifact['flags2'] & ARTIFACT_FLAG2_SHADOW_TR)) {
+    $out['error'] = translate('Нельзя преобразовать данный предмет!');
+    return;
+}
+
+$artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+if(!$artifact_artikul['c_art_id']){
+    $out['error'] = translate('У данного предмета не существует теневого аналога!');
+    return;
+}
+$c_artifact_artikul = artifact_artikul_get($artifact_artikul['c_art_id']);
+if(!$c_artifact_artikul){
+    $out['error'] = translate('У данного предмета не существует теневого аналога!');
+    return;
+}
+if (!$artifact_artikul['slot_id']) {
+    $out['error'] = translate('Нельзя преобразовать данный предмет!');
+    return;
+}
+
+artifact_delete_safe($artifact['id']);
+
+artifact_add($artifact_artikul['c_art_id'], 1, $subject['id']);
+$out['status'] = ACTION_STATUS_OK;
+
+chat_msg_send_system(sprintf(translate('<b>Преображен предмет "%s" в теневой "%s"</b>'),$artifact_artikul['title'], $c_artifact_artikul['title']), CHAT_CHF_USER, $subject['id']);
+
+// лог-сервис -----------------------
+logserv_log_action(array(
+    'action' => $action,
+    'comment' => sprintf(translate('Преображен предмет "%s" в теневой "%s"'),$artifact_artikul['title'], $c_artifact_artikul['title']),
+),$action_user);
+// ----------------------------------
+?>

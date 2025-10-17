@@ -1,0 +1,87 @@
+<?
+define('TABLE_COMPLECTS_LIST','save_complects');
+define('FIELD_COMPLECTS_LIST','');
+
+define('TABLE_COMPLECTS_SLOT_LIST','save_complects_slot');
+define('FIELD_COMPLECTS_SLOT_LIST','');
+
+define('COMPLECTS_SKILL', 'ADD_COMPLECT_HAR');
+define('COMPLECTS_SLOT_SKILL', 'ADD_COMPLECT_SLOT_HAR');
+
+define('C_ENABLE',   1);
+define('C_DISABLE',  0);
+
+$max_user_complects = 2; //Максимальное количество сохраненок у игрока!
+$max_user_complects_all = 6; //Максимальное количество сохраненок всего!
+$money_compl = 500; // Стоимость +1 за золото.
+$money_type_compl = MONEY_TYPE_GAME; //Золото
+
+#Работа с базой данных
+function s_complects_get($ref=false, $add='') {
+    global $db_path;
+    $s_complects = common_get($db_path,TABLE_COMPLECTS_LIST,$ref,$add);
+    return $s_complects;
+}
+
+function s_complects_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_COMPLECTS_LIST,$ref,$add,$field_list);
+}
+
+function s_complects_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_COMPLECTS_LIST, $ref, $add);
+}
+
+function s_complects_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_COMPLECTS_LIST,$param,FIELD_COMPLECTS_LIST);
+}
+
+function s_complects_delete($ref, $add = '') {
+    global $db_path;
+    if (is_array($ref)) return false;
+    if($ref){
+        $s_complects = s_complects_get($ref);
+        if(!$s_complects){
+            return false;
+        }
+    }
+    common_delete($db_path,TABLE_COMPLECTS_LIST,$ref,$add);
+    return true;
+}
+
+function s_complects_slot_get($ref=false, $add='') {
+    global $db_path;
+    $s_complects = common_get($db_path,TABLE_COMPLECTS_SLOT_LIST,$ref,$add);
+    return $s_complects;
+}
+
+function s_complects_slot_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_COMPLECTS_SLOT_LIST,$ref,$add,$field_list);
+}
+
+function s_complects_slot_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_COMPLECTS_SLOT_LIST, $ref, $add);
+}
+
+function s_complects_slot_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_COMPLECTS_SLOT_LIST,$param,FIELD_COMPLECTS_SLOT_LIST);
+}
+
+function s_complects_slot_delete($ref, $add = '') {
+    global $db_path;
+    if (is_array($ref)) return false;
+    if($ref){
+        $s_complects = s_complects_slot_get($ref);
+        if(!$s_complects){
+            return false;
+        }
+    }
+    common_delete($db_path,TABLE_COMPLECTS_SLOT_LIST,$ref,$add);
+    return true;
+}
+#Работа с базой данных завершена

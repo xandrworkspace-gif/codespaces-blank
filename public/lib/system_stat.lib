@@ -1,0 +1,34 @@
+<?
+define('SYSTEM_CODE_FARM', 'farm');
+define('SYSTEM_CODE_HUNT', 'hunt');
+
+global $system_info;
+
+$system_info = array(
+	SYSTEM_CODE_FARM => array(
+		'code'      => SYSTEM_CODE_FARM,
+		'title'     => translate('Фарм'),
+		'max_delay' => 180,
+	),
+	SYSTEM_CODE_HUNT => array(
+		'code'      => SYSTEM_CODE_HUNT,
+		'title'     => translate('Охота'),
+		'max_delay' => 180,
+	),
+);
+
+function system_stat_get($code) {
+	$cache = new Cache('SYSTEM_STAT_'.$code);
+
+	return $cache->isValid() ? $cache->get() : 0;
+}
+
+function system_stat_update($code) {
+	$cache = new Cache('SYSTEM_STAT_'.$code);
+
+	$value = $cache->isValid() ? $cache->get() : 0;
+	if ((time_current() - $value) > 60) $cache->update(time_current(), 3600);
+}
+
+
+?>

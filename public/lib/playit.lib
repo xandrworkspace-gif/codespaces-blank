@@ -1,0 +1,401 @@
+<? # $Id: playit.lib,v 1.9 2010-01-15 09:50:10 p.knoblokh Exp $
+//  ==[ Required files ]=======================================================
+
+//  NOTE: Adjust these requires for your project.
+require_once('lib/auth.lib');
+require_once('lib/ticket.lib');
+require_once('lib/skill.lib');
+require_once('lib/user_stat.lib');
+
+//  ==[ Status codes ]=========================================================
+
+define('PLAYIT_SUCCESS',          false);
+define('PLAYIT_BADACTION',        1);
+define('PLAYIT_BADARGS',          2);
+define('PLAYIT_BADAUTHREGTICKET', 3);
+define('PLAYIT_AUTHFAILED',       4);
+define('PLAYIT_LOGINNOTFOUND',    5);
+define('PLAYIT_PASSWORDREQUIRED', 6);
+
+
+function playit_error_string($errno) {
+	return
+		($errno == PLAYIT_SUCCESS ? 'Success':
+		($errno == PLAYIT_BADACTION ? 'Bad request':
+		($errno == PLAYIT_BADARGS ? 'Bad arguments':
+		($errno == PLAYIT_BADAUTHREGTICKET ? 'Bad or expired request':
+		($errno == PLAYIT_AUTHFAILED ? 'Authorization error':
+		($errno == PLAYIT_LOGINNOTFOUND ? 'Login not found':
+		'Unknown error: '.$errno))))));
+}
+
+
+define('PLAYIT_URL', translate('http://playit.ru/'));
+define('PLAYIT_CGI_URL', PLAYIT_URL . 'pub/playit_auth.php?f=1');
+define('PLAYIT_CGI_TIMEOUT', 5);
+define('PLAYIT_CGI_TIMEOUT_CHECK', 4.5);
+
+define('PLAYIT_AUTHREG_URL', SERVER_URL . 'playit_pub.php?f=1');  //  [CFG]
+
+//  ==[ Common functions ]=====================================================
+
+//  WARNING: If you have such functions in your project,
+//           you can use them as long as they are api-compatible with these.
+//           (These functions are from common.inc/lib of Drive and Bloodhunter)
+//           [CFG]
+
+if (!is_callable('varlog_v')) {
+	function varlog_v(&$args) {
+		foreach($args as $arg) {
+			$arg_strs = explode("\n", is_string($arg) ? $arg : var_export($arg, true));
+			array_map('error_log', $arg_strs);
+		}
+	}
+}
+
+if (!is_callable('varlog')) {
+	function varlog() {
+		$args = func_get_args();
+		varlog_v($args);
+	}
+}
+
+if (!is_callable('common_check')) {
+	function common_check($value, &$status, $message, $param = null) {
+		if (!$value) {
+			if (!@$status['error']) { //  We should keep old error message
+				$status['status'] = is_array($param)
+					? (isset($param['status']) ? $param['status'] : true)
+					: ($param ? $param : true)
+					;
+
+				if ($message) {
+					if (@$param['value']) {
+						$status['error'] = sprintf(
+								$message,
+								is_callable(@$param['transform'])
+									? $param['transform']($param['value'])
+									: $param['value']
+							);
+					} else {
+						$status['error'] = $message;
+					}
+				} else if ($param) {
+					if (is_callable($param)) {
+						$status['error'] = $param();
+					} else {
+						$status['error'] = implode('', $param);
+					}
+				} else {
+					$status['error'] = traceback();
+				}
+			}
+
+			return false;
+		}
+
+		return true;
+	}
+}
+
+//  ==[ PlayIT-specific callbacks ]============================================
+
+//  NOTE: These functions are reference implementations of PlayIT API
+//  for BloodHunter.ru. Reimplement them as needed for your project. [CFG]
+
+//  NOTE: BloodHunter.ru have separate account and character entities
+//  (single account may own up to 10 characters). For other projects
+//  you may consider account as 'user' (like account_get() => user_get()).
+
+//  Function: playit_get_auth_url()
+//
+//  Arguments:
+//  $login -- user login
+//  $playit_uid -- UserID of PlayIT session
+//  $playit_sid -- SessionID of PlayIT session
+//
+//  Return values (conforming to common_check() standard):
+//  array(
+//      'status' => <operation status: PLAYIT_SUCESS or error code,
+//      'error' => <optional error message string>,
+//      'url' => <on success, authorization/registration URL>,
+//    )
+//
+//  Remarks:
+//  1. You should check if passed login exists in the game. If not,
+//  you should return link to registration page with pre-filled login/email fields
+//  (passed login is always user's email). Otherwise, if specified login exist,
+//  you should return unique URL, which would auto-login user when opened in
+//  his browser. It is recommended that you'd use short-living (TTL ~3min)
+//  unique codes for that (see implementation).
+//
+//  Note that if user's email/login differ in your game, you should take into account
+//  login only. (If there exist account with specified email, but different login,
+//  he should be ignored for purpose of this request.)
+//
+//  2. You can reuse passed session (UID/SID) if you using the same authorization
+//  server as PlayIT does. Another option -- you may (or may not) want to check
+//  if passed session still exist on that server. This is have not much sense
+//  though -- if you have secure connection.
+//  Otherwise you may safely ignore passed UID/SID information.
+//
+function playit_get_auth_url($login, $playit_uid, $playit_sid) {
+	$out = array('status' => PLAYIT_SUCCESS);
+
+	$auth = auth_get(array('email' => $login));
+	$playit_login = ($auth['auth_flags'] & AUTH_FLAG_PLAYIT) > 0;
+	if ($auth) {
+		if (
+			!common_check($playit_login,$out,'password required',PLAYIT_PASSWORDREQUIRED) ||
+			!common_check((playit_check_session($playit_uid,$playit_sid) == $login),$out,'login mismatch',PLAYIT_AUTHFAILED)
+		) return $out;
+	}
+
+	$ticket_code = ticket_create(
+			TICKET_PLAYIT_ID,
+			TICKET_PLAYIT_TTL,
+			array(
+				'login' => $login,
+			)
+		);
+	if (common_check($ticket_code, $out, 'failed to create auth/reg ticket',PLAYIT_AUTHFAILED)) {
+		$out['url'] = PLAYIT_AUTHREG_URL . '&code=' . $ticket_code;
+	}
+
+	return $out;
+}
+
+function playit_get_pwd_auth_url($login, $password) {
+	$out = array('status' => PLAYIT_SUCCESS);
+
+	if (auth_get(array('email' => $login, 'passwd' => $password))) {
+		$ticket_code = ticket_create(
+				TICKET_PLAYIT_ID,
+				TICKET_PLAYIT_TTL,
+				array(
+					'login' => $login,
+				)
+			);
+		if (common_check($ticket_code, $out, 'failed to create auth/reg ticket',PLAYIT_AUTHFAILED)) {
+			$out['url'] = PLAYIT_AUTHREG_URL. '&code=' . $ticket_code;
+		}
+	} else $out['status'] = PLAYIT_AUTHFAILED;
+	return $out;
+}
+
+//  Function: playit_handle_auth_ticket() [CFG]
+//
+//  Arguments:
+//  $code -- auth/reg ticket code
+//
+//  Return values (conforming to common_check() standard):
+//  array(
+//      'status' => <operation status: PLAYIT_SUCESS or error code,
+//      'error' => <optional error message string>,
+//      'redir_url' => <required redirection url>,
+//    )
+//
+//  Remarks:
+//  1. On success, this function should authorize user or show
+//  (forward) him to pre-filled registration page.
+//
+//  2. This is a reference implementation, specific for BloodHunter.ru,
+//  you may change its logic as needed, providing user
+//  should not enter his login-email (and, on authorization, password).
+//  Note current implementation always redirects user somewhere, so
+//  return value does not have much sense.
+//
+function playit_handle_authreg_ticket($code) {
+
+	$out = array('status' => PLAYIT_SUCCESS);
+
+	$data = ticket_get_data(TICKET_PLAYIT_ID, $code, true); //  [CFG] Automatically deleting ticket
+	if (common_check(!!$data, $out, 'failed to get auth/reg ticket data', PLAYIT_BADAUTHREGTICKET)) {
+		$login = @$data['login'];
+		$auth = auth_get(array('email' => $login));
+
+		if (!$auth) {
+			//  Redirecting to registration page
+			$ticket = ticket_create(TICKET_PLAYIT_ID, 60*10, array(
+				'login' => $login,
+			));
+			if (common_check($ticket,$out,'failed to create reg ticket',PLAYIT_AUTHFAILED)) {
+				$out['redir_url'] = common_build_url(
+					SERVER_URL.'register.php',
+					array(
+						'ticket' => $ticket,
+					)
+				);
+			}
+		} else {
+			//  Doing passwordless authorization
+			if (
+					common_check(
+						!empty($auth),
+						$out,
+						'authorization error',
+						PLAYIT_AUTHFAILED
+					)
+				) {
+				$out['redir_url'] = common_build_url(
+					SERVER_URL.'login.php',
+					array(
+						'uid' => $auth['uid'],
+						'akey' => auth_akey($auth),
+						'auth_type' => 'playit-relay'
+					)
+				);
+			}
+		}
+	}
+
+	if ($out['status'] != PLAYIT_SUCCESS && !isset($out['redir_url'])) {
+		$out['redir_url'] = common_build_url(
+				SERVER_URL.'index.php'
+//        error_request_params(ERRMOD_PLAYIT, $out['status'])
+			);
+	}
+
+	return $out;
+}
+
+function playit_character_info_html(&$character) {
+	require_once('lib/html.lib');
+	return html_user_info($character,array('external' => true));
+}
+
+function playit_character_list_stats($characters) {
+	$result_stats = array();
+	if ($characters) {
+		foreach ($characters as $char_id => $char) {
+			NODE_SWITCH(null,$char['id']);
+//			$skill_info = user_get_skill_info($char['id'],array('FIGHT_WIN','FIGHT_LOSS'),false,false);
+//			$skill_hash = &$skill_info['skills'];
+			$stat_misc_hash = get_hash(user_stat_list(array('user_id' => $char['id'], 'type_id' => USER_STAT_TYPE_MISC, 'object_id' => array(USER_STAT_OBJECT_WIN_COUNT, USER_STAT_OBJECT_LOSS_COUNT))), 'object_id', 'value');
+			$result_stats[] = array(
+				'id' => $char_id,
+				'nick' => playit_character_info_html($char),
+				'nick_txt' => $char['nick'],
+				'creation_time' => $char['time_registered'],  //  GMT+0!
+				'last_access_time' => $char['time_login'], //  GMT+0! No per-character stats
+				'wins' => intval($stat_misc_hash[USER_STAT_OBJECT_WIN_COUNT]),
+				'losses' => intval($stat_misc_hash[USER_STAT_OBJECT_LOSS_COUNT]),
+			);
+		}
+	}
+	return $result_stats;
+}
+
+function playit_get_all_char_stats($login) {
+	$out = array('status' => PLAYIT_SUCCESS);
+	$auth = auth_get(array('email' => $login));
+	if (common_check($auth, $out, 'Bad login', PLAYIT_LOGINNOTFOUND)) {
+		$result_stats = array();
+		$user = user_get($auth['uid'],false,'',true);
+		$out['characters'] = playit_character_list_stats(array($user['id'] => $user));
+	}
+	return $out;
+}
+
+function playit_stats_list($id_list) {
+	$out = array('status' => PLAYIT_SUCCESS);
+	$characters = $id_list ? make_hash(user_list(array('id' => $id_list),'',true)) : array();
+	$out['characters'] = playit_character_list_stats($characters);
+	return $out;
+}
+
+function playit_get_num_online() {
+	$out = array('status' => PLAYIT_SUCCESS);
+	$online_count = 0;
+	global $NODE_NUMS;
+	foreach ($NODE_NUMS as $nn) {
+		NODE_SWITCH($nn);
+		$online_count += session_count(null,null,true,'',true);
+	}
+	$out['num_online'] = $online_count;
+	return $out;
+}
+
+function playit_get_answer(
+		$url,
+		$cgi_timeout = PLAYIT_CGI_TIMEOUT,
+		$cgi_timeout_check = PLAYIT_CGI_TIMEOUT_CHECK
+	) {  //  Based on Drive's swa_get_answer().
+	$host_parts = parse_url($url);
+	$host = $host_parts['host'];
+	$path = $host_parts['path'];
+	$query = isset($host_parts['query'])?$host_parts['query']:'';
+	$mypid = getmypid();
+	$f = fsockopen($host, 80, $errno, $errstr, 5);
+	if (!$f) return '';
+	stream_set_timeout($f, $cgi_timeout);
+	$out = "GET ".$path.($query ? "?".$query: '')." HTTP/1.1\r\nHost: ".$host."\r\nConnection: close\r\n\r\n";
+	fwrite($f,$out);
+	$in = '';
+	$start_time = microtime(true);
+	while (!feof($f)) {
+			$in .= fread($f, 1024);
+			if((microtime(true) - $start_time) > $cgi_timeout_check) break;
+	}
+	$in = explode("\r\n\r\n",$in);
+	array_shift($in);
+	$in = implode("\r\n\r\n",$in);
+	fclose($f);
+	return trim($in);
+}
+
+//  Returns login
+function playit_check_session($user_id, $session_id) {
+	$result = false;
+
+	$url = PLAYIT_CGI_URL . '&action=check_session&uid='.urlencode($user_id).'&sid='.urlencode($session_id);
+	$answer = playit_get_answer($url);
+	if ($answer) {
+		$data = @unserialize($answer);
+		if ($data) {
+			$result = @$data['login'];
+		}
+	}
+
+	return $result;
+}
+
+function playit_check_auth($login, $password) {
+	$result = false;
+
+	$url = PLAYIT_CGI_URL . '&action=check_auth&login='.urlencode($login).'&password='.urlencode($password);
+	$answer = playit_get_answer($url);
+	if ($answer) {
+		$result = !!@unserialize($answer);  //  True or false
+	}
+
+	return $result;
+}
+
+//  [CFG] You may want to use smaller timeouts here (like 1sec)
+//        as this query is purely informational notification.
+function playit_mailru_callback(
+		$login,
+		$ticket_code,
+		$cgi_timeout = PLAYIT_CGI_TIMEOUT,
+		$cgi_timeout_check = PLAYIT_CGI_TIMEOUT_CHECK
+	) {
+	$result = false;
+
+	$url =
+			PLAYIT_CGI_URL
+		. '&action=mailru_callback'
+		. '&login='.urlencode($login)
+		. '&ticket_code='.urlencode($ticket_code)
+		;
+
+	$answer = playit_get_answer($url);
+	//varlog('MAILRU_CALLBACK', $url, $answer);
+	if ($answer) {
+		$result = !!@unserialize($answer);  //  True or false
+	}
+
+	return $result;
+}
+
+?>

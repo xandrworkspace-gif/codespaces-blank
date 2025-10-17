@@ -1,0 +1,361 @@
+<? # $Id: skill.lib,v 1.33 2009-10-28 10:45:38 i.hrustalev Exp $
+
+// Имена и поля таблиц
+define('TABLE_SKILLS','skills');
+define('FIELD_SKILLS','');
+define('TABLE_SKILL_GROUPS','skill_groups');
+define('FIELD_SKILL_GROUPS','');
+
+// Ограничение на репутацию великих битв
+define('GREAT_FIGHT_REP_LIMIT', 3000);
+
+// Флаги
+define('SKILL_FLAG_VISIBLE',         0x0001); // Видимость
+define('SKILL_FLAG_VISIBLE_EXTERN',  0x0002); // Видимость внешняя
+define('SKILL_FLAG_VISIBLE_SHOP',    0x0004); // Видимость в магазине
+define('SKILL_FLAG_TRANSFER_TO_LUA', 0x0008); // Передавать в луа
+define('SKILL_FLAG_TEMP',            0x0010); // Временная характеристика
+
+//Зависимости
+require_once("/home/admin/web/dwar.fun/public_html/lib/user_ref.lib");
+
+function skill_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_SKILLS,$ref,$add);
+}
+
+function skill_list($ref, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_SKILLS,$ref,$add, $field_list);
+}
+
+function skill_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_SKILLS, $ref, $add);
+}
+
+function skill_save($param) {
+	global $db_2;
+	$param['_mode'] = CSMODE_REPLACE;
+	return common_save($db_2,TABLE_SKILLS,$param,FIELD_SKILLS);
+}
+
+function skill_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_SKILLS,$ref,$add);
+}
+
+function skill_group_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_SKILL_GROUPS,$ref,$add);
+}
+
+function skill_group_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_SKILL_GROUPS,false,$add);
+}
+
+function skill_group_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_SKILL_GROUPS, $ref, $add);
+}
+
+function skill_group_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_SKILL_GROUPS,$param,FIELD_SKILL_GROUPS);
+}
+
+function skill_group_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_SKILL_GROUPS,$ref,$add);
+}
+
+// object - может быть передан объект и ID объекта
+function skill_object_get($object_class, $object, $ref=false, $add='') {
+	global $db, $object_table_info;
+	if (!$object_class || !$object) return false;
+	$info = $object_table_info[$object_class]['skills'];
+	$db_obj = &$db;
+	if ($info['db']) $db_obj = &$info['db'];
+	if ($object_table_info[$object_class]['artikul_class']) {
+		if (!is_array($object)) $object = common_object_get($object_class,$object);
+		if ($object['artikul_skills']) return skill_object_get($object_table_info[$object_class]['artikul_class'],$object['artikul_id'],$ref,$add);
+	}
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	$ref[$info['link']] = is_array($object) ? $object['id'] : $object;
+	return common_get($db_obj,$info['table'],$ref,$add);
+}
+
+// object - может быть передан объект и ID объекта
+function skill_object_list($object_class, $object, $add='', $extended=false) {
+	global $db, $object_table_info;
+	if (!$object_class || !$object) return false;
+	$info = $object_table_info[$object_class]['skills'];
+	$db_obj = &$db;
+	if ($info['db']) $db_obj = &$info['db'];
+	if ($object_table_info[$object_class]['artikul_class']) {
+		if (!is_array($object)) $object = common_object_get($object_class,$object);
+		if ($object['artikul_skills']) return skill_object_list($object_table_info[$object_class]['artikul_class'],$object['artikul_id'],$add,$extended);
+	}
+	$data = common_list($db_obj,$info['table'],array($info['link'] => is_array($object) ? $object['id'] : $object),$add);
+	if ($data && $extended) {
+		$skill_ids = array();
+		foreach ($data as $item) $skill_ids[$item['skill_id']] = 1;
+		$skills = count($skill_ids) ? make_hash(skill_list(array('id' => array_keys($skill_ids)))) : array();
+		foreach ($data as $k=>$item) if ($skills[$item['skill_id']]) $data[$k] = array_merge($skills[$item['skill_id']],$item);
+	}
+	return $data;
+}
+
+function skill_objects_list(&$objects, $add='', $extended=false) {
+	global $db, $object_table_info;
+	if (!$objects) return false;
+// Подготовка списка ID по классам объектов (артикула или экземпляра)
+	$object_ids = array();
+	foreach ($objects as $object) {
+		if ($object['artikul_skills']) $object_ids[$object_table_info[$object['object_class']]['artikul_class']][$object['artikul_id']] = 1;
+		elseif ($object['id']) $object_ids[$object['object_class']][$object['id']] = 1;
+	}
+// Получение списков скилов объектов по классам
+	$skill_lists = array();
+	$skill_ids = array();
+	foreach (array_keys($object_ids) as $class) {
+		$db_obj = &$db;
+		if ($object_table_info[$class]['skills']['db']) $db_obj = &$object_table_info[$class]['skills']['db'];
+		$skill_lists[$class] = common_list($db_obj,$object_table_info[$class]['skills']['table'],array($object_table_info[$class]['skills']['link'] => array_keys($object_ids[$class])),$add);
+// Подготовка списка ID скилов для получения самих скиллов, если проставлен параметр extended
+		if ($extended && count($skill_lists[$class])) foreach($skill_lists[$class] as $skill) {
+			$skill_ids[$skill['skill_id']] = 1;
+		}
+	}
+	if ($extended) {
+// Получение требуемых скилов
+		$skills = count($skill_ids) ? make_hash(skill_list(array('id' => array_keys($skill_ids)))) : array();
+// Слияние списка скилов объектов со скилами, если проставлен параметр extended
+		foreach (array_keys($skill_lists) as $class) {
+			if (count($skill_lists[$class])) {
+				foreach ($skill_lists[$class] as $k=>$item) {
+					if ($skills[$item['skill_id']]) $skill_lists[$class][$k] = array_merge($skills[$item['skill_id']],$item);
+				}
+			}
+		}
+	}
+// Слияние объектов с их списками скилов
+	foreach ($objects as $k=>$object) {
+		$class = $object['artikul_skills'] ? $object_table_info[$object['object_class']]['artikul_class'] : $object['object_class'];
+		$objects[$k]['artifact_skills'] = array();
+		if (count($skill_lists[$class])) {
+			$list = array();
+			foreach ($skill_lists[$class] as $item) {
+				if ($item[$object_table_info[$class]['skills']['link']] == $object[$object['artikul_skills'] ? 'artikul_id' : 'id']) {
+					$list[] = $item;
+				}
+			}
+			$objects[$k]['artifact_skills'] = make_hash($list, 'skill_id');
+		}
+	}
+}
+
+function skill_object_save($object_class, $object_id, $param) {
+	global $db, $object_table_info;
+	if (!$object_class || !$object_id) return false;
+    if(!$param['no_copy_artikul_skills']) {
+        $new_id_hash = skill_object_copy_artikul_skills($object_class, $object_id, true);
+    }
+    if($param['no_copy_artikul_skills']) unset($param['no_copy_artikul_skills']);
+	if ($new_id_hash && $new_id_hash[$param['id']]) $param['id'] = $new_id_hash[$param['id']];
+	$info = $object_table_info[$object_class]['skills'];
+	$db_obj = &$db;
+	if ($info['db']) $db_obj = &$info['db'];
+	$param[$info['link']] = $object_id;
+	return common_save($db_obj,$info['table'],$param,$info['field']);
+}
+
+function skill_object_delete($object_class, $object, $ref=false, $add='') {
+	global $db, $object_table_info;
+	if (!$object_class || !$object) return false;
+	if ($ref || $add) {
+		$new_id_hash = skill_object_copy_artikul_skills($object_class,is_array($object) ? $object['id'] : $object,true);
+		if ($new_id_hash && $new_id_hash[$ref]) $ref = $new_id_hash[$ref];
+	} else {
+		if (!is_array($object)) $object = common_object_get($object_class,$object);
+		if ($object['artikul_skills']) return true;
+	}
+	$info = $object_table_info[$object_class]['skills'];
+	$db_obj = &$db;
+	if ($info['db']) $db_obj = &$info['db'];
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	$ref[$info['link']] = is_array($object) ? $object['id'] : $object;
+	return common_delete($db_obj,$info['table'],$ref,$add);
+}
+
+function skill_object_copy_artikul_skills($object_class, $object_id, $check_if_copied=false) {
+	global $db, $object_table_info;
+	if (!$object_class || !$object_id) return false;
+	$info = $object_table_info[$object_class];
+	$db_obj = &$db;
+	if ($info['db']) $db_obj = &$info['db'];
+	if (!$info['artikul_class']) return false;
+	$object = common_object_get($object_class,$object_id);
+	if (!$object) return false;
+	if ($check_if_copied) {
+		if (!$object['artikul_skills']) return false;
+		common_object_save($object_class,$object['id'],array('artikul_skills' => 0));
+	}
+	$new_id_hash = array();
+	$skill_list = skill_object_list($info['artikul_class'],$object['artikul_id']);
+	foreach ($skill_list as $skill) {
+		$param = $skill;
+		unset($param['id'],$param['artikul_id']);
+		$param[$info['skills']['link']] = $object['id'];
+		$ref_id = common_save($db_obj,$info['skills']['table'],$param,$info['skills']['field']);
+		$new_id_hash[$skill['id']] = $ref_id;
+	}
+	return $new_id_hash;
+}
+
+// Функция безопасного изменения значения характеристики объекта
+// param:
+//   relative - относительное изменение (увеличение или уменьшение)
+//   min - минимальное значение
+//   max - максимальное значение
+//   exit_outrange = true - выход, если итоговое значение выходит за заданные рамки (иначе значение будет равно границе диапазона)
+//   exit_noskill = true - выход, если такой характеристики нет
+function skill_object_set_value($object_class, $object_id, $skill_id, $value=0, $param=false) {
+	global $object_table_info, $db;
+	if (!$object_class || !$object_id || !$skill_id) return false;
+	$info = $object_table_info[$object_class]['skills'];
+	$db_obj = &$db;
+	if ($info['db']) $db_obj = &$info['db'];
+	if (!$info) return false;
+	skill_object_copy_artikul_skills($object_class,$object_id,true);
+	if ($skill_id == 'GREAT_FIGHT_REP' && defined('GREAT_FIGHT_REP_LIMIT') && GREAT_FIGHT_REP_LIMIT) $param['max'] = GREAT_FIGHT_REP_LIMIT;
+	do {
+		$value = intval($value);
+		if (isset($param['min'])) $min = intval($param['min']);
+		if (isset($param['max'])) $max = intval($param['max']);
+
+		$field = 'value';
+		$set = '';
+		$add = '';
+		if ($param['relative_time']) {
+			$q = $param['relative'] ? "if (".$field." < ".time().",".(time()+$value).",".($field."+(".$value.")").")" : "(".(time()+$value).")";
+		} else {
+			$q = $param['relative'] ? $field."+(".$value.")": "(".$value.")";
+			if ($param['exit_outrange']) {
+				if (isset($min)) $add .= " AND ".$q.">=".$min;
+				if (isset($max)) $add .= " AND ".$q."<=".$max;
+			} else {
+				if (isset($min)) $q = "if(".$q."<".$min.",".$min.",".$q.")";
+				if (isset($max)) $q = "if(".$q.">".$max.",".$max.",".$q.")";
+			}
+		}
+		$set .= $field."=".$q;
+		$add .= " AND ".$info['link']."='".$object_id."' AND skill_id='".$skill_id."'";
+		$res = common_save($db_obj,$info['table'],array(
+			'_cnt' => true,
+			'_set' => $set,
+			'_add' => $add,
+		));
+		if (!$res) {
+			if (skill_object_get($object_class,$object_id,array('skill_id' => $skill_id))) return true;
+			if ($param['exit_noskill']) return false;
+			skill_object_save($object_class,$object_id,array('skill_id' => $skill_id));
+		}
+        if($object_class == OBJECT_CLASS_USER && $param['relative']) {
+            $object = user_get($object_id);
+            user_ref_triggered($object, USER_REF_TRIGGER_SKILL, $value, $skill_id);
+        }
+	} while (!$res && !$i++);
+	return $res;
+}
+
+function skill_object_copy($param, $parent_id) {
+	$object_class = $param['object_class'];
+	$old_id = $param['id'];
+	unset($param['id']);
+	unset($param['object_id']);
+	unset($param['object_class']);
+	$new_id = skill_object_save($object_class, $parent_id, $param);
+	if (!$new_id) return false;
+	return $new_id;
+}
+
+function skill_object_get_ref($object_type) {
+	$key = array();
+	switch($object_type) {
+		case OBJECT_CLASS_USER:
+			$key = array(
+				'skill_id',
+				'user_id',
+			);
+			break;
+		default:
+			$key = array(
+				'id'
+			);
+	}
+	return $key;
+}
+
+function skill_delete_amounts($ref) {
+	global $NODE_NUMS;
+	$cnt = 0;
+	foreach ($NODE_NUMS as $nn) {
+		NODE_SWITCH($nn);
+		$cnt += common_delete($db, TABLE_USER_SKILLS,array('skill_id' => $ref));
+	}
+	return $cnt;
+}
+
+function socket_skills_get($artifact = array()){
+    global $rune_gems_skills,$socket_art_skill_info;;
+    $skills = array();
+    $artifact_socket = artifact_socket_get($artifact);
+    $artikul_ids = array();
+    for($i = 1; $i <= $artifact_socket['cnt']; $i++){
+        if(count($artifact_socket['socket'][$i]) == 2){
+            $skill = $rune_gems_skills[$artifact_socket['socket'][$i][0]][$artifact_socket['socket'][$i][1]];
+            if(!$skills[$skill['skill_id']]){
+                $skills[$skill['skill_id']] = $skill;
+            }else{
+                $skills[$skill['skill_id']]['value'] += $skill['value'];
+            }
+        }else{
+            $artikul_ids_new[$artifact_socket['socket'][$i][0]] = $artifact_socket['socket'][$i][0];
+            $artikul_ids[$artifact_socket['socket'][$i][0]] = $artifact_socket['socket'][$i][0];
+        }
+    }
+    foreach ($artikul_ids_new as $k=>$v){
+        if($socket_art_skill_info[$k]) unset($artikul_ids_new[$k]);
+    }
+    if($artikul_ids){
+        if($artikul_ids_new){
+            $artikul_hash = make_hash(artifact_artikul_list(array('id' => $artikul_ids_new)));
+
+            foreach ($artikul_hash as $k=>$artifact) $artikul_hash[$k]['object_class'] = OBJECT_CLASS_ARTIFACT_ARTIKUL;
+            skill_objects_list($artikul_hash, false, true);
+            foreach ($artikul_hash as $artikul){
+                $socket_art_skill_info[$artikul['id']] = $artikul['artifact_skills'];
+            }
+        }
+
+        for($i = 1; $i <= $artifact_socket['cnt']; $i++) {
+            if(count($artifact_socket['socket'][$i]) == 3) {
+                $artikul_id = $artifact_socket['socket'][$i][0];
+                if ($socket_art_skill_info[$artikul_id]) {
+                    foreach ($socket_art_skill_info[$artikul_id] as $artifact_skill) {
+                        if (!$skills[$artifact_skill['skill_id']]) {
+                            $skills[$artifact_skill['skill_id']] = $artifact_skill;
+                        } else {
+                            $skills[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return $skills;
+}
+
+?>

@@ -1,0 +1,95 @@
+<? # Игорь...
+
+// действие "+1 сокет"
+// Параметры:
+//	$in['artifact_id'] - артефакт на который нужно вставить сокет
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+
+$artifact_id2 = intval($in['artifact_id2']);
+$artifact2 = $artifact_id2 ? artifact_get(array('id' => $artifact_id2, 'user_id' => $subject['id'],)) : false;
+
+if (!$artifact || $artifact['slot_id'] || !$artifact2 || $artifact2['slot_id']) { // неверный или одетый предмет
+    $out['error'] = translate('Нужно выбрать предмет для добавления сокета!');
+    return;
+}
+
+if(!$artifact || !$artifact2){
+    $out['error'] = 'Не выбран артефакт!';
+    return;
+}
+
+$artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+
+/* if($artifact_artikul['quality'] == 0) {
+    $out['error'] = 'Переносить сокеты с серых вещей невозможно!';
+    return;
+} */
+
+if($artifact2['flags2'] & ARTIFACT_FLAG2_RUNEWORD) {
+    $out['error'] = 'Нельзя перенести на рунословный предмет!';
+    return;
+}
+
+if($artifact['flags2'] & ARTIFACT_FLAG2_RUNEWORD || $artifact2['flags2'] & ARTIFACT_FLAG2_RUNEWORD) {
+    $out['error'] = 'Невозможно, рунословный предмет!';
+    return;
+}
+
+$socket = artifact_socket_get($artifact);
+$socket2 = artifact_socket_get($artifact2);
+
+if(!$socket['cnt']){
+    $out['error'] = 'На выбранном первом предмете нет сокетов';
+    return;
+}
+
+if($socket2['cnt']){
+    $out['error'] = 'На выбранном втором предмете уже есть сокеты';
+    return;
+}
+
+//Если все правильно, то
+//Удаление сокетов с первого артефакта
+$socket_unsetter = array(
+    'id' => $artifact['id'],
+);
+for($i = 1; $i <= 3; $i++){
+    $socket_unsetter['rune'.$i.'_id'] = '';
+}
+artifact_save($socket_unsetter);
+
+$socket_setter = array(
+    'id' => $artifact2['id'],
+);
+for($i = 1; $i <= 3; $i++){
+    $socket_setter['rune'.$i.'_id'] = $artifact['rune'.$i.'_id'];
+}
+artifact_save($socket_setter);
+require_once('lib/user_stat.lib');	
+require_once('lib/chat.lib');	
+user_stat_update($subject['id'], USER_STAT_TYPE_SKILL, USER_STAT_SKILL_REP_KUSYA, 5);
+chat_msg_send_system('<b>Вы получили <b style="color:darkred;">5 репутации Кузнеца</b></b>', CHAT_CHF_USER, $subject['id']);
+
+$out['status'] = ACTION_STATUS_OK;
+
+artifact_artikul_get_title($artifact, array($artifact_artikul['id'] => $artifact_artikul));
+// лог-сервис -----------------------
+logserv_log_action(array(
+    'action' => $action,
+    'comment' => sprintf(translate('Скопированы сокеты с артефакта "%s", на артефакт "%s"'),$artifact['title'],$artifact2['title']),
+),$action_user);
+// ----------------------------------
+
+artifact_bag_send_diff($subject['id'], $artifact['id']);
+
+return;
+
+?>

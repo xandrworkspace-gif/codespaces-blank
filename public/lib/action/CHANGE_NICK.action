@@ -1,0 +1,62 @@
+<?
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if ($action['object_class'] == OBJECT_CLASS_AREA) { /// действие вызывается с местоположения
+	$valid = false;
+	$link_list = area_link_list($action['object_id'],false," AND active=1");
+	if ($link_list) {
+		foreach ($link_list as $link) {
+			if ($link['kind'] && $link['kind'] != $subject['kind']) continue;
+			if ($link['action_id']) {
+				$area_action = action_object_get($action['object_class'], $action['object_id'], $link['action_id']);
+				if ($area_action) {
+					$valid = true;
+					break;
+				}
+			}
+		}
+	}
+	if (!$valid) return;
+}
+
+$new_nick = preg_replace("/\s+/",' ',trim(strval($in['nick'])));
+$old_nick = $session_user['nick'];
+
+require_once('lib/project.lib');
+
+if (!$new_nick) {
+	$out['error'] = translate('Не задан ник!');
+	return;
+} elseif (!user_is_nick_correct($new_nick)) {
+	$out['error'] = translate('Новый ник может содержать не более 16 символов. Разрешенные символы: буквы только латинского или только русского (кроме буквы ё) алфавита, пробел, нижнее подчеркивание, тире, цифры.');
+	return;
+} elseif (auth_get(false,sql_pholder(" AND nick=?",$new_nick)) || user_get(false, $new_nick) || bot_artikul_get(false, ' AND nick = "'.$new_nick.'"') || project_nick_check($new_nick)) {
+	$out['error'] = translate('Выбранный ник уже занят!');
+	return;
+}
+
+unset($out['error']);
+
+auth_save(array(
+	'uid' => $session_user['id'],
+	'_set' => sql_pholder('nick = ?', $new_nick),
+));
+user_save(array(
+		'id' => $session_user['id'],
+		'_set' => sql_pholder('nick = ?', $new_nick),
+));
+
+// лог-сервис -----------------------
+logserv_log_action(array(
+		'action' => $action,
+		'comment' => sprintf(translate('Ник пользователя изменен с `%s` на `%s`'),$old_nick, $new_nick),
+),$action_user);
+chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $session_user['id'], array('func' => "updateSwf({'lvl':''})"));
+// ----------------------------------
+
+$out['status'] = ACTION_STATUS_OK;
+

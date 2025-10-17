@@ -1,0 +1,99 @@
+<? # $Id: dialog.lib,v 1.4 2010-01-15 09:50:10 p.knoblokh Exp $
+
+define('TABLE_DIALOGS','dialogs');
+define('FIELD_DIALOGS','');
+define('TABLE_DIALOG_USERS','dialog_users');
+define('FIELD_DIALOG_USERS','');
+
+define('DIALOG_FAQ_ID', 1); // АйДи FAQ
+
+define('DIALOG_LEVEL_OFF',3); // До какого уровня игрока показывать
+
+$dialog_events = array(
+	'BONUS'			=>	array('title' => translate('Бонус'), 'param' => 'id',),
+	'NPC'				=>	array('title' => 'NPC',),
+	'STORE'			=>	array('title' => translate('Магазин'),),
+	'FIGHT'			=>	array('title' => translate('Бой'),),
+	'AREA'			=>	array('title' => translate('Локация'),),
+	'AUCTION'		=>	array('title' => translate('Аукцион'),),
+	'POST'			=>	array('title' => translate('Почта'),),
+	'PROFESSION'	=>	array('title' => translate('Профессия'),),
+	'PROFILE'		=>	array('title' => translate('Рюкзак'),),
+	'HUNT'			=>	array('title' => translate('Охота'),),
+	'EVENT'			=>	array('title' => translate('События'),),
+	'QUESTLOG'		=>	array('title' => translate('Квест лог'),),
+	'BANK'			=>	array('title' => translate('Банк'),),
+	'BG'				=>	array('title' => translate('Поля битв'),),
+);
+
+
+function dialog_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_DIALOGS,$ref,$add);
+}
+
+function dialog_list($ref=false, $add='',$field_list='*') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_DIALOGS,$ref,$add,$field_list);
+}
+
+function dialog_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_DIALOGS, $ref, $add);
+}
+
+function dialog_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_DIALOGS,$param,FIELD_DIALOGS);
+}
+
+function dialog_delete($ref) {
+	global $db_diff;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_diff,TABLE_DIALOGS,$ref);
+	dialog_user_delete(array('dialog_id'=>$ref));
+	foreach (dialog_list(array('parent_id' => $ref)) as $dialog) {
+		dialog_delete($dialog['id']);
+	}
+	return true;
+}
+
+function dialog_select($root_id=0) {
+	return common_tree(dialog_list(),$root_id);
+}
+
+function dialog_user_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_DIALOG_USERS,$ref,$add);
+}
+
+function dialog_user_list($ref=false, $add='',$field_list='*') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_DIALOG_USERS,$ref,$add,$field_list);
+}
+
+function dialog_user_save($param) {
+	global $db_diff;
+	$err = $db_diff->die_on_error;
+	$db_diff->die_on_error = false;
+	$status = common_save($db_diff,TABLE_DIALOG_USERS,$param,FIELD_DIALOG_USERS);
+	$db_diff->die_on_error = $err;
+	return $status;
+}
+
+function dialog_user_delete($ref) {
+	global $db_diff;
+	if (!$ref || is_array($ref)) return false;
+	return common_delete($db_diff,TABLE_DIALOG_USERS,$ref);
+}
+
+function dialog_event($key,$param=0) {
+	print "<script>dialogEventCheck('".$key."','".$param."');</script>\n";
+}
+
+function dialog_event_bonus($bonus_id,$user_id) {
+	chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$user_id,array('func' => "dialogEventCheck('BONUS','".$bonus_id."')"));
+}
+
+
+?>

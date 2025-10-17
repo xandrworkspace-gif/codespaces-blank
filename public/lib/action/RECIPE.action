@@ -1,0 +1,41 @@
+<? # $Id: RECIPE.action,v 1.5 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "прочитать рецепт"
+
+require_once('lib/recipe.lib');
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+$recipe_artikul = recipe_get(false, sql_pholder(' AND artikul_id = ?', $object['artikul_id']));
+if (!$recipe_artikul || !$recipe_artikul['profession_id']) {
+	$out['error'] = translate('Невозможно прочитать этот рецепт!');
+	return;
+}
+if (!(intval($recipe_artikul['profession_id']) & intval($subject['profession']))) {
+	$out['error'] = translate('Вы не можете выучить рецепт, у Вас нет подходящей профессии!');
+	return;
+}
+$param = array(
+	'user_id' => $subject['id'],
+	'artikul_id' => $recipe_artikul['id'],
+);
+$user_recipe = recipe_user_get($param);
+if ($user_recipe) {
+	$out['error'] = translate('Вы не можете выучить рецепт, Вы уже его знаете!');
+	return;
+}
+recipe_user_save($param);
+$out['status'] = ACTION_STATUS_OK;
+
+// лог-сервис -----------------------
+logserv_log_action(array(
+	'action' => $action,
+	'comment' => sprintf(translate('Выучен рецепт "%s"'),$recipe_artikul['title']),
+),$action_user);
+// ----------------------------------
+
+?>

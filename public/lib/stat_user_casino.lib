@@ -1,0 +1,66 @@
+<?
+
+// Имена и поля таблиц
+define('TABLE_STAT_USER_CASINO', 'stat_user_casino');
+define('FIELD_STAT_USER_CASINO', '');
+
+define('TABLE_STAT_USER_CASINO_GOLD', 'stat_user_casino_gold');
+define('FIELD_STAT_USER_CASINO_GOLD', '');
+
+function stat_user_casino_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_STAT_USER_CASINO, $ref, $add);
+}
+
+function stat_user_casino_list($ref=false, $add='', $field_list='*') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_STAT_USER_CASINO, $ref, $add, $field_list);
+}
+
+function stat_user_casino_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_STAT_USER_CASINO, $ref, $add);
+}
+
+function stat_user_casino_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_STAT_USER_CASINO, $param, FIELD_STAT_USER_CASINO);
+}
+
+function stat_user_casino_smart_add($user_id, $money_stake, $money_gain, $stake_count=1, $last_spin_time=0) {
+	global $db_diff;
+	$db_diff->db_ExecQuery(sql_pholder('
+		INSERT INTO ?#TABLE_STAT_USER_CASINO (user_id, stake_sum, gain_sum, stake_count, last_spin_time) VALUES (?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE stake_sum = stake_sum + ?, gain_sum = gain_sum + ?, stake_count = stake_count + ?, last_spin_time=values(last_spin_time)', $user_id, $money_stake, $money_gain, $stake_count, $last_spin_time, $money_stake, $money_gain, $stake_count));
+	return true;
+}
+
+////////////////Для бриллиантов
+
+function stat_user_casino_gold_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff, TABLE_STAT_USER_CASINO_GOLD, $ref, $add);
+}
+
+function stat_user_casino_gold_list($ref=false, $add='', $field_list='*') {
+    global $db_diff;
+    return common_list($db_diff, TABLE_STAT_USER_CASINO_GOLD, $ref, $add, $field_list);
+}
+
+function stat_user_casino_gold_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_STAT_USER_CASINO_GOLD, $ref, $add);
+}
+
+function stat_user_casino_gold_save($param) {
+    global $db_diff;
+    return common_save($db_diff, TABLE_STAT_USER_CASINO_GOLD, $param, FIELD_STAT_USER_CASINO_GOLD);
+}
+
+function stat_user_casino_gold_smart_add($user_id, $money_stake, $money_gain, $stake_count=1, $last_spin_time=0) {
+    global $db_diff;
+    $db_diff->db_ExecQuery(sql_pholder('
+		INSERT INTO ?#TABLE_STAT_USER_CASINO_GOLD (user_id, stake_sum, gain_sum, stake_count, last_spin_time) VALUES (?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE stake_sum = stake_sum + ?, gain_sum = gain_sum + ?, stake_count = stake_count + ?, last_spin_time=values(last_spin_time)', $user_id, $money_stake, $money_gain, $stake_count, $last_spin_time, $money_stake, $money_gain, $stake_count));
+    return true;
+}

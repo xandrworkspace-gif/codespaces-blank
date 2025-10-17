@@ -1,0 +1,281 @@
+<? # $Id: injury.lib,v 1.31 2010-02-02 11:08:36 p.knoblokh Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/artifact.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/bot.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/fight.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/adv_premium.lib");
+require_once('/home/admin/web/dwar.fun/public_html/include/fsclient.inc');
+
+// Имена и поля таблиц
+define('TABLE_INJURIES','injuries');
+define('FIELD_INJURIES','');
+
+// флаги
+define('INJURY_FLAG_MAGIC', 0x01);	// магическая травма
+
+global $injury_slot_info;
+$injury_slot_info = array(
+    0x0001 => array('title' => translate('Головы'), 'slot_id' => 'HEAD'),
+    0x0002 => array('title' => translate('Плеча'), 'slot_id' => 'SHOULDER'),
+    0x0004 => array('title' => translate('Рук'), 'slot_id' => 'GLOVE'),
+    0x0008 => array('title' => translate('Груди'), 'slot_id' => 'ARMOR'),
+    0x0010 => array('title' => translate('Бёдер'), 'slot_id' => 'LEG'),
+    0x0020 => array('title' => translate('Ног'), 'slot_id' => 'FOOT'),
+);
+
+$physical_injuries = FS_PDT_PHYSICAL | FS_PDT_KIDMAGIC;
+$magical_injuries = FS_PDT_LIGHTSHADOW | FS_PDT_WATERGROUND | FS_PDT_AIRFIRE;
+
+function injury_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_INJURIES,$ref,$add);
+}
+
+function injury_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_INJURIES,$ref,$add);
+}
+
+function injury_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_INJURIES, $ref, $add);
+}
+
+function injury_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_INJURIES,$param,FIELD_INJURIES);
+}
+
+function injury_delete($ref, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_INJURIES,$ref,$add);
+}
+
+// =================================================================================================================
+
+function injury_get_exp($injury_skill_value, $user_skill_value, $user_level_value) {
+    require_once("lib/recipe.lib");
+    return recipe_get_exp($injury_skill_value, $user_skill_value, $user_level_value);
+}
+
+// Функция применения заданной травмы персонажу
+function injury_apply(&$injury, $user_id, $param=false) {
+    global $injury_slot_info;
+
+    if (!is_array($injury) || !$user_id) return false;
+    $injury_slot_ids = array();
+    foreach ($injury_slot_info as $k=>$v) {
+        if (!($injury['injury_slots'] & $k)) continue;
+        $injury_slot_ids[] = $v['slot_id'];
+    }
+    if (!$injury_slot_ids) return false;	// не задан ни один слот травмы
+    shuffle($injury_slot_ids);
+    $artifact_hash = make_hash(artifact_list(false,$user_id,'*',true),'slot_id',true);
+//	$slot_id и $artifact используются ниже по коду
+    foreach ($injury_slot_ids as $slot_id) {
+        if (!isset($artifact_hash[$slot_id]))
+            continue;
+        foreach ($artifact_hash[$slot_id] as $artifact) {
+            if ($artifact['type_id'] != ARTIFACT_TYPE_ID_INJURY)
+                break 2;
+        }
+    }
+    $injury_artikul = false;
+    if ($injury['artifact_kind_id'] && $slot_id) {
+        $injury_artikul = artifact_artikul_get(array('type_id' => ARTIFACT_TYPE_ID_INJURY, 'kind_id' => $injury['artifact_kind_id'], 'slot_id' => $slot_id));
+    }
+    if (!$injury_artikul) return false;	// не найден артикул травмы
+    $injury_time = $injury['injury_time'];
+    if ($param['fight_flags'] & FIGHT_FLAG_NO_GREAT) $injury_time = 1; // для битвы драконов ставим травму длительностью 1 секунда
+    do {
+        if ($artifact['type_id'] == ARTIFACT_TYPE_ID_INJURY) {	// в слоте травма
+            $artikul = artifact_artikul_get($artifact['artikul_id']);
+            if ($artikul['weight'] > $injury_artikul['weight']) {
+                $time_expire = $artifact['time_expire'] + $injury_time;
+                artifact_save(array(
+                    'id' => $artifact['id'],
+                    'time_expire' => $time_expire,
+                ));
+                break;
+            }
+            $injury_time += max($artifact['time_expire'] - time_current(), 0);
+            artifact_delete($artifact);
+        } elseif ($artifact) {	// в слоте есть вещь
+            // Снимать все вещи в слоте
+            user_undress($artifact['user_id'], $slot_id);
+        }
+        // Сбрасывание вещей, которые должны быть сброшены перед нанесением травмы
+        NODE_PUSH($user_id);
+        artifact_save(array(
+            '_set' => "slot_id=''",
+            '_add' => sql_pholder(" AND user_id = ? AND slot_id <> '' AND flags & ?",$user_id,ARTIFACT_FLAG_INJURE_DROP),
+        ));
+        NODE_POP();
+
+        $time_expire = time_current() + $injury_time;
+        $injury_artifact_param = array('time_expire' => $time_expire);
+        if ($param && $param['injury_in_instance']) {
+            $injury_artifact_param['flags'] = ARTIFACT_FLAG_CREATED_IN_INSTANCE;
+        }
+        artifact_create($injury_artikul['id'],1,$user_id,false,$slot_id,false,$injury_artifact_param);
+    } while (0);
+    user_save(array(
+        'id' => $user_id,
+        'injury_time' => $time_expire,
+        '_add' => ' AND injury_time<'.$time_expire,
+    ));
+    return $slot_id;
+}
+
+// Функция раздачи травм персонажам
+// $pers_data:
+//   [user_id | bot_id] --> [target_id]
+//   [pers_level] = level
+//   [crit] = (false | true)
+// $user_skills:
+//   [user_id][skill_id] = value
+// $bot_skills:
+//   [bot_id][skill_id] = value
+//
+// Возврат:
+//   [user_id][slot_id] = cnt
+//
+// Функция подробно прокоментирована в рамках задачи #67308 - Принцип работы травм
+function injury_calc($pers_data, &$user_skills, &$bot_skills, $dmg_type, $param=false) {
+    global $injury_slot_info, $profession_info, $magical_injuries, $physical_injuries;
+
+    #logfile(DEBUG_FILE_LOG_DEV, '============================= INJURY ===================================');
+    #logfile(DEBUG_FILE_LOG_DEV, '$pers_data = '.print_r($pers_data,true));
+    #logfile(DEBUG_FILE_LOG_DEV, '$user_skills = '.print_r($user_skills,true));
+    #logfile(DEBUG_FILE_LOG_DEV, '$bot_skills = '.print_r($bot_skills,true));
+    #logfile(DEBUG_FILE_LOG_DEV, '$dmg_type = '.print_r($dmg_type,true));
+    #logfile(DEBUG_FILE_LOG_DEV, '$param = '.print_r($param,true));
+
+    $out = array();
+    foreach ($profession_info as $profession) {
+        if ($profession['type'] != PR_TYPE_FIGHT) continue;
+        foreach ($pers_data as $item) {
+            $prob = 0;
+            if ($item['user_id']) {	// пользователь
+// Начальное значение вероятности нанесения травмы берется из характеристики «Травматизм» 
+// (ниже это значение будет увеличиваться или уменньшаться в зависимости от разных параметров). 
+// Значение из интервала 0-100				
+                $inj_prob = intval($user_skills[$item['user_id']]['INJ_PROB'])/100;
+// Мастерство травматизма (хар-ка «Палач» в группе "Профессиональные навыки"). 
+// Влияет на уровень травмы, чем больше тем сильнее травма (Это значение также ниже будет меняться от доп.данных). 
+// Значение от 0 до «бесконечности»				
+                $m0 = $user_skills[$item['user_id']][$profession['skill_id']];
+            } elseif ($item['bot_id']) {	// бот
+                $inj_prob = intval($bot_skills[$item['bot_id']]['INJ_PROB'])/100;
+                $m0 = $bot_skills[$item['bot_id']][$profession['skill_id']];
+            } else continue;
+            $have_m0 = isset($m0);
+            $m0 = intval($m0);	// средний уровень травмы (мастерство)
+            if ($item['target_id']) {
+// скил «Антитравматизм» берется с персонажа, которому пытаемся нанести травму				
+                $inj_resist = intval($user_skills[$item['target_id']]['INJ_RESIST']);
+                $inj_prob_resist = intval($user_skills[$item['target_id']]['INJ_PROB_RESIST']);
+            } else continue;
+
+            //Загрузим игрока
+            $premium_user = false;
+            if($item['user_id']) $premium_user = user_premium_get($item['user_id']);
+
+// грубо говоря код ниже описывает формулу
+// Если есть скил «Травматизм», то
+// [вероятность насесения травмы]  = [вероятность записанная на скиле «Травматизм»]  +  0.3*[мастерство]/200 + 0.1 
+// (при этом, если в вычислениях получится большое число, то будет не более 40%)
+// Если же у Палача скила «Травматизм» пока еще нет (наверное, если новичек), то вероятность = 1%
+            $prob += $inj_prob;
+            $m0_clean = max($m0 - $inj_resist, 0);	// мастерство с учетом резиста
+            if ($have_m0) {	// есть мастерство
+                $prob += min((0.3*$m0_clean/200 + 0.1) * ($premium_user['vars'][P_PROFESSIONS] ? 2 : 1), 0.40);
+            } elseif (($profession['id'] == PR_INJURY) && !$prob) {
+                $prob = 0.01;
+            }
+// Если fight-сервер вернул нам, что в бою был «критический удар», то увеличиваем вероятность на 5%			
+            if ($item['crit']) $prob += 0.05;
+// Если у цели уровень больше, то уменьшаем вероятность на 25% за каждую единицу в разнице уровней
+// Наверно это для того чтобы «слабаки» случайно не могли травмировать «сильных» :)			
+            $lev_diff = $item['pers_level'] - $item['target_level'];
+            if ($lev_diff < 0) $prob -= (-$lev_diff) * 0.25;	// учет разницы в уровне
+
+            if (isset($inj_prob_resist)) $prob *= (100 / (100 + $inj_prob_resist));
+// Кидается «монетку» с вычисленной вероятность, если не выпало, то травмы не будет			
+            if (!rand_roll($prob)) continue;
+// Если травма есть, то вычисляем силу травмы. Функция gauss_rand() вычислояет вероятность по «нормальному распределению». 
+// Сделано для того чтобы персонаж наносил не всегда самую сильную из доступных ему травм, но при этом чтобы всеже делал это чаще слабых			
+            $m = intval(max(round(gauss_rand($m0_clean,5.25)),0));
+// далле находим травму максимально близкую к вычисленному уровню
+// если был нанесен магический урон, ищем травму с галкой Магическая травма
+            $injury = false;
+
+
+
+            if ($magical_injuries & $dmg_type) {
+                $injury = injury_get(array('profession' => $profession['id']), sql_pholder(" AND skill_value <= ? AND flags & ?#INJURY_FLAG_MAGIC ORDER BY skill_value DESC", $m));
+                $injury_art = $injury;
+            }
+            // не найдена магическая травма
+            if (!$injury) {
+                $injury = injury_get(array('profession' => $profession['id']), sql_pholder(" AND skill_value <= ? AND flags & ?#INJURY_FLAG_MAGIC = 0 ORDER BY skill_value DESC", $m));
+                $injury_art = $injury;
+            }
+            if(defined('INJURY_LITE_MODE') && INJURY_LITE_MODE){
+                $injury_list = injury_list(array('profession' => $profession['id']), sql_pholder(" AND skill_value >= ? AND skill_value <= ?  AND flags & ?#INJURY_FLAG_MAGIC = 0", 0, 45));
+                if($injury_list){
+                    $rn = array_rand($injury_list);
+                    if($rn) $injury = $injury_list[$rn];
+                }
+            }
+
+            if (!$injury) continue;
+            $m = $injury_art['skill_value'];	// текущий уровень травмы
+// ниже логика примерно такая: если сильный игрок по вероятности нанес слабую травму, 
+// то он ее нанес на долго (при этом тоже с некой вероятность)			
+            if ($m0_clean > $m) $injury['injury_time'] += ($m0_clean - $m)*43200/15;	// на разницу 15 скиллов мастерства травма на 12 часов
+            if ($m0_clean > 0) $injury['injury_time'] += rand(0, $m0_clean*43200/200);	// на разницу 200 скиллов мастерства и резиста травма на 12 часов
+            $user = user_get($item['target_id']);
+            NODE_PUSH(null, $item['target_id']);
+// тут вешаем на цель полученую травму на вычисленное время. 
+// Стоит отметить, что тут учитывается вид травмы, т.е. травма может быть полученной в инстансе и просто травма			
+            $slot_id = injury_apply($injury,$item['target_id'],$param);
+            NODE_POP();
+            if (!$slot_id) continue;
+            $out[$item['target_id']][$slot_id]++;
+// ниже вычисляем увеличение мастерства. 
+// Если на игрока были наложены проклятье или стабость, то мастерство не увеличится.
+// Также мастерство не добавится:
+// если удалил слабо, 
+// если разница в уровнях больше 2, 
+// если он сам травмирован 
+// и еще какая-то вычислительная «магия» с уровнем персонажа :) (изучене репозитория показало, что данное "странное" условие живет с основания драконов :)
+            if (!(($user['flags'] & USER_FLAG_PUNISH) && user_get_punishment_state($user['id'], CRIME_EXPERIENCE)) && $have_m0 && ($m0_clean <= $m) && $user && ($user['injury_time'] < time_current()) && ($m0 < ($item['pers_level'] - 4)*50)) {	// рост мастерства // && ($m0 < ($item['pers_level'] - 5)*50) && ($lev_diff <= 2)
+// вероятность получения мастерства определяется по экспотенциальной зависимости от уровня мастерства, т.е. чем выше, тем вероятносьт увеличения ниже
+                do{
+                    $prof_user = user_get($item['user_id']);
+                    if(!($prof_user['profession'] & PR_INJURY)) break; //Если не палачь, то плач!
+                    $p = exp(($premium_user['vars'][P_PROFESSIONS] ? -0.0123141 : -0.0223141)/2*$m0);
+                    if (rand_roll($p)) {
+                        NODE_PUSH(null, $item['user_id']);
+                        skill_object_set_value(OBJECT_CLASS_USER,$item['user_id'],$profession['skill_id'],1,array('relative' => true));
+                        NODE_POP();
+                        chat_msg_send_system(sprintf(translate('Ваше мастерство профессии "%s" увеличилось на +1.'),$profession['title']),CHAT_CHF_USER,$item['user_id']);
+                    }
+                }while(0);
+            }
+        }
+    }
+    $injury_slot_hash = get_hash($injury_slot_info,'slot_id','title');
+    foreach ($out as $user_id=>$v) {
+        $t = array();
+        foreach ($v as $slot_id=>$cnt) {
+            $t[] = '<b>'.$injury_slot_hash[$slot_id].'</b>';
+        }
+        chat_msg_send_system(sprintf(translate('Получена травма %s.'),implode(', ',$t)),CHAT_CHF_USER,$user_id);
+        chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user_id, array('func' => 'updateSwf({"inventory":""});'));
+    }
+    return $out;
+}
+
+?>

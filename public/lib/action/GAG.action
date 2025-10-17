@@ -1,0 +1,101 @@
+<? # $Id: GAG.action,v 1.5 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "поставить кляп"
+// Параметры:
+//	$in['nick'] - ник
+//	$in['type'] - тип из $gag_type_info
+//	$in['reason'] - причина из $gag_reason_info
+
+require_once("lib/gag.lib");
+require_once("lib/guard_awards.lib");
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+$user = user_get(false,$in['nick']);
+if (!$user) {
+	$out['error'] = translate('Пользователь не найден!');
+	return;
+}
+if (time_current() < $user['gag_time']) {
+	$out['error'] = translate('На этого пользователя уже наложено проклятие!');
+	return;
+}
+$duration = 0;
+$reason_str = '';
+$param = explode(',',$action['param2']);
+if ($action['param1'] == 1) {		// Вид "длительность"
+	list($gag_type,$gag_type_range) = $param;
+	$type = ($gag_type && !$gag_type_range) ? $gag_type: intval($in['type']);
+	if (!$gag_type_info[$type] || ($gag_type_range && ($type > $gag_type))) {
+		$out['error'] = translate('Неверная длительность проклятия!');
+		return;
+	}
+	$duration = $gag_type_info[$type]['duration'];
+	gag_user_save(array(
+			'gag_gave_user_id' => $subject['id'],
+			'user_id' => $user['id'],
+			'reason' => 0,
+			'ctime' => time_current(),
+			'ftime' => time_current() + $duration,
+			'duration' => $duration,
+			'reason_str' => '',
+			));
+
+    guard_awards_stat_add($subject['id'], GUARD_AWARD_TYPE_MUTE, array('param1' => $user['id']));
+} elseif ($action['param1'] == 2) {		// Вид "причина"
+	$reason = $in['reason'];
+	if (!$gag_reason_info[$reason]) {
+		$out['error'] = translate('Неверная причина проклятия!');
+		return;
+	}
+	$duration = $gag_reason_info[$reason]['duration'];
+	$reason_str = $gag_reason_info[$reason]['title'];
+	// Если со времени окончания последнего кляпа прошло немного времени - считаем рецидивом
+	if ($reason != GAG_REASON_WARN_ID) {
+		$gag_count = gag_user_count(array(
+				'user_id' => $user['id'],
+				'reason' => $reason,
+				), sql_pholder(' AND ftime > ? ', time_current() - GAG_RELAPSE_PERIOD));
+		if ($gag_count > 0) {
+			$in['twice'] = $gag_count == 1 ? 2 : 4;
+			$duration *= $in['twice'];
+		}
+		gag_user_save(array(
+				'gag_gave_user_id' => $subject['id'],
+				'user_id' => $user['id'],
+				'reason' => $reason,
+				'ctime' => time_current(),
+				'ftime' => time_current() + $duration,
+				'duration' => $duration,
+				'reason_str' => $reason_str,
+				));
+	}
+    guard_awards_stat_add($subject['id'], GUARD_AWARD_TYPE_MUTE, array('param1' => $user['id'], 'param2' => $reason));
+} else return;
+user_save(array(
+	'id' => $user['id'],
+	'gag_time' => time_current() + $duration,
+	'gag_reason_str' => $reason_str,
+));
+chat_msg_send_system(sprintf(translate('Вы наложили проклятие молчания на игрока %s длительностью %s.'),user_is_invisible($user) ? translate('Невидимка') : html_user_info($user),html_period_str($duration)),CHAT_CHF_USER,$subject['id']);
+if ($action['param1'] == 1) chat_msg_send_system(sprintf(translate('Игрок %s наложил на Вас проклятие молчания длительностью %s.'),user_is_invisible($subject) ? translate('Невидимка') : html_user_info($subject),html_period_str($duration)),CHAT_CHF_USER,$user['id']);
+$msg_text = sprintf(translate('На игрока %s наложено проклятие молчания длительностью %s.'),user_is_invisible($user) ? translate('Невидимка') : html_user_info($user),html_period_str($duration));
+if ($reason_str) $msg_text .= sprintf(translate(' Причина: %s.'),$reason_str);
+chat_msg_send_system($msg_text,CHAT_CHF_AREA,$user['area_id'], true);
+$out['status'] = ACTION_STATUS_OK;
+
+// лог-сервис -----------------------
+$log_comment = html_period_str($duration);
+if ($reason_str) {
+	$log_comment .= ', '.$reason_str;
+	if ($in['twice']) $log_comment .= sprintf(translate(' (рецидив: %d)'), $in['twice']);
+}
+logserv_log_action(array(
+	'action' => $action,
+	'comment' => $log_comment,
+),$action_user,$user);
+// ----------------------------------
+
+// Логирование
+$log['user_id2'] = $user['id'];
+$log['comment'] = $log_comment;
+
+?>

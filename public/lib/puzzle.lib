@@ -1,0 +1,69 @@
+<?php
+require_once("lib/bonus.lib");
+require_once("lib/user.lib");
+require_once("lib/session.lib");
+
+define('PUZZLE_BONUS', 111);
+define('TABLE_PUZZLE','puzzle');
+
+// get a random image from the puzzle table
+function puzzle_get_random_image(){
+    global $db_path;
+    $query = "SELECT * FROM puzzle ORDER BY RAND() LIMIT 1";
+    $result = $db_path->query($query);
+    return mysqli_fetch_assoc($result);
+}
+function puzzle_get_list($ref=false, $add='', $field_list='*') {
+
+    global $db_path;
+	return common_get($db_path,TABLE_PUZZLE,$ref,$add,$field_list);
+}
+
+// cut the image into several parts
+function puzzle_cut_image($image_path, $parts = 3){
+    // get image size
+    $image_info = getimagesize($image_path);
+    $width = $image_info[0];
+    $height = $image_info[1];
+
+    // create an image resource from the original image
+    $original_image = imagecreatefromjpeg($image_path);
+
+    // create an empty array to store the puzzle pieces
+    $puzzle_pieces = array();
+
+    // calculate the width and height of each puzzle piece
+    $piece_width = $width / $parts;
+    $piece_height = $height / $parts;
+
+    // loop through the rows and columns and cut the image into pieces
+    for($row = 0; $row < $parts; $row++){
+        for($col = 0; $col < $parts; $col++){
+            // create a new image resource for the puzzle piece
+            $puzzle_piece = imagecreatetruecolor($piece_width, $piece_height);
+
+            // copy a part of the original image to the puzzle piece
+            imagecopyresampled(
+                $puzzle_piece,
+                $original_image,
+                0, 0,
+                $col * $piece_width, $row * $piece_height,
+                $piece_width, $piece_height,
+                $piece_width, $piece_height
+            );
+
+            // save the puzzle piece to the puzzle_pieces array
+            array_push($puzzle_pieces, $puzzle_piece);
+        }
+    }
+
+    return $puzzle_pieces;
+}
+
+// issue a bonus for successfully assembling the puzzle
+function puzzle_issue_bonus(){
+    $user = user_get($_SESSION['user']['id']);
+    bonus_apply($user,PUZZLE_BONUS);
+}
+
+?>

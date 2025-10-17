@@ -1,0 +1,78 @@
+<? # $Id: TRADE.action,v 1.9 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "торговать"
+// Параметры:
+//	$in['nick'] - ник
+
+require_once("lib/trade.lib");
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if (defined('GLADIATORS_SERVER') && GLADIATORS_SERVER) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if (($subject['flags'] & USER_FLAG_PUNISH) && user_get_punishment_state($subject['id'], array(CRIME_FINANCE,CRIME_FREEDOM))) {
+	$out['error'] = translate('Вы не можете выполнить это действие, так как на Вас наложено проклятие!');
+	return;
+}
+$user = user_get(false,$in['nick']);
+if (!$user) {
+	$out['error'] = translate('Пользователь не найден!');
+	return;
+}
+if ($user['id'] == $subject['id']) {
+	$out['error'] = translate('Нельзя торговать с самим собой!');
+	return;
+}
+if ($user['level'] < USER_LEVEL_NUB || $subject['level'] < USER_LEVEL_NUB) {
+	$out['error'] = sprintf(translate('Вы не можете торговать, у одного из игроков уровень меньше %d-го !'),USER_LEVEL_NUB);
+	return;
+}
+if ($subject['kind'] != $user['kind']) {
+	$out['error'] = translate('Вы не можете торговать с персонажем чужой расы!');
+	return;
+}
+if (!user_is_near($subject,$user)) {
+	$out['error'] = translate('Вы не можете торговать с персонажем, который не находится рядом!');
+	return;
+}
+if (!user_is_online($user['id'], true)) {
+	$out['error'] = sprintf(translate('Вы не можете торговать с игроком %s в связи с тем, что он отсутствует в игре!'), htmlspecialchars($user['nick']));;
+	return;
+}
+if ($user['flags'] & USER_FLAG_GHOST) {
+	$out['error'] = translate('Нельзя торговать с призраком!');
+	return;
+}
+if (($user['flags'] & USER_FLAG_PUNISH) && user_get_punishment_state($user['id'], array(CRIME_FINANCE,CRIME_FREEDOM))) {
+	$out['error'] = translate('Вы не можете выполнить это действие, так как на оппоненте наложено проклятие!');
+	return;
+}
+if ($user['fight_id']) {
+	$out['error'] = translate('Вы не можете торговать с этим персонажем, он находится в бою!');
+	return;
+}
+
+$auths = auth_list(false, array('uid' => array($user['id'],$subject['id'])));
+if ($auths[0]['server_id'] != $auths[1]['server_id']) {
+	$out['error'] = translate('Вы не можете торговать с персонажем из другого мира!');
+	return;
+}
+
+$trade_out = trade_create($subject['id'], $user['id']);
+
+if ($trade_out['status'] == TRADE_STATUS_OK) {
+	$out['status'] = ACTION_STATUS_OK;
+	$trade_link = sprintf('service_trade.php?trade_id=%d', $trade_out['trade_id']);
+	chat_msg_send_system(sprintf(translate('Вас пригласил игрок %s поторговать. Нажмите <a target="main" href="%s" onclick="top.frames[\'main_frame\'].processMenu(\'b_trade\', {url: \'%s\'});return false;"><b class="redd">сюда</b></a>, чтобы начать торговлю.'),
+		user_is_invisible($subject) ? translate('Невидимка') : html_user_info($subject), $trade_link, $trade_link), CHAT_CHF_USER, $user['id']);
+	chat_msg_send_system(sprintf(translate('Вы пригласили игрока %s поторговать. '), user_is_invisible($user) ? translate('Невидимка') : html_user_info($user)), CHAT_CHF_USER, $subject['id']);
+} else {
+	$out['error'] = $trade_out['error'];
+}
+
+?>

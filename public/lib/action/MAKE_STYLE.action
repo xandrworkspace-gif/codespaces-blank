@@ -1,0 +1,38 @@
+<? # $Id: ARMOR_UP.action,v 1.00 2022-11-04 22:30:00 Elempher $
+
+// действие "Улучшить снаряжение --> замена артикула предмета с сохранением всех вставок и настроек."
+// Параметры:
+//	$in['artifact_id'] - артефакт который нужно апнуть
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+$artikul = artifact_artikul_get($artifact['artikul_id']);
+
+if (!($artifact['flags2'] = ARTIFACT_FLAG2_MAKE_STYLE)) { // нужен предмет с флагом на возможность стильнуть его
+    $out['error'] = translate('Нужно выбрать предмет, который можно стилезовать!');
+    return;
+}
+
+$item_base = artifact_artikul_get($object['artikul_id']);
+if (!$item_base || ($item_base['param2'] == -1 || $item_base['param2'] > 0)) {
+    $out['error'] = translate('Невозможно выполнить действие!');
+    return;
+}
+
+$style_item = artifact_artikul_get(array('id' => $artifact['param2'],));
+artifact_create($style_item['id'], 1, $subject['id']);
+artifact_delete($artifact);
+$out['status'] = ACTION_STATUS_OK;
+
+if($item_base['param2'] == -1) {
+    chat_msg_send_system('Артикул артефарта:  "'.$artikul['title'].'" удален!', CHAT_CHF_USER, $subject['id']);
+}else{
+    chat_msg_send_system('<b>Вы превратили <b style="color:teal;">'.$artikul['title'].'</b> в предмет стиля на <b style="color:green;">30 дней</b>.</b>', CHAT_CHF_USER, $subject['id']);
+}
+

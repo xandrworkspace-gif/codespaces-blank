@@ -1,0 +1,479 @@
+<? # $Id: recipe.lib,v 1.35 2010-01-15 12:55:25 m.usachev Exp $
+
+// Имена и поля таблиц
+define('TABLE_RECIPES','recipes');
+define('FIELD_RECIPES','');
+define('TABLE_RECIPE_USERS','recipe_users');
+define('FIELD_RECIPE_USERS','');
+
+define('PR_LEVEL_STEP', 30); // количество скила "мастерство" на один уровень персонажа
+
+define('CRAFT_FLAG_NOLOG',      0x01); // не логировать использование рецепта
+define('CRAFT_FLAG_STAT',       0x02); // вести статистику по произведенным предметам
+define('CRAFT_FLAG_STAT_COUNT', 0x04); // Вести статистику (количество выученных экземпляров)
+define('CRAFT_FLAG_DOUBLE',     0x08); // если этот флаг стоит, рецепт может с определенной вероятностью дать двойное количество артифактов
+define('CRAFT_FLAG_MULTI',      0x10);  // если этот флаг стоит, рецепт можно юзать много раз
+
+define('CRAFT_DOUBLE_PROB', 6); // в процентах
+define('CRAFT_CRIT_PROB',   2); // в процентах
+
+define('CRAFT_EVENT_ERROR',  0); // ошибка
+define('CRAFT_EVENT_NORMAL', 1); // обычный крафт
+define('CRAFT_EVENT_DOUBLE', 2); // двойная выдача
+define('CRAFT_EVENT_CRIT',   3); // критовый крафт
+
+global $skill_value_color_hash;
+
+$prof_paks = array(
+    PR_FARM => 1,
+    PR_GEOLOGY => 1,
+    PR_FISHING => 1,
+    PR_ALCHEMY => 2,
+    PR_MAGIC => 2,
+    PR_JEWELRY => 2,
+    PR_INJURY => 3,
+    PR_MEDIC => 3,
+    PR_SAFECRACK => 3,
+);
+$prof_paks_hash = array(
+    1 => array(PR_FARM, PR_GEOLOGY, PR_FISHING),
+    2 => array(PR_ALCHEMY, PR_MAGIC, PR_JEWELRY),
+    3 => array(PR_INJURY, PR_MEDIC, PR_SAFECRACK),
+);
+function get_prof_info($prof){
+    global $prof_paks,$prof_paks_hash;
+    $cur_prof = array();
+    $cur_paks = array();
+    if($prof & PR_FARM){ $cur_prof[PR_FARM] = true; $cur_paks[1] = true; }
+    if($prof & PR_GEOLOGY){ $cur_prof[PR_GEOLOGY] = true; $cur_paks[1] = true; }
+    if($prof & PR_FISHING){ $cur_prof[PR_FISHING] = true; $cur_paks[1] = true; }
+    if($prof & PR_ALCHEMY){ $cur_prof[PR_ALCHEMY] = true; $cur_paks[2] = true; }
+    if($prof & PR_MAGIC){ $cur_prof[PR_MAGIC] = true; $cur_paks[2] = true; }
+    if($prof & PR_JEWELRY){ $cur_prof[PR_JEWELRY] = true; $cur_paks[2] = true; }
+    if($prof & PR_INJURY){ $cur_prof[PR_INJURY] = true; $cur_paks[3] = true; }
+    if($prof & PR_MEDIC){ $cur_prof[PR_MEDIC] = true; $cur_paks[3] = true; }
+    if($prof & PR_SAFECRACK){ $cur_prof[PR_SAFECRACK] = true; $cur_paks[3] = true; }
+    return array('cur_prof' => $cur_prof, 'cur_pack' => $cur_paks);
+}
+
+// цвета рецептов в зависимости от разницы в уровне мастерства на рецепте и мастерства игрока
+$skill_value_color_hash = array(
+	4  => array('probability' => 75, 'color' => '#e15f00'),
+	9  => array('probability' => 40, 'color' => '#990099'),
+	14 => array('probability' => 25, 'color' => 'blue'),
+	19 => array('probability' => 15, 'color' => '#114d01'),
+	24 => array('probability' => 10, 'color' => '#114d01'),
+	30 => array('probability' => 2, 'color' => '#114d01'),
+	0xffffff => array('probability' => 0, 'color' => 'gray'),
+);
+
+
+function recipe_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_RECIPES,$ref,$add);
+}
+
+function recipe_list($profession_id=false, $add='') {
+	global $db_2;
+	$ref = false;
+	if ($profession_id) $ref['profession_id'] = $profession_id;
+	return common_list($db_2,TABLE_RECIPES,$ref,$add);
+}
+
+function recipe_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_RECIPES, $ref, $add);
+}
+
+function recipe_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_RECIPES,$param,FIELD_RECIPES);
+}
+
+function recipe_delete($ref) {
+	global $db_2;
+	return common_delete($db_2,TABLE_RECIPES,$ref);
+}
+
+///////////////////////////////////////
+
+function recipe_user_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_RECIPE_USERS,$ref,$add);
+}
+
+function recipe_user_list($user_id, $profession_id=null, $add='', $extended=false, $recipe_add='') {
+	global $db_2;
+	if (!$user_id && !$add) return false;
+	$ref = false;
+	if ($user_id) $ref['user_id'] = $user_id;
+	if ($profession_id) $extended=true;
+
+	if (!$extended) {
+		return common_list($db_2,TABLE_RECIPE_USERS,$ref,$add);
+	} else {
+		$recipe_list = common_list($db_2,TABLE_RECIPE_USERS,$ref,$add);
+		if (!$recipe_list) return false;
+		$recipe_ids = get_hash($recipe_list, 'artikul_id', 'artikul_id');
+		$recipe_hash = make_hash(recipe_list($profession_id, sql_pholder(' AND id IN (?@)', $recipe_ids).$recipe_add), 'id');
+		foreach ($recipe_list as $k=>$v) {
+			if (!isset($recipe_hash[$v['artikul_id']])) {
+				unset($recipe_list[$k]);
+			} else {
+				$recipe_list[$k] = array_merge(
+					$recipe_hash[$v['artikul_id']],
+					$recipe_list[$k],
+					array('recipe_artifact_artikul_id' => $recipe_hash[$v['artikul_id']]['artikul_id'])
+				);
+			}
+		}
+		return $recipe_list;
+	}
+}
+
+function recipe_user_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_RECIPE_USERS,$ref,$add);
+}
+
+function recipe_user_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_RECIPE_USERS,$param,FIELD_RECIPE_USERS);
+}
+
+function recipe_user_delete($ref) {
+	global $db_2;
+	return common_delete($db_2,TABLE_RECIPE_USERS,$ref);
+}
+
+function recipe_craft_old($user_id, $recipe_id) {
+	$out = array('event' => CRAFT_EVENT_ERROR);
+	$recipe_artikul = recipe_get($recipe_id);
+	if (!$recipe_artikul) {
+		$out['error'] = translate('Неизвестный рецепт');
+		return $out;
+	}
+	$log_action = (!($recipe_artikul['flags'] & CRAFT_FLAG_NOLOG));
+	$resource_needed = array();
+	for ($i=1; $i<=7; $i++) {
+		if ($recipe_artikul['res'.$i.'_id'] && (intval($recipe_artikul['res'.$i.'_num']) >= 0)) {
+			$resource_needed[$recipe_artikul['res'.$i.'_id']] = intval($recipe_artikul['res'.$i.'_num']);
+		}
+	}
+	if (!$resource_needed || !$recipe_artikul['create_artikul_id'] || $recipe_artikul['create_artikul_num'] < 0) { // защита от кривых ручонок админов
+		$out['error'] = translate('Невозможно использовать этот рецепт!');
+		return $out;
+	}
+	
+	$prof_bag_size = user_get_artifact_amount_max($user_id, ARTIFACT_STORAGE_TYPE_PR_BAG);
+	$storages = array();
+	if ($prof_bag_size > 0) $storages[ARTIFACT_STORAGE_TYPE_PR_BAG] = ARTIFACT_STORAGE_TYPE_PR_BAG;
+	$storages[ARTIFACT_STORAGE_TYPE_USER] = ARTIFACT_STORAGE_TYPE_USER;
+	
+	$needed_amounts_by_storage = array();
+	// проверим наличие ингредиентов
+	foreach ($resource_needed as $artikul_id => $needed_num) {
+		$needed_left = $needed_num;
+		foreach ($storages as $storage) {
+			$storage_amount = artifact_amount($artikul_id, $user_id, false, '', true, false, '', $storage);
+			if ($storage_amount > 0) {
+				$needed_amounts_by_storage[$storage][$artikul_id] = min($storage_amount, $needed_left);
+				$needed_left -= $storage_amount;
+			}
+			if ($needed_left <= 0) break;
+		}
+		if ($needed_left > 0) {
+			$out['error'] = translate('Вам не хватает необходимого ингредиента!');
+			return $out;
+		}
+	}
+	
+	$weight_left = array();
+	$create_artikul = artifact_artikul_get($recipe_artikul['create_artikul_id']);
+	$user = user_get($user_id);
+	$into_profbag = user_check_prof_bag($create_artikul, $user, $recipe_artikul['create_artikul_num'], true);
+	if (!$into_profbag) {
+		unset($needed_amounts_by_storage[ARTIFACT_STORAGE_TYPE_PR_BAG]);
+	} elseif ($prof_bag_size > 0) {
+		$weight_left[ARTIFACT_STORAGE_TYPE_PR_BAG] = $prof_bag_size - user_get_artifact_amount($user_id, ARTIFACT_STORAGE_TYPE_PR_BAG);
+	}
+	$weight_left[ARTIFACT_STORAGE_TYPE_USER] = user_get_artifact_amount_max($user_id) - user_get_artifact_amount($user_id, ARTIFACT_STORAGE_TYPE_USER);
+	
+	foreach ($needed_amounts_by_storage as $storage => $artikul_amounts) {
+		foreach ($artikul_amounts as $artikul_id => $amount) {
+			$weight_left[$storage] -= artifact_check_capacity($artikul_id, -$amount, $user_id, false, '', false, false, $storage);
+		}
+	}
+
+	$enough = false;
+	$storage = false;
+	foreach ($weight_left as $storage_check => $left) {
+		$left -= artifact_check_capacity($recipe_artikul['create_artikul_id'], $recipe_artikul['create_artikul_num'], $user_id, false, '', false, false, $storage_check);
+		if ($left >= 0) {
+			$enough = true;
+			$storage = $storage_check;
+			break;
+		}
+	}
+	
+	if (!$enough) {
+		$out['error'] = translate('У Вас нет достаточного места в рюкзаке!');
+		return $out;
+	}
+	
+	if ($log_action) {
+		// лог-сервис -----------------------
+		logserv_log_action(array(
+			'act_code' => 1080,	// Крафт
+		),$user_id);
+		// ----------------------------------
+	}
+	// всё круто, всего хватает
+	foreach ($resource_needed as $artikul_id => $needed_num) {
+		$total_deleted = artifact_remove($artikul_id, $needed_num, $user_id, false, '', false, ARTIFACT_STORAGE_TYPE_ALL);
+		if ($total_deleted < $needed_num) { //wtf!
+			$out['error'] = translate('Ошибка во время операции!');
+			return $out;
+		}
+		if ($log_action) {
+			// лог-сервис -----------------------
+			logserv_log_operation(array(
+				'artikul' => $artikul_id,
+				'cnt' => -$total_deleted,
+			),$user_id);
+			// ----------------------------------
+		}
+	}
+	
+	$create_artikul_id  = $recipe_artikul['create_artikul_id'];
+	$create_artikul_num = $recipe_artikul['create_artikul_num'];
+	$craft_event = CRAFT_EVENT_NORMAL;
+	
+	$p_double = ($recipe_artikul['flags'] & CRAFT_FLAG_DOUBLE) ? CRAFT_DOUBLE_PROB : 0;
+	$p_crit   = ($recipe_artikul['crit_artikul_id'] && $recipe_artikul['crit_artikul_num']) ? CRAFT_CRIT_PROB : 0;
+
+	$roll = rand(0, 99);
+
+ 	if ($roll < $p_crit) {
+ 		$craft_event = CRAFT_EVENT_CRIT;
+ 		$create_artikul_id  = $recipe_artikul['crit_artikul_id'];
+		$create_artikul_num = $recipe_artikul['crit_artikul_num'];
+ 	} elseif ( ($roll >= $p_crit) && ($roll < ($p_crit + $p_double)) ) {
+ 		$craft_event = CRAFT_EVENT_DOUBLE;
+ 		$create_artikul_num *= 2;
+ 	}
+	
+	artifact_add($create_artikul_id, $create_artikul_num, $user_id, false, null, array('flags' => intval($recipe_artikul['force_flags'])), $storage);
+	
+	// Выдаем бонус
+	bonus_apply($user,$recipe_artikul['bonus_id']);
+		
+	if ($log_action) {
+		// лог-сервис -----------------------
+		logserv_log_operation(array(
+			'artikul' => $create_artikul_id,
+			'force_flags' => $recipe_artikul['force_flags'],
+			'cnt' => $create_artikul_num,
+		),$user_id);
+		// ----------------------------------
+	}
+	$out['event'] = $craft_event;
+	$out['create_artikul_id'] = $create_artikul_id;
+	$out['create_artikul_num'] = $create_artikul_num;
+	return $out;
+}
+
+function recepie_max_amount($recipe_artikul = array()){
+    if(!$recipe_artikul) return false;
+    $max_craft_amount = 25;
+    if($recipe_artikul['flags'] & CRAFT_FLAG_MULTI && $recipe_artikul['bonus_id']){
+        $max_craft_amount = 25;
+    }
+    //Проверку не прошел уебок
+    if(!($recipe_artikul['flags'] & CRAFT_FLAG_MULTI)){
+        $max_craft_amount = 1;
+    }
+    return $max_craft_amount;
+}
+
+function recipe_craft($user_id, $recipe_id, $craft_amount = 1) {
+    global $profession_info;
+    $out = array('event' => CRAFT_EVENT_ERROR);
+    $recipe_artikul = recipe_get($recipe_id);
+    if (!$recipe_artikul) {
+        $out['error'] = translate('Неизвестный рецепт');
+        return $out;
+    }
+    $log_action = (!($recipe_artikul['flags'] & CRAFT_FLAG_NOLOG));
+    $resource_needed = array();
+    for ($i=1; $i<=7; $i++) {
+        if ($recipe_artikul['res'.$i.'_id'] && (intval($recipe_artikul['res'.$i.'_num']) >= 0)) {
+            $resource_needed[$recipe_artikul['res'.$i.'_id']] = intval($recipe_artikul['res'.$i.'_num']) * $craft_amount;
+        }
+    }
+    if (!$resource_needed || !$recipe_artikul['create_artikul_id'] || $recipe_artikul['create_artikul_num'] < 0) { // защита от кривых ручонок админов
+        $out['error'] = translate('Невозможно использовать этот рецепт!');
+        return $out;
+    }
+
+    $prof_bag_size = user_get_artifact_amount_max($user_id, ARTIFACT_STORAGE_TYPE_PR_BAG);
+    $storages = array();
+    if ($prof_bag_size > 0) $storages[ARTIFACT_STORAGE_TYPE_PR_BAG] = ARTIFACT_STORAGE_TYPE_PR_BAG;
+    $storages[ARTIFACT_STORAGE_TYPE_USER] = ARTIFACT_STORAGE_TYPE_USER;
+
+    $needed_amounts_by_storage = array();
+    // проверим наличие ингредиентов
+    foreach ($resource_needed as $artikul_id => $needed_num) {
+        $needed_left = $needed_num;
+        foreach ($storages as $storage) {
+            $storage_amount = artifact_amount($artikul_id, $user_id, false, '', true, false, '', $storage);
+            if ($storage_amount > 0) {
+                $needed_amounts_by_storage[$storage][$artikul_id] = min($storage_amount, $needed_left);
+                $needed_left -= $storage_amount;
+            }
+            if ($needed_left <= 0) break;
+        }
+        if ($needed_left > 0) {
+            $out['error'] = translate('Вам не хватает необходимого ингредиента!');
+            return $out;
+        }
+    }
+
+    $weight_left = array();
+    $create_artikul = artifact_artikul_get($recipe_artikul['create_artikul_id']);
+    $user = user_get($user_id);
+    $into_profbag = user_check_prof_bag($create_artikul, $user, $recipe_artikul['create_artikul_num'] * $craft_amount, true);
+    if (!$into_profbag) {
+        unset($needed_amounts_by_storage[ARTIFACT_STORAGE_TYPE_PR_BAG]);
+    } elseif ($prof_bag_size > 0) {
+        $weight_left[ARTIFACT_STORAGE_TYPE_PR_BAG] = $prof_bag_size - user_get_artifact_amount($user_id, ARTIFACT_STORAGE_TYPE_PR_BAG);
+    }
+    $weight_left[ARTIFACT_STORAGE_TYPE_USER] = user_get_artifact_amount_max($user_id) - user_get_artifact_amount($user_id, ARTIFACT_STORAGE_TYPE_USER);
+
+    foreach ($needed_amounts_by_storage as $storage => $artikul_amounts) {
+        foreach ($artikul_amounts as $artikul_id => $amount) {
+            $weight_left[$storage] -= artifact_check_capacity($artikul_id, -$amount, $user_id, false, '', false, false, $storage);
+        }
+    }
+
+    $enough = false;
+    $storage = false;
+    foreach ($weight_left as $storage_check => $left) {
+        $left -= artifact_check_capacity($recipe_artikul['create_artikul_id'], $recipe_artikul['create_artikul_num'], $user_id, false, '', false, false, $storage_check);
+        if ($left >= 0) {
+            $enough = true;
+            $storage = $storage_check;
+            break;
+        }
+    }
+
+    if (!$enough) {
+        $out['error'] = translate('У Вас нет достаточного места в рюкзаке!');
+        return $out;
+    }
+
+    if ($log_action) {
+        // лог-сервис -----------------------
+        logserv_log_action(array(
+            'act_code' => 1080,	// Крафт
+        ),$user_id);
+        // ----------------------------------
+    }
+    // всё круто, всего хватает
+    foreach ($resource_needed as $artikul_id => $needed_num) {
+        $total_deleted = artifact_remove($artikul_id, $needed_num, $user_id, false, '', false, ARTIFACT_STORAGE_TYPE_ALL);
+        if ($total_deleted < $needed_num) { //wtf!
+            $out['error'] = translate('Ошибка во время операции!');
+            return $out;
+        }
+        if ($log_action) {
+            // лог-сервис -----------------------
+            logserv_log_operation(array(
+                'artikul' => $artikul_id,
+                'cnt' => -$total_deleted,
+            ),$user_id);
+            // ----------------------------------
+        }
+    }
+
+    $create_artikul_id  = $recipe_artikul['create_artikul_id'];
+    $create_artikul_num = $recipe_artikul['create_artikul_num'] * $craft_amount;
+    $craft_event = CRAFT_EVENT_NORMAL;
+
+    $skill_info = user_get_skill_info($user_id,array('PROF_D_CHANCE'));
+    $prof_chance = intval($skill_info['skills']['PROF_D_CHANCE']['value']);
+
+    $p_double = ($recipe_artikul['flags'] & CRAFT_FLAG_DOUBLE) ? CRAFT_DOUBLE_PROB + $prof_chance : 0;
+    $p_crit   = ($recipe_artikul['crit_artikul_id'] && $recipe_artikul['crit_artikul_num']) ? CRAFT_CRIT_PROB : 0;
+
+    $roll = rand(0, 99);
+
+    if ($roll < $p_crit) {
+        $craft_event = CRAFT_EVENT_CRIT;
+        $create_artikul_id  = $recipe_artikul['crit_artikul_id'];
+        $create_artikul_num = $recipe_artikul['crit_artikul_num'];
+    } elseif ( ($roll >= $p_crit) && ($roll < ($p_crit + $p_double)) ) {
+        $craft_event = CRAFT_EVENT_DOUBLE;
+        $create_artikul_num *= 2;
+    }
+
+    artifact_add($create_artikul_id, $create_artikul_num, $user_id, false, null, array('flags' => intval($recipe_artikul['force_flags'])), $storage);
+
+    //Выдаем бонус коллекции
+    if(intval($profession_info[$recipe_artikul['profession_id']]['collection_bonus_id']) > 0){
+        bonus_apply_many($user,intval($profession_info[$recipe_artikul['profession_id']]['collection_bonus_id']),false, $craft_amount);
+    }
+    // Выдаем бонус
+    bonus_apply_many($user,$recipe_artikul['bonus_id'],false, $craft_amount);
+
+    if ($log_action) {
+        // лог-сервис -----------------------
+        logserv_log_operation(array(
+            'artikul' => $create_artikul_id,
+            'force_flags' => $recipe_artikul['force_flags'],
+            'cnt' => $create_artikul_num,
+        ),$user_id);
+        // ----------------------------------
+    }
+    $out['event'] = $craft_event;
+    $out['create_artikul_id'] = $create_artikul_id;
+    $out['create_artikul_num'] = $create_artikul_num;
+    return $out;
+}
+
+function recipe_get_user_max_skill($level) {
+    return (max($level-2, 1))*PR_LEVEL_STEP - 1;
+	return (max($level, 1))*PR_LEVEL_STEP - 1; // return (max($level-2, 1))*PR_LEVEL_STEP - 1;
+}
+
+function recipe_get_exp($recipe_skill_value, $user_skill_value, $user_level) {
+	global $skill_value_color_hash;
+	if ($recipe_skill_value > $user_skill_value) return 0; // такие рецепты вообще не должны выполняться
+	if ($user_skill_value >= recipe_get_user_max_skill($user_level)) return 0;
+	$d = ($user_skill_value - $recipe_skill_value);
+	$probability = 0;
+	foreach ($skill_value_color_hash as $max_val => $item) {
+		if ($d <= $max_val) {
+			$probability = $item['probability'];
+			break;
+		}
+	}
+	return ($probability && (mt_rand(1,100) <= $probability)) ? +1 : 0;
+}
+
+function recipe_get_color($recipe_skill_value, $user_skill_value) {
+	global $skill_value_color_hash;
+	if ($recipe_skill_value > $user_skill_value) {
+		$v = reset(array_reverse($skill_value_color_hash));
+		return $v['color']; // такие рецепты вообще не должны выполняться
+	}
+	$d = ($user_skill_value - $recipe_skill_value);
+	foreach ($skill_value_color_hash as $max_val => $item) {
+		if ($d < $max_val) {
+			return $item['color'];
+		}
+	}
+	return '#000000';
+}
+
+?>

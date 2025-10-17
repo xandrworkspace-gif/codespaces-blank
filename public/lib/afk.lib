@@ -1,0 +1,251 @@
+<?
+require_once("include/common.inc");
+require_once("lib/common.lib");
+require_once("lib/chat.lib");
+require_once("lib/user.lib");
+require_once("lib/area_post.lib");
+common_init();
+
+define("AFK_USER_TABLE", "afk_users");
+$afk_locations = array(
+    1 => array('id' => 539, 'title' => 'Городская ярмарка', 'kind_id' => 1, 'active' => 1),
+    2 => array('id' => 539, 'title' => 'Городская ярмарка', 'kind_id' => 2, 'active' => 1),
+);
+
+define('AFK_TIME_BONUS_SHOW', 1);
+$afk_time_bonus = array(
+    AFK_TIME_BONUS_SHOW => array('time' => 900, 'title' => 'Монетка активности', 'picture' => 'coin_letopis[1].gif', 'id' => 7761, 'quality' => 3, 'artikul_id' => 7761, 'artikul_cnt' => 1),
+);
+
+define("AFK_USER_MIN_LEVEL", 2);
+
+#Работа с базой данных
+function afk_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,AFK_USER_TABLE,$ref,$add);
+}
+
+function afk_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,AFK_USER_TABLE,$ref,$add);
+}
+
+function afk_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, AFK_USER_TABLE, $ref, $add);
+}
+
+function afk_save($param) {
+    global $db_path;
+    return common_save($db_path,AFK_USER_TABLE,$param);
+}
+
+function afk_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,AFK_USER_TABLE,$ref,$add);
+    return true;
+}
+
+//Получить пользователей AFK
+//area_id - можно получить в какой именно локации (так на будущее)
+//hash - нужно ли хешировать массив по полям
+//hash_p - поле хеширования массива
+function afk_get_users($area_id = false, $hash = false, $hash_p = 'id'){
+    $rows = afk_list(false, ($area_id ? ' AND loc_id = '.$area_id : ''));
+    if($hash){ // Хеширование таблицы, если нужно
+        $hash = make_hash($rows, $hash_p);
+        return $hash;
+    }
+    return $rows;
+}
+
+//Получить 1 пользователя
+function afk_get_user($user_id){
+    return afk_get(array('user_id' => $user_id));;
+}
+
+//Добавить в базу AFK игрока
+//В массив парамтеров нужно внести user_id и loc_id
+function afk_add($params = array()){
+    global $afk_locations;
+    if(!$params){
+        $error['msg'] = "Не заданы параметры";
+        return $error;
+    }
+    $user = user_get($params['user_id']);
+    if(!$user){
+        $error['msg'] = "Не найден пользователь";
+        return $error;
+    }
+    $afk_level_min = (defined('AFK_LEVEL_MIN') && AFK_LEVEL_MIN ? AFK_LEVEL_MIN : AFK_USER_MIN_LEVEL);
+    if($user['level'] < $afk_level_min){
+        $error['msg'] = "<b style=color:darkred>Для использования <b style=color:red>AFK</b> достигните [".$afk_level_min."] уровня!</b>";
+        return $error;
+    }
+
+    //Проверяем если уже есть текущий афк
+    $afk_user_info = afk_get_user($params['user_id']);
+    if($afk_user_info){
+        $error['msg'] = "<b style=color:darkred>У Вас уже есть статус <b style=color:red>AFK</b></b>!";
+        return $error;
+    }
+
+    $access_loc = false; // Доступ по локациям
+    $access_loc_text = "<img align=absmiddle src=/images/users-arrow.gif>";
+    foreach($afk_locations as $afk_location){
+        if($params['loc_id'] == $afk_location['id'] && $user['kind'] == $afk_location['kind_id']){
+            $access_loc = true;
+        }
+        if($user['kind'] == $afk_location['kind_id']){
+            $access_loc_text .= $afk_location['title']." :: ";
+        }
+    }
+    if(!$access_loc){
+
+        $error['msg'] = "Вы можете включить режим <b style=color:red>AFK</b> только на локациях <b>".$access_loc_text."</b>";
+        return $error;
+    }
+    $afk_new = array(
+        'user_id' => $params['user_id'],
+        'loc_id' => $params['loc_id'],
+        'time_enter' => time_current(),
+    );
+
+    return afk_save($afk_new);
+}
+
+//Расчет хули уж тут
+function afk_calculate($afk_user_info){
+    global $afk_time_bonus;
+    if(!$afk_user_info){
+        return false;
+    }
+    $current_time = time(); // Текущее время
+    $time_avail = $current_time - $afk_user_info['time_enter']; // Прошло со всего афк
+    $ret_array = array();
+    foreach($afk_time_bonus as $k=>$time_bonus){
+        $ret_array[$k] = intval($time_avail / $time_bonus['time']);
+    }
+    return $ret_array;
+}
+
+function afk_area_show($user = array()) {
+    global $afk_locations;
+    if(!$user || $user['fight_id'] || $user['instance_id']) return false;
+    foreach($afk_locations as $afk_location) {
+        if($user['area_id'] == $afk_location['id'] && $user['kind'] == $afk_location['kind_id']){
+            return true;
+        }
+    }
+    return false;
+}
+
+//Недобровольный выход с афк
+function afk_check_exit($afk_user_info){
+    global $afk_time_bonus, $afk_locations;
+    if(!$afk_user_info){
+        return false;
+    }
+    $access_loc = false; // Доступ по локациям
+
+    $return_arr = array();
+
+    NODE_SWITCH(false,$afk_user_info['user_id']);
+    $user = user_get($afk_user_info['user_id']);
+    if(!$user){
+        return false;
+    }
+    foreach($afk_locations as $afk_location){
+        if($afk_user_info['loc_id'] == $user['area_id']){
+            $access_loc = true;
+        }
+    }
+    if(!$access_loc){
+        //Выход из зоны афк из недобровольного в добрововльный (Никто не заметит xD)
+        afk_exit($afk_user_info['user_id']);
+        chat_msg_send_system("<b style=color:darkred>Статус <b style=color:red>AFK</b> деактивирован из-за смены локации!</b>",CHAT_CHF_USER,$afk_user_info['user_id']);
+        $return_arr['exit_afk'] = 1;
+    }
+    if(!user_is_online($user['id'], true)) {
+        $msg_add = afk_exit($afk_user_info['user_id']);
+        $param = array(
+            'to_id' => $user['id'],
+            'subject' => "Уведомление о смене статуса AFK",
+            'text' => "Вы покинули игру, статус деактивирован.<br>".$msg_add,
+            'unread' => 1,
+            'type_id' => MSG_TYPE_SYS_NORMAL,
+            'area_id' => 129,
+            'stime' => time_current(),
+            'rtime' => time_current() + area_post_message_ttl(MSG_TYPE_NORMAL, true),
+            'flags' => POST_MSG_FLAG_ADMIN | POST_MSG_FLAG_ALLOW_HTML,
+        );
+        area_post_message_save($param);
+        $return_arr['exit_afk'] = 2;
+    }
+    return $return_arr;
+}
+
+//Добровольный выход с афк
+function afk_exit($user_id) {
+    global $afk_time_bonus, $afk_artikul_hash;
+    $afk_user_info = afk_get_user($user_id);
+    $bonuses = afk_calculate($afk_user_info); // Загрузим бонусы
+    $msg_send = 'За проведенное время ('.html_period_str(time_current() - $afk_user_info['time_enter']).') в <b style=color:red>AFK</b> режиме получено: ';
+    $bonus_send = false;
+    foreach($bonuses as $k=>$bonus) {
+        //Выдадим бонусы
+        if($bonus != 0) {
+            $artikul_cnt = $afk_time_bonus[$k]['artikul_cnt'] * $bonus;
+            $artikul = cache_fetch($afk_artikul_hash, $afk_time_bonus[$k]['artikul_id'], 'artifact_artikul_get');
+            $msg_send .= tpl_artikul_info($artikul, $artikul_cnt);
+            artifact_add($artikul['id'], $artikul_cnt, $user_id);
+            $bonus_send = true;
+        }
+    }
+    if($bonus_send && user_is_online($user_id, true)) {
+        chat_msg_send_system($msg_send, CHAT_CHF_USER, $user_id);
+    }
+    afk_delete(array('user_id' => $user_id));
+    return $msg_send;
+}
+
+function afk_set($session_user, &$error) {
+    do{
+        if(!(defined('AFK_ENABLED') && AFK_ENABLED)) {
+            $joke_strings_afk = array(0 => 'Это шутка!', 1 => 'Вы серьезно?', 2 => 'Что это за команда!?', 3 => 'afk afk, нет такого...',);
+            $error = $joke_strings_afk[array_rand($joke_strings_afk)];
+            break;
+        }
+        $afk_level_min = (defined('AFK_LEVEL_MIN') && AFK_LEVEL_MIN ? AFK_LEVEL_MIN : AFK_USER_MIN_LEVEL);
+        if($session_user['level'] < $afk_level_min){
+            $error = 'Для применения данной команды необходим '.$afk_level_min.' уровень!';
+            break;
+        }
+        if(!session_lock($session_user['id'])){
+            $error = "Невозможно в данный момент!";
+            break;
+        }
+        require_once("lib/afk.lib");
+        if(!afk_get_user($session_user['id'])) {
+            //Стать в афк
+            $afk = afk_add(array('user_id' => $session_user['id'], 'loc_id' => $session_user['area_id']));
+            if($afk){
+                if($afk['msg']){
+                    chat_msg_send_system($afk['msg'],CHAT_CHF_USER,$session_user['id']);
+                }else{
+                    chat_msg_send_system("<b style=color:darkred>Статус <b style=color:red>AFK</b> активирован!</b>",CHAT_CHF_USER,$session_user['id']);
+                }
+            }else{
+                chat_msg_send_system("Ошибка",CHAT_CHF_USER,$session_user['id']);
+            }
+        }else{
+            //Выйти с афк
+            afk_exit($session_user['id']);
+            chat_msg_send_system("<b style=color:darkred>Статус <b style=color:red>AFK</b> деактивирован!</b>",CHAT_CHF_USER,$session_user['id']);
+        }
+        session_unlock($session_user['id']);
+    }while(0);
+}
+
+?>

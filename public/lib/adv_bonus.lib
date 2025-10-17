@@ -1,0 +1,520 @@
+<?
+
+define('TABLE_ADV_BONUS_LIST','adv_bonus');
+define('FIELD_ADV_BONUS_LIST','');
+define('TABLE_ADV_BONUS_STAT_LIST','adv_bonus_stat');
+define('FIELD_ADV_BONUS_STAT_LIST','');
+define('TABLE_ADV_BONUS_SKILL_CHECKS','adv_bonus_skill_checks');
+define('FIELD_ADV_BONUS_SKILL_CHECKS','');
+define('TABLE_ADV_BONUS_BLOCK','adv_bonus_block');
+define('FIELD_ADV_BONUS_BLOCK','');
+define('TABLE_ADV_BONUS_LAST','adv_bonus_times');
+define('FIELD_ADV_BONUS_LAST','');
+
+define('ADV_BONUS_FLAGS_WAIT',      0x000001); //Длительное действие, проверка через определенное время
+define('ADV_BONUS_FLAGS_BONUSEND',  0x000002); //Окончательный бонус, больше выдаваться не будет
+define('ADV_BONUS_FLAGS_LOGSERV',   0x000004); //Логировать операции
+define('ADV_BONUS_FLAGS_DELETE_STAT_LOGOUT',   0x000008); //Удалять оконачательный бонус после выхода из игры
+define('ADV_BONUS_FLAGS_ADMIN',   0x000010); //Может получить только админ
+define('ADV_BONUS_FLAGS_NO_RESTR',   0x000020); //Не проверять ограниения (Если нет огранок лучше установить для быстроты)
+
+define('ADV_BONUS_BLOCK_FLAG_DELETE_LOGOUT', 0x00001); //Удалять блок после выхода из игры
+
+define('ADV_BONUS_CACHE_TTL', 43200); //12 часов на кеш
+
+$adv_bonus_flags_hash = array(
+    ADV_BONUS_FLAGS_WAIT => 'Длительное действие, проверка через определенное время',
+    ADV_BONUS_FLAGS_BONUSEND => 'Окончательный бонус, больше выдаваться не будет',
+    ADV_BONUS_FLAGS_LOGSERV => 'Логировать операции',
+    ADV_BONUS_FLAGS_DELETE_STAT_LOGOUT => 'Удалять оконачательный бонус после выхода из игры',
+    ADV_BONUS_FLAGS_ADMIN => 'Может получить только админ',
+    ADV_BONUS_FLAGS_NO_RESTR => 'Не проверять ограниения (Если нет огранок лучше установить для быстроты)',
+);
+
+//Статистики ADV бонусов
+
+define('ADV_BONUS_STAT_USER_REF_COUNT', 1);
+define('ADV_BONUS_STAT_USER_ONLINE_TIME', 2);
+$adv_bonus_stat_hash = array(
+    ADV_BONUS_STAT_USER_REF_COUNT => 'Кол-во рефералов',
+    ADV_BONUS_STAT_USER_ONLINE_TIME => 'Время в онлайне',
+);
+
+define('ADV_BONUS_STAT_USER_REF_MULTI', 0x000001); //За каждого N(Кол-во рефералов)
+define('ADV_BONUS_STAT_USER_REF_ONE', 0x000002); //Выдать единично
+
+define('ADV_BONUS_STAT_USER_ONLINE_MULTI', 0x000001); //За каждые N(секунд)
+
+$adv_bonus_stat_user_online_hash = array(
+    ADV_BONUS_STAT_USER_ONLINE_MULTI => 'За каждые N(секунд)',
+);
+
+$adv_bonus_stat_user_ref_hash = array(
+    ADV_BONUS_STAT_USER_REF_MULTI => 'За каждого N(Кол-во рефералов)',
+    ADV_BONUS_STAT_USER_REF_ONE => 'Выдать единично',
+);
+
+//Зависимости
+require_once("/home/admin/web/dwar.fun/public_html/lib/user.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/restriction.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/bonus.lib");
+
+#Работа с базой данных
+function adv_bonus_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_BONUS_LIST,$ref,$add);
+}
+
+function adv_bonus_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_BONUS_LIST,$ref,$add);
+}
+
+function adv_bonus_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_BONUS_LIST, $ref, $add);
+}
+
+function adv_bonus_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_BONUS_LIST,$param,FIELD_ADV_BONUS_LIST);
+}
+
+function adv_bonus_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_BONUS_LIST,$ref,$add);
+    return true;
+}
+
+#Работа с базой данных
+
+#Работа с базой данных
+function adv_bonus_stat_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_BONUS_STAT_LIST,$ref,$add);
+}
+
+function adv_bonus_stat_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_BONUS_STAT_LIST,$ref,$add);
+}
+
+function adv_bonus_stat_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_BONUS_STAT_LIST, $ref, $add);
+}
+
+function adv_bonus_stat_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_BONUS_STAT_LIST,$param,FIELD_ADV_BONUS_STAT_LIST);
+}
+
+function adv_bonus_stat_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_BONUS_STAT_LIST,$ref,$add);
+    return true;
+}
+
+#Работа с базой данных
+
+
+function adv_bonus_skill_check_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_BONUS_SKILL_CHECKS,$ref,$add);
+}
+
+function adv_bonus_skill_check_list($adv_bonus_id, $add='') {
+    global $db_path;
+    if (!$adv_bonus_id) return false;
+    return common_list($db_path,TABLE_ADV_BONUS_SKILL_CHECKS,array('adv_bonus_id' => $adv_bonus_id),$add);
+}
+
+function adv_bonus_skill_check_save($param) {
+    global $db_path;
+    if (!$param['id'] && !$param['adv_bonus_id']) return false;
+    return common_save($db_path,TABLE_ADV_BONUS_SKILL_CHECKS,$param,FIELD_ADV_BONUS_SKILL_CHECKS);
+}
+
+function adv_bonus_skill_check_delete($ref=false, $adv_bonus_id=false, $add='') {
+    global $db_path;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if ($adv_bonus_id) $ref['adv_bonus_id'] = $adv_bonus_id;
+    return common_delete($db_path,TABLE_ADV_BONUS_SKILL_CHECKS,$ref,$add);
+}
+
+
+#Работа с базой данных
+function adv_bonus_times_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_BONUS_LAST,$ref,$add);
+}
+
+function adv_bonus_times_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_BONUS_LAST,$ref,$add);
+}
+
+function adv_bonus_times_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_BONUS_LAST, $ref, $add);
+}
+
+function adv_bonus_times_save($param, $add='') {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_BONUS_LAST,$param,FIELD_ADV_BONUS_LAST,false, $add);
+}
+
+function adv_bonus_times_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_BONUS_LAST,$ref,$add);
+    return true;
+}
+
+#Работа с базой данных
+
+// Функция выдачи бонуса по достижению скиллов определенного уровня
+function adv_bonus_object_check_skill($object_class, $object_id, $skill_id=false, $block_only=false) {
+    global $db_path;
+    if (!$object_class || !$object_id) return false;
+    $skill_hash = make_hash(skill_object_list($object_class,$object_id),'skill_id');
+    if (!$skill_id) $skill_id = array_keys($skill_hash);
+    if (!is_array($skill_id)) $skill_id = array($skill_id);
+    foreach($skill_id as $sk_id) {
+        $query = sql_pholder("SELECT bsc.* FROM ?#TABLE_ADV_BONUS_SKILL_CHECKS AS bsc
+			LEFT JOIN ?#TABLE_ADV_BONUS_BLOCK AS bb ON bb.adv_bonus_id=bsc.adv_bonus_id AND bb.object_class=? AND bb.object_id=?
+			WHERE bb.id IS NULL AND bsc.skill_id=? AND bsc.value<=? ORDER BY bsc.value",$object_class,$object_id,$sk_id,intval($skill_hash[$sk_id]['value']));
+        $db_path->db_GetQueryArray($query,$data);
+        if (!$data) continue;
+
+        foreach ($data as $item) {
+            $id = common_save($db_path,TABLE_ADV_BONUS_BLOCK,array(
+                '_noerr' => true,
+                'adv_bonus_id' => $item['adv_bonus_id'],
+                'object_class' => $object_class,
+                'object_id' => $object_id,
+                'stime' => time_current(),
+            ),FIELD_ADV_BONUS_BLOCK);
+            if (!$id || $block_only) continue;
+            bonus_apply(common_object_get($object_class,$object_id),$item['bonus_id']);
+        }
+    }
+    return true;
+}
+
+
+$adv_bonus_check_debug_vars='';
+$adv_bonus_check_debug_active = false;
+function adv_bonus_check_debug($vars=''){
+    global $adv_bonus_check_debug_vars,$adv_bonus_check_debug_active;
+    if(!$adv_bonus_check_debug_active) return false;
+    $adv_bonus_check_debug_vars .= '\r\n'.$vars;
+}
+
+//Проверка и выдача в одном флаконе
+function adv_bonus_check($user = array()){
+    if(!$user || !$user['object_class']) return false;
+    global $db_path;
+
+    $rank = $user['rank'];
+    //Если есть господство, выбираем его!
+    if($user['dominance'] && $user['dominance'] > $rank) $rank = $user['dominance'];
+
+    $query = 'SELECT tabl.* FROM ?#TABLE_ADV_BONUS_LIST tabl
+    LEFT JOIN ?#TABLE_ADV_BONUS_BLOCK AS tabb ON tabb.adv_bonus_id=tabl.id
+    LEFT JOIN ?#TABLE_ADV_BONUS_LAST AS bl ON bl.bid=tabl.id WHERE 1
+    AND tabb.id IS NULL AND (bl.last <= '.time_current().' OR bl.uid IS NULL)';
+    $query .= ' AND (tabl.rank <= '.$rank.' OR tabl.rank = 0)';
+    $query .= ' AND (tabl.min_lvl <= '.$user['level'].' OR tabl.min_lvl = 0)';
+    $query .= ' AND ((tabl.max_lvl >= '.$user['level'].' OR tabl.max_lvl = 0) AND (tabl.min_lvl <= '.$user['level'].' OR tabl.min_lvl = 0))';
+    $query .= ' AND (tabl.kind = '.$user['kind'].' OR tabl.kind = 0)';
+    $query .= ' AND (tabl.gender = '.$user['gender'].' OR tabl.gender = 0)';
+
+    $query .= (!($user['flags'] & USER_FLAG_ADMIN) ? ' AND !(tabl.flags & '.ADV_BONUS_FLAGS_ADMIN.') ' : '');
+
+    $query .= ' ORDER BY value ASC';
+
+    adv_bonus_check_debug(sql_pholder($query));
+
+    //$db_path->db_GetQueryArray(sql_pholder($query),$data);
+
+    $data = adv_bonus_cache_get($user);
+    if (!$data) return false;
+
+    //adv_bonus_check_debug(print_r($data,true));
+
+    //Делаем свои грязные дела с огранками
+    foreach ($data as $item) {
+        //придется проделывать всякую дичь каждый раз
+        $user = user_get($user['id']);
+        $check_object_list = array();
+        restriction_get_dependent($user,$check_object_list);
+
+        $item['object_class'] = OBJECT_CLASS_ADV_BONUS;
+        if(!($item['flags'] & ADV_BONUS_FLAGS_NO_RESTR)) {
+            $out_restriction = restriction_check(0, array($item), $check_object_list);
+            adv_bonus_check_debug(print_r($out_restriction, true));
+            if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) {
+                adv_bonus_check_debug('По огранками не прошли');
+                continue;
+            }
+        }
+
+        $user_update_time_online = false;
+
+        $need_apply = 1; //Мне не сложно продублонить еще раз
+        $adv_bnus_allow = false;
+        //Проверка условий выдачи (Да да! Дополнительные)
+        if($item['stat_id']){
+            //Если есть какая-то новая статистика которую мы хотим отследить :)
+            switch($item['stat_id']){
+                case ADV_BONUS_STAT_USER_REF_COUNT: // По количеству рефералов
+                    $need_apply = 0; //По стандарту огранки =)
+
+                    $ref_lvl = intval($item['val1']);
+                    $ref_count = intval($item['val2']);
+                    $ref_flags = intval($item['val_flags']);
+
+                    if(!$ref_flags) break; //Хуй пизда
+
+                    $out_cnt = 0;
+
+                    $req_ref = array('referrer_id' => $user['id']);
+                    $added = '';
+                    if($ref_lvl) $added .= ' AND level >= '.$ref_lvl; //Учитываем не общее кол-во а по уровню :) ||UPD: От уровня условия
+                    $out_cnt = intval(user_count($req_ref, $added));
+                    if(!$out_cnt) $adv_bnus_allow = false;
+                    //Принимаем все свои навыки расчетных операций в банке и поднимаем архивы bonus_stat
+                    $adv_bonus_stat = adv_bonus_stat_get(array(
+                        'uid' => $user['id'],
+                        'bid' => $item['id'],
+                        'ref' => $ref_lvl, //Тут подразумевается если не указан уровень считать общее кол-во как и было описано ранее в коде
+                        'stat_id' =>ADV_BONUS_STAT_USER_REF_COUNT
+                    ));
+                    $all_value = intval($adv_bonus_stat['value']); //Может быть нулем, первый раз парнишка взял
+                    #Есть 3 значения [1]условиие $ref_count, [2]текущее у пользователя $out_cnt [3]текущее учтенное пользователем $all_value
+                    #Есть 2 условия либо мы считаем за каждого N кол-ва ADV_BONUS_STAT_USER_REF_MULTI, либо после единичной выдачи закроем статистику ADV_BONUS_STAT_USER_REF_ONE
+                    if($ref_flags & ADV_BONUS_STAT_USER_REF_MULTI){
+                        $need_apply = intval($out_cnt / $ref_count) - $all_value; //(Текущее значение поделенное на Условие) - Учтенное кол-во бонусов
+                        if($need_apply >= 1) $adv_bnus_allow = true; //Только целые значения
+                    }
+                    if($ref_flags & ADV_BONUS_STAT_USER_REF_ONE){
+                        if($out_cnt >= $ref_count){
+                            $need_apply = 1;
+                            $adv_bnus_allow = true;
+                            $item['flags'] |= ADV_BONUS_FLAGS_BONUSEND; //А я же говорил, я сурьезно говорил!
+                        }else{
+                            $adv_bnus_allow = false;
+                        }
+                    }
+
+                    //Ооо добро пожаловать в темный лесок (Функционал обновления тех самых учтенных значений
+                    $saved_stat = false;
+
+                    adv_bonus_check_debug('Нужно заюзать (по рефам)'.$need_apply);
+
+                    if($need_apply < 0 && !($need_apply >= 1)){ $adv_bnus_allow = false; } //Что за шайтаны
+
+                    //И так сойдет =)
+                    if(!$adv_bnus_allow){
+                        break;
+                    }
+
+                    if($need_apply > 5 && $item['bonus_id']){
+                        //Ну ебана, нельзя так а прикинь бонусов дохуя, отправим еще раз позже
+                        $need_apply = 5;
+                    }
+
+                    if($adv_bonus_stat){
+                        $adv_bonus_stat['value'] += $need_apply; //Добавляем новое кол-во)
+                        $saved_stat = adv_bonus_stat_save($adv_bonus_stat);
+                    }else{ //Создаем новое если нет текущего
+                        $saved_stat = adv_bonus_stat_save(array(
+                            'uid' => $user['id'],
+                            'bid' => $item['id'],
+                            'ref' => 0, //Тут подразумевается если не указан уровень считать общее кол-во как и было описано ранее в коде ||UPD:НАХУЙ ПОДУМАЛ Я УРОВНИ ДИНАМИЧНЫЕ
+                            'stat_id' => ADV_BONUS_STAT_USER_REF_COUNT,
+                            'value' => $need_apply
+                        ));
+                    }
+                    if(!$saved_stat){ $adv_bnus_allow = false; } //Если мы ничего не смогли обновить даже и бонус давать не будем!
+                    break;
+                case ADV_BONUS_STAT_USER_ONLINE_TIME:
+                    $need_apply = 0;
+
+
+
+                    $time_need = intval($item['val1']);
+                    $time_flags = intval($item['val_flags']);
+
+                    adv_bonus_check_debug('Отслеживаем бонус за онлайн: \r\n'.$time_need);
+
+                    $time = 0;
+                    $time = user_online_time($user['id']);
+
+                    adv_bonus_check_debug('Игрок в онлайне: \r\n'.$time);
+
+                    if(!$time){ $need_apply = 0; $adv_bnus_allow = false; break; }
+
+                    if($time_flags & ADV_BONUS_STAT_USER_ONLINE_MULTI){ //Если указано что мол за каждые N секунд
+                        //Принимаем все свои навыки расчетных операций в банке и поднимаем архивы bonus_stat
+                        $adv_bonus_stat = adv_bonus_stat_get(array(
+                            'uid' => $user['id'],
+                            'bid' => $item['id'],
+                            'ref' => 0, //
+                            'stat_id' => ADV_BONUS_STAT_USER_ONLINE_TIME,
+                        ));
+                        $all_value = intval($adv_bonus_stat['value']); //Может быть нулем, первый раз парнишка взял
+
+                        adv_bonus_check_debug('Игрок уже получил бонусов с момента авторизации: \r\n'.$all_value);
+
+                        $need_apply = floor($time / $time_need) - $all_value; //Сколько нужно заюзать
+
+                        /*if($user['id'] == 1){
+                            logfile(NODE_FILE_LOG, $time.' | '.$time_need.' | '.$all_value.' | ');
+                        }*/
+
+                    }else{
+                        if($time >= $time_need){
+                            $need_apply = 1; $adv_bnus_allow = true;
+                        }
+                    }
+
+                    if($need_apply >= 1) $adv_bnus_allow = true; //Только целые значения
+
+                    if($time_flags & ADV_BONUS_STAT_USER_ONLINE_MULTI){
+                        if($adv_bonus_stat){
+                            $adv_bonus_stat['value'] += $need_apply; //Добавляем новое кол-во)
+                            $saved_stat = adv_bonus_stat_save($adv_bonus_stat);
+                        }else{ //Создаем новое если нет текущего
+                            $saved_stat = adv_bonus_stat_save(array(
+                                'uid' => $user['id'],
+                                'bid' => $item['id'],
+                                'ref' => 0, //Тут подразумевается если не указан уровень считать общее кол-во как и было описано ранее в коде ||UPD:НАХУЙ ПОДУМАЛ Я УРОВНИ ДИНАМИЧНЫЕ
+                                'stat_id' => ADV_BONUS_STAT_USER_ONLINE_TIME,
+                                'value' => $need_apply
+                            ));
+                        }
+                        if(!$saved_stat){ $adv_bnus_allow = false; } //Если мы ничего не смогли обновить даже и бонус давать не будем!
+                    }
+
+                    $user_update_time_online = true;
+
+                    adv_bonus_check_debug('Итоги бонуса: \r\n'.$need_apply.' bool='.print_r($adv_bnus_allow,true));
+                    break;
+            }
+            if(!$adv_bnus_allow || !$need_apply) continue; //Мы не можем продолжать если нечего продолжать
+            adv_bonus_check_debug('Нужно заюзать'.$need_apply);
+        }
+
+        //Если окончательный бонус блокируем его навсегда
+        if($item['flags'] & ADV_BONUS_FLAGS_BONUSEND) {
+            $id = common_save($db_path, TABLE_ADV_BONUS_BLOCK, array(
+                '_noerr' => true,
+                'adv_bonus_id' => $item['id'],
+                'object_class' => $user['object_class'],
+                'object_id' => $user['id'],
+                'stime' => time_current(),
+                'flags' => ($item['flags'] & ADV_BONUS_FLAGS_DELETE_STAT_LOGOUT ? ADV_BONUS_BLOCK_FLAG_DELETE_LOGOUT : ''),
+            ), FIELD_ADV_BONUS_BLOCK);
+            if (!$id) continue; //Если блокировака не прошла то пожалуйста перейдем к следующему, т.к это будет пиздец если продолжим
+        }
+
+        //Подрузамевается что мы уже прошли ограничения изначальные в запросе и текущие по условим.
+        if($item['wait'] && $item['flags'] & ADV_BONUS_FLAGS_WAIT){ //Длительное действие
+            //Сохраним жлительное действие
+            $wait_count = adv_bonus_times_save(array(
+                '_cnt' => true,
+                '_mode' => CSMODE_UPDATE,
+                'last' => time_current() + $item['wait'],
+            ),' AND uid = '.$user['id'].' AND bid = '.$item['id']);
+            adv_bonus_check_debug('Нужно подождать '.$wait_count);
+            if(!$wait_count){
+                adv_bonus_times_save(array(
+                    'uid' => $user['id'],
+                    'bid' => $item['id'],
+                    'last' => time_current() + $item['wait'],
+                ));
+            }
+        }
+
+        $artikul_hash = array();
+        $artikuls = json_decode($item['artikuls'], true);
+        $t1 = array(); //Очистка содержимого.
+        if($artikuls){
+            foreach ($artikuls as $i=>$artikul) {
+                if(!$artikul['cnt']) continue;
+                $artikul['cnt'] = $artikul['cnt'] * $need_apply;
+
+                artifact_add($artikul['id'], $artikul['cnt'], $user['id']);
+                if ($item['flags'] & ADV_BONUS_FLAGS_LOGSERV) {
+                    logserv_log_operation(array(
+                        'artikul' => $artikul['id'],
+                        'cnt' => $artikul['cnt'],
+                        'comment' => sprintf(translate('ADV Бонус "%s"'), translate($item['title'], LOGSERV_DEFAULT_LANGUAGE)),
+                    ),$user);
+                }
+                $artikulf = cache_fetch($artikul_hash,$artikul['id'],'artifact_artikul_get');
+                if ($artikulf['flags'] & ARTIFACT_FLAG_HIDDEN) continue;
+                $text = '<a href="#" onClick="showArtifactInfo(false,'.$artikulf['id'].');return false;">'.$artikulf['title'].'</a>'.sprintf(translate(' <b>%d шт</b>'),abs($artikul['cnt']));
+                $t1[] = $text;
+            }
+        }
+
+        //Вывод сообщений в чат
+        $list1 = implode(', ',$t1);
+        $msg_text = $item['description'];
+        if($msg_text){
+            if (strpos($msg_text,'#LIST#') !== false) $msg_text = $list1 ? str_replace('#LIST#',$list1,$msg_text): '';
+            if (strpos($item['description'],'#LIST#') !== false && !$msg_text){
+                $msg_text = str_replace('#LIST#',"",$item['description']); //Если нету никакого текста после всего этого, просто выведем текст без ничего.
+            }
+            adv_bonus_check_debug('Сообщение в чат\r\n'.$msg_text);
+            chat_msg_send_system($msg_text,CHAT_CHF_USER,$user['id']);
+        }
+
+        //Только потом выдаем бонусы, знаю что не правильно, но куда деваться красота требует жертв.
+        if($item['bonus_id']){
+            for($i = 0; $i < $need_apply; $i++){
+                bonus_apply($user, $item['bonus_id']);
+            }
+        }
+
+        if($user_update_time_online){
+            chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user['id'], array('func' => 'time_bonus_update();'));
+        }
+
+        adv_bonus_check_debug('Сам бонус\r\n'.print_r($item,true));
+    }
+}
+
+function adv_bonus_cache_get($user = array(), $add = '', $update = false){
+    global $db_path;
+    if(!$user) return false;
+    $data = array();
+    $cache_bonus = new Cache(md5('ADV_BONUS_CACHE_SUPER_'.$user['level'].'_'.$user['rank'].'_'.$user['kind'].'_'.$user['gender'].'_'.$user['dominance'].'_'.($user['flags'] & USER_FLAG_ADMIN ? 'ADM' : '').$add));
+    if(!$cache_bonus->get() || $update) {
+        $rank = intval($user['rank']);
+        //Если есть господство, выбираем его!
+        if ($user['dominance'] && $user['dominance'] > $rank) $rank = intval($user['dominance']);
+        $query = 'SELECT tabl.* FROM ?#TABLE_ADV_BONUS_LIST tabl
+    LEFT JOIN ?#TABLE_ADV_BONUS_BLOCK AS tabb ON tabb.adv_bonus_id=tabl.id
+    LEFT JOIN ?#TABLE_ADV_BONUS_LAST AS bl ON bl.bid=tabl.id WHERE 1
+    AND tabb.id IS NULL AND (bl.last <= ' . time_current() . ' OR bl.uid IS NULL)';
+        $query .= ' AND (tabl.rank <= ' . $rank . ' OR tabl.rank = 0)';
+        $query .= ' AND (tabl.min_lvl <= ' . intval($user['level']) . ' OR tabl.min_lvl = 0)';
+        $query .= ' AND ((tabl.max_lvl >= ' . intval($user['level']) . ' OR tabl.max_lvl = 0) AND (tabl.min_lvl <= ' . intval($user['level']) . ' OR tabl.min_lvl = 0))';
+        $query .= ' AND (tabl.kind = ' . intval($user['kind']) . ' OR tabl.kind = 0)';
+        $query .= ' AND (tabl.gender = ' . intval($user['gender']) . ' OR tabl.gender = 0)'.$add;
+
+        $query .= (!($user['flags'] & USER_FLAG_ADMIN) ? ' AND !(tabl.flags & ' . ADV_BONUS_FLAGS_ADMIN . ') ' : '');
+
+        $db_path->db_GetQueryArray(sql_pholder($query), $data);
+        $cache_bonus->update($data, ADV_BONUS_CACHE_TTL);
+    }else{
+        $data = &$cache_bonus->get();
+    }
+    return $data;
+}

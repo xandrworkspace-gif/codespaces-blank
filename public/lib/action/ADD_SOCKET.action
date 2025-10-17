@@ -1,0 +1,60 @@
+<? # Игорь...
+
+// действие "+1 сокет"
+// Параметры:
+//	$in['artifact_id'] - артефакт на который нужно вставить сокет
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+
+if (!$artifact || $artifact['slot_id']) { // неверный или одетый предмет
+    $out['error'] = translate('Нужно выбрать предмет для добавления сокета!');
+    return;
+}
+
+if(!$artifact){
+    $out['error'] = 'Не выбран артефакт!';
+    return;
+}
+
+if($artifact['flags2'] & ARTIFACT_FLAG2_RUNEWORD) {
+    $out['error'] = 'Невозможно!';
+    return;
+}
+
+$socket = artifact_socket_get($artifact);
+
+if($socket['cnt'] >= 3){
+    $out['error'] = 'Максимальное кол-во сокетов!';
+    return;
+}
+
+$num_slot = $socket['cnt'] + 1; //Скажем первому слоту YES, временно!
+
+//СОКЕТ ПИКЕР ЛАЛАЛАЛЛАЯЯЯЫ
+$socket_picker = array(
+    'id' => $artifact['id'],
+    'rune'.$num_slot.'_id' => '0_0',
+);
+artifact_save($socket_picker);
+
+$out['status'] = ACTION_STATUS_OK;
+
+artifact_artikul_get_title($artifact, array($artifact_artikul['id'] => $artifact_artikul));
+// лог-сервис -----------------------
+logserv_log_action(array(
+    'action' => $action,
+    'comment' => sprintf(translate('Наложен сокет +1 на "%s"'),$artifact['title']),
+),$action_user);
+// ----------------------------------
+
+artifact_bag_send_diff($subject['id'], $artifact['id']);
+
+
+?>

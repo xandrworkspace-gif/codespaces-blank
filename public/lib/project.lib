@@ -1,0 +1,141 @@
+<? # $Id: project.lib,v 1.53 2010-01-15 09:50:10 p.knoblokh Exp $
+
+require_once("lib/fight.lib");
+require_once("lib/bg.lib");
+require_once("lib/instance.lib");
+require_once("lib/session.lib");
+require_once("lib/bonus.lib");
+
+define('PROJECT_LOCK_DUMMY_PATH', '/dummy.php');
+define('PROJECT_PING_DELAY', 3000);
+
+// Активация проекта
+function project_start() {
+	common_save_settings(array('PROJECT_STOPPED' => 0));
+}
+
+// Деактивация проекта
+function project_stop() {
+	global $NODE_NUMS;
+
+	common_save_settings(array('PROJECT_STOPPED' => 1));
+	foreach ($NODE_NUMS as $nn) {
+		NODE_SWITCH($nn);
+// Чистка всех сессий
+		session_truncate();
+// Завершение BG с ничьей
+		$bg_hash = make_hash(bg_list());
+		$instance_list = instance_list(array('parent_id' => 0, 'bg_active' => 1));
+		foreach ($instance_list as $instance) {
+			$bg_id = $instance['bg_id'];
+			$bg = &$bg_hash[$bg_id];
+			if (!$bg || !bg_lock($bg_id)) continue;
+
+			$instance_user_list = instance_user_list(array('instance_id' => $instance['id']));
+			
+			instance_save(array(
+				'id' => $instance['id'],
+				'bg_active' => 0,
+				'dtime' => time_current() + 300,
+				'flags' => $instance['flags'] | INST_FLAG_BGCLOSED,
+			));
+
+			foreach ($instance_user_list as $instance_user) {
+				instance_user_delete($instance_user['id']);
+				$user = user_get($instance_user['user_id']);
+				$user_auth = auth_get($instance_user['user_id']);
+				if (!$user || !$user_auth) continue;
+				bonus_apply($user,$bg['draw_bonus_id']);
+				if ($user_auth['server_id'] && ($user_auth['server_id'] != SERVER_ID)) {
+					require_once("lib/crossserver.lib");
+					crossserver_user_return($user_auth['uid']);
+				} else {
+					$user_param = array(
+						'id' => $user['id'],
+						'instance_id' => 0,
+						'raid_id' => 0,
+					);
+					
+					//user_change_chat_channels($user, $user_param);
+					user_save($user_param);
+				}
+			}
+			bg_unlock($bg_id);
+		}
+	}
+	return true;
+}
+
+// Редирект страницы на заглушку, если проект деактивирован
+function project_inactive_redirect() {
+	if (defined('PROJECT_STOPPED') && PROJECT_STOPPED) common_redirect(PROJECT_LOCK_DUMMY_PATH);
+}
+
+function project_current_redirect($redirect=false) {
+	global $current_site_domain, $current_site_base_domain, $SITE_CFG, $with_code;
+
+	if (!$SITE_CFG) return false;
+
+// Раздатчиком является любой сайт, не указанный в конфиге миров
+	if (!$SITE_CFG[$current_site_domain]) {
+// Если проставлена кука, то редиректим по куке
+		if ($_COOKIE['current_world_id'] && ($_COOKIE['current_world_id'] != $current_site_domain) && $SITE_CFG[$_COOKIE['current_world_id']]) {
+			common_redirect("http://".$_COOKIE['current_world_id'].$_SERVER['REQUEST_URI']);
+		// Редирект с рекламной страницы
+		} elseif ($redirect) {
+			$procent = rand(1,1000);
+			$part = 0;
+			foreach ($SITE_CFG as $domain => $site) {
+				$part += $site['part'];
+				if ($procent <= $part*1000) common_redirect("http://".$domain.$_SERVER['REQUEST_URI']);
+			}
+		// Если куки нет, то редиректим на первый свободный сайт
+		} elseif ((!$_COOKIE['current_world_id'])||(!$SITE_CFG[$_COOKIE['current_world_id']])) { // Новых на второй мир
+			foreach ($SITE_CFG as $domain => $site) {
+				if ($site['world'] == 4) {
+					return common_redirect("http://".$domain.$_SERVER['REQUEST_URI']);
+				}
+			}
+		}
+	}
+}
+
+function project_prepare_xml($sites) {
+	global $SITE_CFG;
+	$xml = "<world>";
+	foreach($sites as $domain => $site) {
+		$xml .= '<site domain="'.$domain.'" name="'.$SITE_CFG[$domain]['name'].'" yesterday="'.$site['yesterday'].'" total="'.$site['total'].'" is_active="'.(($site['total'] > $site['yesterday']) ? 1 : 0).'" is_on="'.($site ? 1 : 0).'" population="'.$site['population'].'" />'."\n";
+	}
+	return $xml."</world>";
+}
+
+function project_nick_check($nick) {
+	global $SITE_CFG, $current_site_domain;
+	if ($SITE_CFG) {
+		foreach ($SITE_CFG as $domain => $site) {
+			if ($current_site_domain == $domain) continue;
+			if (@file_get_contents(sprintf(translate('http://%s/pub/status.php?mode=user&host=%s'),$domain,urlencode($nick))) == '1') {
+				return true;
+			}
+		}
+	} elseif (@file_get_contents(sprintf(translate('http://%s/pub/status.php?mode=user&host=%s'),$current_site_domain,urlencode($nick))) == '1') {
+		return true;
+	}
+	return false;
+}
+
+function project_get_used_nicks($nick) {
+	global $SITE_CFG, $current_site_domain;
+	$unavailable_nicks = array();
+	if ($SITE_CFG) {
+		foreach ($SITE_CFG as $domain => $site) {
+			if ($current_site_domain == $domain) continue;
+			$nicks = @file_get_contents(sprintf(translate('http://%s/pub/status.php?mode=users&host=%s'),$domain,urlencode($nick)));
+			$nicks = explode(',', $nicks);
+			if (!$nicks) $nicks = array();
+			$unavailable_nicks = array_merge($unavailable_nicks, $nicks);
+		}
+	}
+	return $unavailable_nicks;
+}
+?>

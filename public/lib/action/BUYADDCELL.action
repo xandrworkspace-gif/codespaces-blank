@@ -1,0 +1,69 @@
+<?
+
+// действие "купить дополнительную ячейку"
+
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+
+
+// Находится ли в локации юзера банк?
+$area = area_get($subject['area_id']);
+
+if ($area['code'] != 'bank') {
+	$link_list = area_link_list($subject['area_id'],false,sql_pholder(" AND from_id=? AND active=1 AND (kind=0 OR bot_group_id>0 OR kind=?)", $subject['area_id'], $subject['kind']));
+	$link_ids = get_hash($link_list, 'to_id', 'to_id');
+	if ($link_ids) {
+		$same_area = area_get(false, sql_pholder(" AND code='bank' AND id IN(?@) ", $link_ids));
+		if ($same_area) {
+			$area = $same_area;
+		}
+	}
+}
+
+if ($area['code'] != 'bank') {
+	$out['error'] = translate('Покупать ячейки можно только в банке!');
+	return;
+}
+
+global $addcell_prices;
+if (!isset($in['price']) || !$addcell_prices[$in['price']]) {
+	$out['error'] = translate('Не задан срок аренды!');
+	return;
+}
+
+
+$cell = area_bank_cell_get(array('area_id' => $area['id'], 'user_id' => $subject['id']));
+if (!$cell) {
+	$out['error'] = translate('У вас нет ячейки в этом банке!');
+	return;
+}
+
+if ($addcell_prices[$in['price']]['cost'] > user_get_money_amount(MONEY_TYPE_GAME, $subject['id'])) {
+	$out['error'] = translate('У Вас недостаточно денег!');
+	return;
+}
+
+$operations = array(MONEY_STAT_OPERATION_LOST,MONEY_STAT_OPERATION_PURE_LOST);
+$status = user_make_payment(MONEY_TYPE_GAME, $subject['id'], -$addcell_prices[$in['price']]['cost'], sprintf(translate('Покупка дополнительной ячейки в банке. (AREA_ID=%d)'),$area['id']),false, $operations);
+
+if (!$status) {
+	$out['error'] = translate('Ошибка при оплате!');
+	return;
+}
+
+area_bank_addcell_save(array(
+	'area_id' => $area['id'],
+	'user_id' => $subject['id'],
+	'rtime'   => time_current()+$addcell_prices[$in['price']]['days']*86400,
+));
+
+logserv_log_operation(array(
+   'money_type' => MONEY_TYPE_GAME,
+   'amount' => -$addcell_prices[$in['price']]['cost'],
+   'comment' => sprintf(translate('Покупка дополнительной ячейки в банке за %s. (AREA_ID=%d)'), $addcell_prices[$in['price']]['cost'], $area['id']),
+), $subject['id']);
+
+metric_group_add(METRIC_TYPES_ADDCELL, array('level' => $subject['level'], 'price_type' => $in['price']), array('addcell_money' => $addcell_prices[$in['price']]['cost']));
+
+$out['status'] = ACTION_STATUS_OK;
+?>

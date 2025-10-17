@@ -1,0 +1,36 @@
+<? # $Id: SKIN_BODY.action,а сделал его Мишаня, йобаный в рот! TG: @Elempher
+
+// действие "Активировать скин"
+require_once("lib/user.lib");
+
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+$skin_object = artifact_artikul_get($object['artikul_id']);
+
+if ($object['param1'] < 1) {
+	 $out['error'] = translate('Не задан параметр №1! Обратитесь к техническому администратору!');
+    return;
+}
+if ($object['param2'] < 1) {
+	 $out['error'] = translate('Не задан параметр №2! Обратитесь к техническому администратору!');
+    return;
+}
+chat_msg_send_system('<b>Вы активировали предмет моды - <b style="color:#ec00ca;">'.$skin_object['title'].'</b>!</b>', CHAT_CHF_USER, $subject['id']);
+
+user_save(array(
+	'id' => $subject['id'],
+	'cfg_pbody' => $object['param1'],
+	'cfg_phead' => $object['param2'],
+));
+$out['status'] = ACTION_STATUS_OK;
+
+
+
+
+
+?>

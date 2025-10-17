@@ -1,0 +1,436 @@
+<?
+require_once("/home/admin/web/dwar.fun/public_html/lib/user.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/bonus.lib");
+
+define('ACTIVITY_LIST','activity');
+define('FIELD_ACTIVITY_LIST','');
+define('ACTIVITY_USER_LIST','activity_user');
+define('FIELD_ACTIVITY_USER_LIST','');
+define('ACTIVITY_CLAN_LIST','activity_clan');
+define('FIELD_ACTIVITY_CLAN_LIST','');
+define('ACTIVITY_TYPE_LIST','activity_type');
+define('FIELD_ACTIVITY_TYPE_LIST','');
+
+define('ACTIVITY_USER_RESET_LIST', 'activity_user_reset');
+
+define('ACTIVITY_FLAG_ADMIN', 0x0000001); //Виден только администраторам
+define('ACTIVITY_FLAG_ADMIN_USE', 0x0000002); //Может задействовать только администратор
+define('ACTIVITY_FLAG_DISABLED', 0x0000004); //Отключено
+
+define('ACTIVITY_STAT_BOT', 1); //Убийство ботов
+define('ACTIVITY_STAT_FARM', 2); //Добыто ресурсов
+define('ACTIVITY_STAT_BG', 3); //Участие в BG
+define('ACTIVITY_STAT_BG_WIN', 4); //Победы в BG
+/* define('ACTIVITY_STAT_WB', 4); //Участие в великих битвах
+define('ACTIVITY_STAT_LEGEND', 5); //Участие в легендарных битвах
+define('ACTIVITY_STAT_SKUPKA', 6); //Сдано в скупку вещей
+define('ACTIVITY_STAT_MARKET', 7); //Куплено на сумму в магазине */
+define('ACTIVITY_STAT_BONUS', 5);
+define('ACTIVITY_STAT_DUNGEON', 6);
+define('ACTIVITY_STAT_HUNT_ATTACK', 7);
+
+define('ACTIVITY_KIND_USER', 1);
+define('ACTIVITY_KIND_CLAN', 2);
+
+$activity_kind_hash = array(
+    ACTIVITY_KIND_USER => 'Пользовательская активность',
+    ACTIVITY_KIND_CLAN => 'Клановая активность',
+);
+
+$activity_stat_hash = array(
+    ACTIVITY_STAT_BOT => 'Убийство ботов',
+    ACTIVITY_STAT_FARM => 'Добыто ресурсов',
+    ACTIVITY_STAT_BG => 'Участие в BG',
+    ACTIVITY_STAT_BG_WIN => 'Победы в BG',
+    ACTIVITY_STAT_BONUS => 'По элементу бонуса',
+    ACTIVITY_STAT_DUNGEON => 'Подземелье/Рейды',
+    ACTIVITY_STAT_HUNT_ATTACK => 'Поиск охоты',
+    /* ACTIVITY_STAT_WB => 'Участие в великих битвах',
+    ACTIVITY_STAT_LEGEND => 'Участие в легендарных битвах',
+    ACTIVITY_STAT_SKUPKA => 'Сдано в скупку вещей',
+    ACTIVITY_STAT_MARKET => 'Куплено на сумму в магазине', */
+);
+
+$img_activity = "<span><img src='images/activity_temp_icon.png'></span>"; //Изображение :)
+$img_activity = "";
+$url_activity = "user_event.php?mode=activity";
+
+#Работа с базой данных активности
+
+/*
+title - название
+description - описание
+type - тип активности
+stat - тип статистики
+stat_id - отслеживаемый элемент статистики
+val1 - значение
+val2 - значение2
+lvl_min - минимальный уровень
+lvl_max - максимальный уровень
+active_time - время на активность
+money - награда в деньгах
+money_type - тип денег награды в деньгах
+artikul_id - тип награды в артефакте
+artikul_cnt - количество артефакта
+bonus_id - бонус награда
+*/
+
+function activity_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,ACTIVITY_LIST,$ref,$add);
+}
+
+function activity_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,ACTIVITY_LIST,$ref,$add);
+}
+
+function activity_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path,ACTIVITY_LIST,$ref,$add,true);
+}
+
+function activity_save($param) {
+    global $db_path;
+    return common_save($db_path,ACTIVITY_LIST,$param,FIELD_ACTIVITY_LIST);
+}
+
+function activity_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,ACTIVITY_LIST,$ref,$add);
+}
+
+#Работа с базой данных активности
+
+
+#Работа с базой данных активности пользователей
+
+function activity_user_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,ACTIVITY_USER_LIST,$ref,$add);
+}
+
+function activity_user_list($ref = false, $add='') {
+    global $db_path;
+    return common_list($db_path,ACTIVITY_USER_LIST,$ref,$add);
+}
+
+function activity_user_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path,ACTIVITY_USER_LIST,$ref,$add,true);
+}
+
+function activity_user_save($param) {
+    global $db_path;
+    return common_save($db_path,ACTIVITY_USER_LIST,$param,FIELD_ACTIVITY_USER_LIST);
+}
+
+function activity_user_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,ACTIVITY_USER_LIST,$ref,$add);
+}
+
+#Работа с базой данных активности пользователей
+
+#Работа с базой данных активности клана
+
+function activity_clan_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,ACTIVITY_CLAN_LIST,$ref,$add);
+}
+
+function activity_clan_list($ref = false, $add='') {
+    global $db_path;
+    return common_list($db_path,ACTIVITY_CLAN_LIST,$ref,$add);
+}
+
+function activity_clan_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path,ACTIVITY_CLAN_LIST,$ref,$add,true);
+}
+
+function activity_clan_save($param) {
+    global $db_path;
+    return common_save($db_path,ACTIVITY_CLAN_LIST,$param,FIELD_ACTIVITY_CLAN_LIST);
+}
+
+function activity_clan_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,ACTIVITY_CLAN_LIST,$ref,$add);
+}
+
+#Работа с базой данных активности клана
+
+#Работа с базой данных активности типов
+
+function activity_type_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,ACTIVITY_TYPE_LIST,$ref,$add);
+}
+
+function activity_type_list($add='') {
+    global $db_path;
+    return common_list($db_path,ACTIVITY_TYPE_LIST,false,$add);
+}
+
+function activity_type_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path,ACTIVITY_TYPE_LIST,$ref,$add,true);
+}
+
+function activity_type_save($param) {
+    global $db_path;
+    return common_save($db_path,ACTIVITY_TYPE_LIST,$param,FIELD_ACTIVITY_TYPE_LIST);
+}
+
+function activity_type_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,ACTIVITY_TYPE_LIST,$ref,$add);
+}
+
+//////////////////////////////////////////////
+
+function activity_user_reset_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,ACTIVITY_USER_RESET_LIST,$ref,$add);
+}
+
+function activity_user_reset_list($add='') {
+    global $db_path;
+    return common_list($db_path,ACTIVITY_USER_RESET_LIST,false,$add);
+}
+
+function activity_user_reset_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path,ACTIVITY_USER_RESET_LIST,$ref,$add,true);
+}
+
+function activity_user_reset_save($param) {
+    global $db_path;
+    return common_save($db_path,ACTIVITY_USER_RESET_LIST,$param);
+}
+
+function activity_user_reset_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,ACTIVITY_USER_RESET_LIST,$ref,$add);
+}
+
+//////////////////////////////////////////////
+
+#Работа с базой данных активности типов
+
+function activity_clan_check($activity_stat, $activity_stat_id = 0, $clan, $save_only = false, $val1 = 1, $val2 = 1){
+    activity_user_check($activity_stat, $activity_stat_id, $clan, $save_only, $val1, $val2, ACTIVITY_KIND_CLAN);
+}
+
+function activity_object_get($ref = false, $tkind = ACTIVITY_KIND_USER, $add = ''){
+    if($tkind == ACTIVITY_KIND_USER) return activity_user_get($ref, $add);
+    if($tkind == ACTIVITY_KIND_CLAN) return activity_clan_get($ref, $add);
+    return false;
+}
+
+function activity_object_list($ref = false, $tkind = ACTIVITY_KIND_USER, $add = ''){
+    if($tkind == ACTIVITY_KIND_USER) return activity_user_list($ref, $add);
+    if($tkind == ACTIVITY_KIND_CLAN) return activity_clan_list($ref, $add);
+    return false;
+}
+
+function activity_object_save($param = array(), $tkind = ACTIVITY_KIND_USER){
+    if($tkind == ACTIVITY_KIND_USER) return activity_user_save($param);
+    if($tkind == ACTIVITY_KIND_CLAN) return activity_clan_save($param);
+    return false;
+}
+
+function activity_object_delete($ref = array(), $tkind = ACTIVITY_KIND_USER, $add=''){
+    if($tkind == ACTIVITY_KIND_USER) return activity_user_delete($ref, $add);
+    if($tkind == ACTIVITY_KIND_CLAN) return activity_clan_delete($ref, $add);
+    return false;
+}
+
+#Работа с активностью
+function activity_user_check($activity_stat, $activity_stat_id = 0, $object = array(), $save_only = false, $val1 = 1, $val2 = 1, $tkind = ACTIVITY_KIND_USER, $_chat_user_id = false) {
+    global $img_activity,$quality_info,$url_activity;
+
+    $url_activity .= ($tkind == ACTIVITY_KIND_CLAN ? '&mode_activity=clan' : '');
+
+    $chat_user_id = ($_chat_user_id ? $_chat_user_id : $object['id']);
+    if($tkind == ACTIVITY_KIND_USER && $object['clan_id']) {
+        $clan = clan_get($object['clan_id']);
+        if($clan) activity_user_check($activity_stat, $activity_stat_id, $clan, $save_only, $val1, $val2, ACTIVITY_KIND_CLAN, $object['id']);
+    }
+
+    if($tkind == ACTIVITY_KIND_CLAN){
+        $leader_id = clan_leader_id_get($object['id']);
+        $chat_user_id = array($chat_user_id, $leader_id);
+    }
+
+    if (!$activity_stat) return false;
+    if (!$object || !$object['id']) return false;
+    if (!$activity_stat_id) $activity_stat_id = 0;
+    //if($session_user['id'] != 3969){return false;}
+    //Нам необходимо получить все активности по данной группе статистики
+    $add = "";
+    $lvl = $object['level'];
+    $add .= sql_pholder(' AND !(flags & ?#ACTIVITY_FLAG_DISABLED)');
+    $add .= " AND tkind = ".$tkind." AND (lvl_min <= ".$lvl." AND lvl_max >= ".$lvl." AND stat = ".$activity_stat;
+    $add .= " OR lvl_min = 0 AND lvl_max >= ".$lvl." AND stat = ".$activity_stat;
+    $add .= " OR lvl_min <= ".$lvl." AND lvl_max = 0 AND stat = ".$activity_stat;
+    $add .= " OR lvl_min = 0 AND lvl_max = 0 AND stat = ".$activity_stat.") ";
+    $add .= " AND (stat_id = 0 OR stat_id = ".$activity_stat_id.")";
+    $add .= " ORDER BY weight ASC";
+    $activity_list = activity_list(false, $add);
+    $activity_list_next_hash = make_hash($activity_list, 'next_id');
+    if (!$activity_list) return false;
+
+    //Нужно достать в пределах четкой последовательности.
+
+    //logfile(NODE_FILE_LOG, $activity_stat.' | '.$activity_stat_id.' | '.$val1.' | '.$val2);
+
+    if($activity_stat == ACTIVITY_STAT_BG || $activity_stat == ACTIVITY_STAT_BG_WIN){
+        #logfile(DEBUG_FILE_LOG_DEV, print_r($activity_list,true));
+    }
+
+    //Перебор активностей
+    foreach($activity_list as $activity){
+        if($tkind == ACTIVITY_KIND_USER) {
+            if (($activity['flags'] & ACTIVITY_FLAG_ADMIN_USE) && !($object['flags'] & USER_FLAG_ADMIN)) { continue; }
+        }
+        $activity_object = activity_object_get(array('object_id' => $object['id']), $tkind, sql_pholder(" AND activity_id=? AND stat=? AND stat_id=?",$activity['id'],$activity['stat'],$activity['stat_id']));
+
+        //Предворительные ласки
+        if(!$activity['stat_id']) $activity['stat_id'] = 0;
+
+        if($activity_object['complete']){continue;} //Предположим что мы работаем в цикле активностей и вдруг попалась уже активная
+        if (!$activity_object) {
+            //Если нету активности по данному элементу, то добавляем
+            if(($activity['val1'] && $val1) ||
+                ($activity['val2'] && $val2)
+            ){ //Обусловленная возможность добавления в базу данных
+                $save_activity = activity_object_save(array(
+                    '_noerr' => true,
+                    'object_id' => $object['id'],
+                    'activity_id' => $activity['id'],
+                    'stat' => $activity['stat'],
+                    'stat_id' => $activity['stat_id'],
+                    'remove_time' => $activity['active_time'] ? time_current() + $activity['active_time'] : 0,
+                    'remove_time_force' => $activity['sbros_time'] && $activity['active_time'] ? time_current() + $activity['sbros_time'] : 0,
+                ), $tkind);
+                //Обязаловка оказывается =(
+                $activity_object = activity_object_get($save_activity, $tkind);
+
+                //logfile(NODE_FILE_LOG, print_r($activity_object, true));
+                //logfile(NODE_FILE_LOG, print_r($save_activity, true));
+                //logfile(NODE_FILE_LOG, $chat_user_id);
+
+                if($save_activity && $activity_object){
+                    chat_msg_send_system($img_activity.'<b class=redd>Вы начали выполнять '.($tkind == ACTIVITY_KIND_CLAN ? '<b class=grnn>клановую</b>' : '').' активность</b> <b style="cursor:pointer;color:'.($activity['color'] ? $activity['color'] : '#8a4e11').';" onclick="top.frames[\'main_frame\'].frames[\'main\'].location.href = \''.$url_activity.'&group_id='.$activity['type'].'&activity_id='.$activity['id'].'\';">"'.$activity['title'].'"</b>',CHAT_CHF_USER,$chat_user_id);
+                }
+            }
+        }
+
+        if(!$activity_object) continue;
+
+        //Сохранение статистики по активности
+        if($activity['val1'] && $val1){
+            //Сохранение по value1
+            $ch = activity_object_save(array(
+                'id' => $activity_object['id'],
+                '_cnt' => true,
+                '_set' => "val1=val1+".$val1,
+                '_add' => sql_pholder(" AND activity_id=? AND object_id=? AND val1<=? AND stat=? AND stat_id=? AND (remove_time>? OR remove_time=0)",$activity['id'],$object['id'],$activity['val1'],$activity['stat'],$activity['stat_id'],time_current(),time_current()),
+            ), $tkind);
+            if($ch){
+                //chat_msg_send_system('<b>'.($tkind == ACTIVITY_KIND_CLAN ? '<b class=grnn>Активность клана</b>' : 'Ваша активность').'</b> <b style="cursor:pointer;color:'.($activity['color'] ? $activity['color'] : '#8a4e11').';" onclick="top.frames[\'main_frame\'].frames[\'main\'].location.href = \''.$url_activity.'&group_id='.$activity['type'].'&activity_id='.$activity['id'].'\';">"'.$activity['title'].'"</b> <b>Увеличена на '.$val1.'! Прогресс: '.(min($activity_object['val1'] + $val1,$activity['val1'])).'/'.$activity['val1'].'</b>',CHAT_CHF_USER,$chat_user_id);
+            }
+        }
+        if($activity['val2'] && $val2){
+            //Сохранение по value2
+            $ch = activity_object_save(array(
+                'id' => $activity_object['id'],
+                '_cnt' => true,
+                '_set' => "val2=val2+".$val2,
+                '_add' => sql_pholder(" AND activity_id=? AND object_id=? AND val2<=? AND stat=? AND stat_id=? AND (remove_time>? OR remove_time=0)",$activity['id'],$object['id'],$activity['val2'],$activity['stat'],$activity['stat_id'],time_current(),time_current()),
+            ), $tkind);
+            if($ch){
+                //chat_msg_send_system('<b>'.($tkind == ACTIVITY_KIND_CLAN ? '<b class=grnn>Активность клана</b>' : 'Ваша активность').'</b> <b style="cursor:pointer;color:'.($activity['color'] ? $activity['color'] : '#8a4e11').';" onclick="top.frames[\'main_frame\'].frames[\'main\'].location.href = \''.$url_activity.'&group_id='.$activity['type'].'&activity_id='.$activity['id'].'\';">"'.$activity['title'].'"</b> <b>Увеличена на '.$val2.'! Прогресс: '.(min($activity_object['val2'] + $val2, $activity['val2'])).'/'.$activity['val2'].'</b>',CHAT_CHF_USER,$chat_user_id);
+            }
+        }
+        //Глядим в будущее, возможностей xD
+        #complete = 1 - значит активность выполнена
+        if(($activity['val1'] ? ($activity_object['val1'] + $val1) >= $activity['val1'] : true) && ($activity['val2'] ? ($activity_object['val2'] + $val2) >= $activity['val2'] : true)){
+            //Если активность по значениям туды сюды xD, то закрываем статистику, обновляем и фигачим дальше
+            //$activity_user['val1'] = $activity['val1']; #FINISH
+            //$activity_user['val2'] = $activity['val2']; #FINISH
+            //$activity_user['complete'] = 1;
+            $s_param = array(
+                'id' => $activity_object['id'],
+                'val1' => $activity['val1'],
+                'val2' => $activity['val2'],
+                'complete' => 1,
+            );
+            $act = false;
+            if(!$activity['active_time'] && !$activity['sbros_time']){
+                //Текущая активность удаляется таким образом, что не влияет ни на что
+                $act = activity_object_delete($activity_object['id'], $tkind); #Удаляем
+            }elseif($activity['active_time'] && !$activity['sbros_time']){
+                //Текущая активность дейсвтует по принципу удалюсь когда скажут
+                $act = activity_object_save($s_param, $tkind);
+            }elseif(!$activity['active_time'] && $activity['sbros_time'] && !$activity['next_id']){
+                //Текущая активность дейсвтует по принципу удалюсь когда скажут
+                $remove_time_force = $activity['sbros_time'] + time_current();
+                $s_param['remove_time_force'] = $remove_time_force; //Для сброса потом
+
+                $prev_ids = array();
+                $c_activity = $activity;
+                for($i = 0; $i <= 10; $i++){
+                    $prev_activity = prev_activity_get($c_activity, $activity_list_next_hash);
+                    if(!$prev_activity) break;
+                    $c_activity = $prev_activity;
+                    $prev_ids[$prev_activity['id']] = $prev_activity['id'];
+                }
+
+                if($prev_ids) $prev_activity_user_list = activity_object_list(array('activity_id' => $prev_ids, 'object_id' => $object['id']), $tkind);
+                foreach ($prev_activity_user_list as $prev_activity_user){
+                    activity_object_save(array(
+                        'id' => $prev_activity_user['id'],
+                        'parent_id' => $activity_object['id'],
+                        'remove_time_force' => $remove_time_force,
+                    ), $tkind);
+                }
+
+                $act = activity_object_save($s_param, $tkind);
+            }else{
+                $act = activity_object_save($s_param, $tkind);
+            }
+            if($act){
+                //Только в этом случае выдаем награды (Почему не сделать получение в рюкзаке? Обусловлено временем (Долго))
+                chat_msg_send_system($img_activity.' <b class=redd>'.($tkind == ACTIVITY_KIND_CLAN ? '<b class=grnn>Ваш клан</b> завершил' : 'Вы завершили').' активность</b> <b style="cursor:pointer;color:'.($activity['color'] ? $activity['color'] : '#8a4e11').';" onclick="top.frames[\'main_frame\'].frames[\'main\'].location.href = \''.$url_activity.'&group_id='.$activity['type'].'&activity_id='.$activity['id'].'\';">"'.$activity['title'].'"</b> <b class=redd>Заберите награду!</b>',CHAT_CHF_USER,$chat_user_id);
+            }
+        }
+        if($activity['weight']){ //Если у активности есть вес, значит следующие нужно выполнять по цепочке
+            break; //Дальше не идем
+        }
+        unset($activity_object);
+    }
+}
+
+function prev_activity_get($activity, $activity_list_next_hash){
+    if(!$activity['id']) return false;
+    return $activity_list_next_hash[$activity['id']];
+}
+
+#Функция удаления недействительных активностей
+function activity_check_user(){
+    echo time_current();
+    $activity_list = activity_list(false, " AND active_time > 0 OR sbros_time > 0");
+    foreach($activity_list as $activity){
+        $add = "";
+        if($activity['active_time'] > 0){$add .= " AND remove_time != 0 AND remove_time < ".time_current();}
+        if($activity['sbros_time'] > 0){$add .= " AND remove_time_force != 0 AND remove_time_force < ".time_current();}
+        activity_object_delete(false, ACTIVITY_KIND_USER, " AND activity_id = ".$activity['id'].$add);
+        activity_object_delete(false, ACTIVITY_KIND_CLAN, " AND activity_id = ".$activity['id'].$add);
+    }
+
+    activity_user_reset_delete(false, sql_pholder(' AND dtime <= ?', time_current()));
+
+}

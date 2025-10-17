@@ -1,0 +1,715 @@
+<? # $Id: admin.lib,v 1.30 2010-01-15 09:50:10 p.knoblokh Exp $
+
+// Имена и поля таблиц
+define('TABLE_ADMIN_ACCESS','admin_access');
+define('FIELD_ADMIN_ACCESS','');
+define('TABLE_ADMIN_PROFILES','admin_profiles');
+define('FIELD_ADMIN_PROFILES','');
+
+define('FILTER_PAGE_SIZE',10);
+define('PAGE_LIST_SIZE',10);
+define('MAX_FILENAME_SIZE', 32);
+
+
+$admin_year_hash = admin_number_range(2006, date("Y")+2);
+$admin_month_hash = array(1 => translate('января'), translate('февраля'), translate('марта'), translate('апреля'), translate('мая'), translate('июня'), translate('июля'), translate('августа'), translate('сентября'), translate('октября'), translate('ноября'), translate('декабря'));
+$admin_day_hash = admin_number_range(1, 31, 1, 2);
+$admin_hour_hash = admin_number_range(0, 23, 1, 2);
+$admin_minute_hash = admin_number_range(0, 59, 1, 2);
+$admin_yes_no_hash = array(1 => translate('да'), 0 => translate('нет'));
+$admin_allow_deny_hash = array(1 => translate('разрешить'), 0 => translate('запретить'));
+$admin_page_size_hash = array(
+	FILTER_PAGE_SIZE => FILTER_PAGE_SIZE,
+	50 => '50',
+	100 => '100',
+	1000 => '1000',
+//	10000 => '10000',
+//	100000 => '100000',
+);
+
+
+function admin_message($msg, $bold = false) {
+	$html = "";
+	if ($bold) $msg = '<b>'.$msg.'</b>';
+	$html .= "<p><div class=\"error\">$msg</div></p>\n";
+	print $html;
+}
+
+function admin_submenu($submenu, $type=1, $div = true, $param = array()) {
+	global $admin_url;
+
+	$t = array();
+	if($div) $html = '<div class="submenubar">';
+	foreach ($submenu as $item) {
+		$tag = '<a href="';
+		$tag .= $item['url'] ? $item['url']: $admin_url;
+		if ($item['action']) $tag .= '&action='.$item['action'];
+		if ($item['param']) $tag .= '&'.$item['param'];
+		$tag .= '"';
+		if ($item['add']) $tag .= ' '.$item['add'];
+		$tag .= '>';
+		if ($type == 1) $tag .= '['.$item['title'].']';
+		elseif ($type == 2) $tag .= $item['title'];
+		$tag .= '</a>';
+		$t[] = $tag;
+	}
+	if ($type == 1) $html .= implode(($param['glue'] ? $param['glue'] : '&nbsp;'),$t);
+	elseif ($type == 2) $html .= implode("&nbsp;|&nbsp;",$t);
+    if($div) $html .= '</div>';
+	return $html;
+}
+
+function admin_mode($mode_list, $mode='', $type=1) {
+	global $admin_url;
+
+	$t = array();
+	$html = '<div class="modebar" nowrap>';
+	if ($type == 1) {
+		foreach ($mode_list as $item) {
+			if ($item['mode'] == $mode) $item['title'] = '<b>'.$item['title'].'</b>';
+			$t[] = '<a href="'.($item['url'] ? $item['url']: $admin_url).'&mode='.$item['mode'].($item['action'] ? '&action='.$item['action']: '').($item['param'] ? '&'.$item['param']: '').'"'.($item['alt'] ? ' title="'.$item['alt'].'"': '').($item['add'] ? ' '.$item['add']: '').'>'.$item['title'].'</a>';
+		}
+		$html .= implode('&nbsp;::&nbsp;',$t);
+	} elseif ($type == 2) {
+		foreach ($mode_list as $item) {
+			if ($item['mode'] == $mode) $item['title'] = '<b>'.$item['title'].'</b>';
+			$t[] = '- <a href="'.($item['url'] ? $item['url']: $admin_url).'&mode='.$item['mode'].($item['param'] ? '&'.$item['param']: '').'"'.($item['alt'] ? ' title="'.$item['alt'].'"': '').($item['add'] ? ' '.$item['add']: '').'>'.$item['title'].'</a><br>';
+		}
+		$html .= implode('',$t);
+	}
+	$html .= '</div>';
+	return $html;
+}
+
+function admin_filter_store($filter, $suffix='') {
+	global $admin_url;
+	
+	$filter_name = md5($admin_url).$suffix;
+	if ($filter) {
+        $clear_set = $filter['clear_set'];
+        unset($filter['clear_set']);
+		foreach ($filter as $k => $v) {
+			if (is_array($v)) {
+				// если вдруг попался массив, то, вероятно, это флаги
+				$assemble_flags = true;
+				foreach ($v as $key => $val) {
+					if (! is_numeric($val)) {
+						$assemble_flags = false;
+						break;
+					}
+				}
+				if ($assemble_flags) {
+					$filter[$k] = array_map('intval', $v);
+					$filter[$k] = admin_assemble_flags($filter[$k]);
+				}
+			} else {
+				$filter[$k] = trim($v);
+			}
+		}
+		push_params($_SESSION[$filter_name],$filter);
+		if ($filter['clear']) $_SESSION[$filter_name] = array();
+		if($clear_set) push_params($_SESSION[$filter_name],array_map("trim",$clear_set));
+	}
+}
+
+function admin_filter_get($suffix='') {
+	global $admin_url;
+
+	$filter_name = md5($admin_url).$suffix;
+	$filter = $_SESSION[$filter_name];
+	if (!$filter) $filter = array();
+	return $filter;
+}
+
+// $param:
+// 'admin_url' - ссылка вместо $admin_url
+// 'sizes' - массив размеров вместо $admin_page_size_hash
+function admin_page_list($page_count, $filter, $name='filter', $action=false, $param=false) {
+	global $admin_url, $admin_page_size_hash;
+
+	$prefix_url = ($param['admin_url'] ? $param['admin_url'] : $admin_url).($action ? '&action='.$action: '');
+	$html = "";
+	$page_start = floor($filter['page']/PAGE_LIST_SIZE)*PAGE_LIST_SIZE;
+	$page_end = min($page_start + PAGE_LIST_SIZE, $page_count);
+	if ($page_start > 0) {
+		$html .= '<a href="'.$prefix_url.'&'.$name.'[page]=0'.$param['add_p'].'">[1]</a>...';
+		$html .= '<a href="'.$prefix_url.'&'.$name.'[page]='.($page_start-1).''.$param['add_p'].'">[&laquo;]</a>';
+	}
+	for ($i=$page_start; $i<$page_end; $i++) {
+		$t = '['.($i+1).']';
+		if (intval($filter['page']) == $i) $t = '<b>'.$t.'</b>';
+		$html .= '<a href="'.$prefix_url.'&'.$name.'[page]='.$i.''.$param['add_p'].'">'.$t.'</a>';
+	}
+	if ($page_end < $page_count) {
+		$html .= '<a href="'.$prefix_url.'&'.$name.'[page]='.$page_end.''.$param['add_p'].'">[&raquo;]</a>';
+		$html .= '...<a href="'.$prefix_url.'&'.$name.'[page]='.($page_count-1).''.$param['add_p'].'">['.$page_count.']</a>';
+	}
+	$html .= "<br><br>\n";
+	$html .= sprintf(translate('По %s записей на странице'),html_select($name.'[page_size]',($param['sizes'] ? $param['sizes'] : $admin_page_size_hash),$filter['page_size'],false,"id='page_size' onChange=\"location.href='".addslashes($prefix_url)."&".$name."[page_size]='+document.getElementById('page_size').value + '".$param['add_p']."';\""))."\n";
+	return $html;
+}
+
+
+function admin_page_limit($current, $total, $onpage) {
+    $current = intval($current);
+    $total = intval($total);
+    $onpage = intval($onpage);
+    if ($current < 0) $current = 0;
+    if ($current > $total) $current = $total;
+    return sprintf(' LIMIT %d, %d', $current*$onpage, $onpage);
+}
+
+function admin_page_total($total_size=0, $page_count=0, $slice=0) {
+	$total_size = intval($total_size);
+	$page_count = intval($page_count);
+	$html = '<i>';
+	$html .= sprintf(translate('Всего записей: <b>%d</b>'),$total_size);
+	if ($page_count) $html .= ', '.sprintf(translate('страниц: <b>%d</b>'),$page_count);
+	if ($slice) $html .= ', '.sprintf(translate('Урезали до: <b>%d</b>'),$slice);
+	$html .= '</i>';
+	return $html;
+}
+
+function admin_filter_condition($filter, $field_equal='', $field_like='', $operation='AND', $field_flags='') {
+	$t = array();
+	$filter_equal = get_params($filter,$field_equal,true,true);
+	$filter_like = get_params($filter,$field_like,true,true);
+	$filter_flags = get_params($filter, $field_flags, true, true);
+	foreach ($filter_equal as $k=>$v) {
+		if (is_array($v) && $v[0] == 'IN' && count($v)>1) {
+			$vals = '"'.join(array_slice($v, 1), '","').'"';
+			$t[] = $k.' IN('.$vals.')';
+		} else if (is_array($v)) {
+			if ($v[0]) $t[] = $k.'>='.intval($v[0]);
+			if ($v[1]) $t[] = $k.'<='.intval($v[1]);
+		}
+		else {
+			$t[] = $k.'=\''.(PLACEHOLDER_NEED_ADDSLASHES ? addslashes($v): $v).'\'';
+		}
+	}
+	foreach ($filter_like as $k => $v)  $t[] = $k.' LIKE \'%'.(PLACEHOLDER_NEED_ADDSLASHES ? addslashes($v): $v).'%\'';
+	foreach ($filter_flags as $k => $v) $t[] = $k.' & '.$v;
+	return implode(' '.$operation.' ',$t);
+}
+
+// для указанных полей ищет их вхождение не в оригинальное значение поля, а в его перевод на применённый язык
+function admin_filter_translate_to_ids($filter, $fields, $db_obj, $table_name) {
+	if (!$filter || !$fields || !is_array($fields) || !$table_name) return false;
+
+	$offset = 0;
+	$size = 500;
+	$matched_ids = array();
+	// выкидываем поля, для которых не были переданы значения фильтра
+	foreach ($fields as $k => $v) {
+		if (!$filter[$v]) unset($fields[$k]);
+	}
+	if (!$fields) return false;
+	
+	$field_list = implode(',', array_merge(array('id'), $fields));
+	
+	while (true) {
+		$search_add = sprintf(' LIMIT %d, %d ', $offset, $size);
+		$rows = common_list($db_obj, $table_name, false, $search_add, $field_list);
+		if (!$rows) break;
+		$offset += count($rows);
+		
+		foreach ($fields as $field) {
+			$search_str = $filter[$field];
+			foreach ($rows as $row) {
+				if (!$row[$field]) continue;
+				if (mb_stripos($row[$field], $search_str) !== false) {
+					$matched_ids[$row['id']] = $row['id'];
+				}
+			}
+		}
+	}
+	return $matched_ids;
+}
+
+function admin_parse_id_filter($filter_str, $entity_name = 'id', $check_only = false) {
+	if (strval(intval($filter_str)) == $filter_str) return sql_pholder(' AND '.$entity_name.' = ?', $filter_str);
+
+	$filter_parts = explode(',', $filter_str);
+
+	$ids = array();
+	$ranges = array();
+	foreach ($filter_parts as $f) {
+		$str = trim($f);
+		if (strpos($str, '-') !== false) {
+			list($start, $end) = explode('-', $str, 2);
+			$start = intval($start);
+			$end = intval($end);
+
+			if ($start <= 0 || $end <= 0 || $start >= $end) return false;
+
+			$ranges[] = array('start' => $start, 'end' => $end);
+		} else {
+			$value = intval($str);
+
+			if ($value <= 0) return false;
+
+			$ids[] = $value;
+		}
+	}
+
+	if ($check_only) return true;
+
+	$res = '';
+	if (!empty($ids)) {
+		$ids = array_unique($ids);
+		sort($ids, SORT_NUMERIC);
+
+		$res .= sql_pholder((mb_strlen($res) > 0 ? ' OR ' : ' ').$entity_name.' IN (?@)', $ids);
+	}
+	if (!empty($ranges)) {
+		foreach ($ranges as $r) {
+			$res .= sql_pholder((mb_strlen($res) > 0 ? ' OR ' : ' ').$entity_name.' BETWEEN ? AND ?', $r['start'], $r['end']);
+		}
+	}
+
+	return ' AND ('.$res.')';
+}
+
+function admin_assemble_flags($flags=0) {
+	$ret = 0;
+	if (is_array($flags)) {
+		foreach ($flags as $v) $ret |= $v;
+	} else $ret = intval($flags);
+	return $ret;
+}
+
+function admin_file_hash($pattern) {
+	$file_list = glob($pattern);
+	$ret = array();
+	if (!$file_list) return $ret;
+	foreach ($file_list as $name) {
+		if (is_dir($name)) continue;
+		$name = basename($name);
+		$ret[$name] = $name;
+	}
+	ksort($ret);
+	return $ret;
+}
+
+function admin_number_range($from, $to, $step=1, $leading_zeros=0) {
+	$ret = array();
+	$format = $leading_zeros ? "%0".$leading_zeros."d": "%d";
+	for ($i=$from; $i<=$to; $i+=$step) $ret[$i] = sprintf($format,$i);
+	return $ret;
+}
+
+function admin_short_text($text, $len) {
+	if (mb_strlen($text) > $len) {
+		$text = mb_substr($text,0,$len);
+		$text = preg_replace('/\s+\S*$/','...',$text);
+	}
+	return $text;
+}
+
+// =======================================================================
+
+function admin_profile_dump() {
+	global $db_diff;
+	$admin_profiles = admin_profile_list();
+	if (!$admin_profiles) return false;
+	
+	$admin_access = common_list($db_diff,TABLE_ADMIN_ACCESS);
+	$tmp = array();
+	foreach ($admin_access as $aa) {
+		$tmp[$aa['profile_id']][] = array_values($aa);
+	}
+	$admin_access = $tmp;
+	
+	foreach ($admin_profiles as $k => $profile) {
+		$admin_profiles[$k]['__accesses'] = isset($admin_access[$profile['id']]) ? $admin_access[$profile['id']] : array();
+	}
+	
+	return $admin_profiles;
+}
+
+function admin_profile_dump_load($profile_data) {
+	admin_profile_truncate();
+	foreach ($profile_data as $profile) {
+		$accesses = $profile['__accesses'];
+		unset($profile['__accesses']);
+
+		$params = $profile;
+		$params['_mode'] = CSMODE_INSERT;
+		$res = admin_profile_save($params);
+		if (!$res) return false;
+		foreach ($accesses as $access) {
+			$params = array(
+				'id' => $access[0],
+				'profile_id' => $access[1],
+				'mod' => $access[2],
+				'section' => $access[3],
+				'access' => $access[4],
+			);
+			
+			$params['_mode'] = CSMODE_INSERT;
+			$res = admin_access_save($params);
+			if (!$res) return false;
+		}
+	}
+	
+	return true;
+}
+
+function admin_profile_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_ADMIN_PROFILES,$ref,$add);
+}
+
+function admin_profile_list($add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_ADMIN_PROFILES,false,$add);
+}
+
+function admin_profile_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_ADMIN_PROFILES, $ref, $add);
+}
+
+function admin_profile_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_ADMIN_PROFILES,$param,FIELD_ADMIN_PROFILES);
+}
+
+function admin_profile_delete($ref=false, $add='') {
+	global $db_diff;
+	common_delete($db_diff,TABLE_ADMIN_PROFILES,$ref,$add);
+	admin_access_delete(false,$ref);
+	return true;
+}
+
+function admin_profile_truncate() {
+	global $db_diff;
+	common_truncate($db_diff,TABLE_ADMIN_PROFILES);
+	common_truncate($db_diff,TABLE_ADMIN_ACCESS);
+	return true;
+}
+
+function admin_access_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_ADMIN_ACCESS,$ref,$add);
+}
+
+function admin_access_list($profile_id, $mod=null, $section=null, $add='') {
+	global $db_diff;
+	if (!$profile_id) return false;
+	$ref = array('profile_id' => $profile_id);
+	if (isset($mod)) $ref['mod'] = $mod;
+	if (isset($section)) $ref['section'] = $section;
+	return common_list($db_diff,TABLE_ADMIN_ACCESS,$ref,$add);
+}
+
+function admin_access_save($param) {
+	global $db_diff;
+	if (!$param['id'] && !$param['profile_id']) return false;
+	return common_save($db_diff,TABLE_ADMIN_ACCESS,$param,FIELD_ADMIN_ACCESS);
+}
+
+function admin_access_delete($ref=false, $profile_id=false, $add='') {
+	global $db_diff;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($profile_id) $ref['profile_id'] = $profile_id;
+	return common_delete($db_diff,TABLE_ADMIN_ACCESS,$ref,$add);
+}
+
+function admin_object_select($name, $type, $id, $field_id = false, $param = array()) {
+	global $quality_info, $admin_url, $mod;
+	if($type == 'file'){
+        $id = strval($id);
+    }else{
+        $id = intval($id);
+    }
+
+	$url = ($param['url'] ? $param['url'] : '').'?mod='.$mod.'&submod=object_select&full_screen=1&action='.$type.'&filter[page_size]='.FILTER_PAGE_SIZE;
+
+	if($type == 'file'){
+        $url = ($param['url'] ? $param['url'] : '').'?mod=object_select&full_screen=1&action='.$type.'&filter[page_size]='.FILTER_PAGE_SIZE;
+	    $url .= ($param['directory'] ? '&filter[directory]='.$param['directory'].'&df=1' : '');
+    }
+
+	$url_view = '?mod='.$type.'&action=edit&ref='.$id;
+	switch ($type) {
+		case 'artikul':
+			require_once("lib/artifact.lib");
+			$title = _artifact_artikul_title(artifact_artikul_get($id));
+			$url_view = '?mod=artifact_artikul&action=edit&ref='.$id;
+            $param['no_hidden'] = true;
+			break;
+		case 'user':
+			$user = user_get($id);
+			if ($user) $title = $user['nick'].'&nbsp;['.$user['level'].']';
+			break;
+		case 'bonus':
+			require_once("lib/bonus.lib");
+			$bonus = bonus_get($id);
+			if ($bonus) $title = $bonus['title'];
+            $param['no_hidden'] = true;
+			break;
+		case 'action':
+			require_once("lib/action.lib");
+			$action = action_get($id);
+			if ($action) $title = $action['title'];
+			break;
+		case 'bot_artikul':
+			require_once("lib/bot.lib");
+			$bot_artikul = bot_artikul_get($id);
+			if ($bot_artikul) $title = $bot_artikul['nick'].'&nbsp;['.$bot_artikul['level'].']';
+            $param['no_hidden'] = true;
+			break;
+		case 'pet_artikul':
+			require_once("lib/pet.lib");
+			$pet_artikul = pet_artikul_get($id);
+			if ($pet_artikul) $title = $pet_artikul['title'].'&nbsp;['.$pet_artikul['level'].']';
+			break;
+		case 'event_point':
+			require_once("lib/event.lib");
+			$event_point = event_point_get($id);
+			if ($event_point) $title = $event_point['title'];
+			break;
+        case 'farm':
+            require_once("lib/farm.lib");
+            $farm = farm_get($id);
+            if ($farm) $title = $farm['title'];
+            break;
+        case 'quest':
+            require_once("lib/quest.lib");
+            $quest = quest_get($id);
+            if ($farm) $title = $quest['title'];
+            break;
+        case 'bg':
+            require_once("lib/bg.lib");
+            $bg = bg_get($id);
+            if ($bg) $title = $bg['title'];
+            break;
+        case 'file':
+            $file = admin_file_hash($param['directory'].$id);
+            if($file) $title = $file[$id];
+            break;
+	}
+
+	$fld_id = ($field_id ? $field_id : $name);
+	if (!$title) $title = '[-]';
+	$str = $title.($id ? ' <a href="'.$url_view.'" target="_blank">{'.$id.'}</a>' : '');
+	$html .= ($param['no_hidden'] ? $name.' : ' : '').'<input '.(!$param['no_hidden'] ? 'type="hidden"' : '').' name="'.$name.'" id="'.$fld_id.'" value="'.$id.'">';
+	if(!$param['hide_edit']) {$html .= '<span id="'.$fld_id.'span">'.$str.'</span>&nbsp;&nbsp;';}else{
+        $html .= '<span id="'.$fld_id.'span">'.$title.'</span>&nbsp;&nbsp;';
+    }
+	$html .= '<a href="#" onClick="object_select(\''.$fld_id.'\',\''.$type.'\',\''.$url.'\'); open_select(\''.$url.'\'); return false;"'
+		.' title="'.translate('Выбрать').'">[&raquo;]</a>&nbsp;';
+	$html .= '<a href="#" onClick="clear_select(\''.$fld_id.'\',\''.$type.'\',\''.$url.'\'); return false;"'
+		.' title="'.translate('Очистить').'">[x]</a>';
+	return $html;
+}
+
+// Производит загрузку файлов на сервер
+// $file_hash = array('field_name1' => 'dir1', ...)
+// $result = array of errors
+function admin_upload_files($field_hash, &$form) {
+	$errors = array();
+
+	do {
+		if (!is_array($field_hash)) {
+			$errors[] = translate('Параметр задан неверно!');
+		}
+
+		if (!isset($_FILES['form'])) {
+			$errors[] = translate('Не задана форма!');
+		}
+
+		if ($errors) {
+			break;
+		}
+
+		$files_form = $_FILES['form'];
+
+		foreach ($field_hash as $field_name => $dir) {
+			$field_name_escaped = htmlspecialchars($field_name);
+
+            if(is_array($files_form['name'][$field_name])){
+                //TODO: Множественная многоножка xD загрузка файлов сделать)
+            }
+
+			// всяческие проверки
+			if (!isset($files_form['name'][$field_name]) || !isset($files_form['tmp_name'][$field_name])) {
+				$errors[] = sprintf(translate('Не корректное поле "%s"'), $field_name_escaped);
+				continue;
+			}
+
+			$file_name = $files_form['name'][$field_name];
+			$file_name_escaped = htmlspecialchars($file_name);
+
+			if (!$file_name) {
+				continue;
+			}
+
+			if (mb_strlen($file_name) > MAX_FILENAME_SIZE) {
+				$errors[] = sprintf(translate('Имя файла "%s" превышает %d символов'), $file_name_escaped, MAX_FILENAME_SIZE);
+				continue;
+			}
+
+			if (!preg_match('/^[\.A-Za-z0-9\-_\(\)\[\]\!]{1,}$/', $file_name)) {
+				$errors[] = sprintf(translate('Имя файла "%s" содержит недопустимые символы'), $file_name_escaped);
+				continue;
+			}
+
+			// пытаемся загрузить файл
+			if (!admin_move_uploaded_file($files_form['tmp_name'][$field_name], $dir.$file_name)) {
+				$errors[] = sprintf(translate('Файл "%s" не может быть загружен!'), $file_name_escaped);
+			} else {
+				// права доступа и сохранения имя файла в форму
+				chmod($dir.$file_name, 0644);
+				$form[$field_name] = $file_name;
+			}
+		}
+
+	} while (0);
+
+	if ($errors) {
+		admin_message(implode('<br />', $errors), true);
+		return false;
+	}
+
+	return true;
+}
+
+if (!function_exists('json_encode')) {
+  function json_encode($a=false) {
+    if (is_null($a)) return 'null';
+    if ($a === false) return 'false';
+    if ($a === true) return 'true';
+    if (is_scalar($a)) {
+        if (is_float($a)) {
+            return floatval(str_replace(",", ".", strval($a)));
+        }
+        if (is_string($a)) {
+            static $jsonReplaces = array(array("\\", "/", "\n", "\t", "\r", "\b", "\f", '"'), array('\\\\', '\\/', '\\n', '\\t', '\\r', '\\b', '\\f', '\"'));
+            return '"' . str_replace($jsonReplaces[0], $jsonReplaces[1], $a) . '"';
+        } else {
+            return $a;
+        }
+    }
+    $isList = true;
+    for ($i = 0, reset($a); $i < count($a); $i++, next($a)) {
+        if (key($a) !== $i) {
+            $isList = false;
+            break;
+        }
+    }
+    $result = array();
+    if ($isList) {
+        foreach ($a as $v) $result[] = json_encode($v);
+        return '[' . join(',', $result) . ']';
+    } else {
+        foreach ($a as $k => $v) $result[] = json_encode($k).':'.json_encode($v);
+        return '{' . join(',', $result) . '}';
+    }
+  }
+}
+
+function admin_move_uploaded_file($filename, $destination) {
+	$dir = dirname($destination);
+	if (!is_dir($dir)) {
+		mkdir($dir);
+		chmod($dir, 0644);
+	}
+	return move_uploaded_file($filename, $destination);
+}
+
+function user_chache_admin_get($user_id, $recache = false){
+	require_once("lib/user.lib");
+	$user_chacher = new Cache(md5('USER_CHACHE_ADMIN_UB'.md5($user_id)));
+	if (!$user_chacher->get() || $recache) {// Проверим кеш
+		$user = user_get($user_id,false,'',true);
+		$user_chacher->update($user,3600);
+		return $user;
+	}else{
+		return $user_chacher->get();
+	}
+}
+
+function admin_object_select_textarea($name = '', $form = array(), $params = array()){
+    ?>
+    <textarea id="<?=$name?>" name='form[<?=$name?>]' type="text" rows="<?=($params['rows'] ? $params['rows'] : 2)?>" cols="<?=($params['cols'] ? $params['cols'] : 70)?>"><?=$form[$name];?></textarea>
+    <a href="#" onclick="object_select('','artikul','?mod=rec&amp;mod_u=<?=$name?>&mod_r=true&amp;submod=object_select&amp;full_screen=1&amp;action=artikul&amp;filter[page_size]=10'); open_select('?mod=rec&amp;mod_u=<?=$name?>&mod_r=true&amp;submod=object_select&amp;full_screen=1&amp;action=artikul&amp;filter[page_size]=10'); return false;" title="Выбрать">[»]</a>
+    <div id="rec_id_<?=$name?>">
+        <?
+        $artifacts_list = json_decode(htmlspecialchars_decode($form[$name]),true);
+        foreach($artifacts_list as $artifact){
+            echo "<span id='rec_id_".$name."_".$artifact['id']."'>".$artifact['id']." : ".$artifact['cnt']." <a href='#' onclick=\"delete_rec(".$artifact['id'].",'".$name."'); return false;\">x</a></span><br>";
+        }?>
+    </div>
+    <?
+}
+
+function admin_user_get_online($update = false, $type = 1){
+    global $db;
+    $user_online = new Cache(md5('USER_CHACHE_ADMIN_ONLINE_TYPE_'.$type));
+    if (!$user_online->get() || $update) {// Проверим кеш
+        global $NODE_NUMS;
+        $cnt = 0;
+        foreach ($NODE_NUMS as $nn){
+            if($nn == FRIDGE_NN) continue;
+            NODE_SWITCH($nn);
+            switch ($type){
+                case 1:
+                    $cnt += session_count();
+                    break;
+                case 2:
+                    $cnt += common_count($db,TABLE_SESSIONS,false, sql_pholder(" AND stime>=?",(time_current()-300)),true);
+                    break;
+            }
+        }
+        $user_online->update($cnt,60);
+        return $cnt;
+    }else{
+        return $user_online->get();
+    }
+}
+
+function country_info_print($ip){
+    $html = '';
+    $info = geoip_record_by_name($ip);
+    if(!$info) return $html;
+    $c_code = strtolower($info['country_code']);
+
+    $html .= '<span title="'.$info['country_name'].'"><img border="0" align="absmiddle" src="/images/country/'.$c_code.'.png"> '.$info['city'].' <a target="_blank" href="https://www.google.ru/maps/search/'.$info['latitude'].' '.$info['longitude'].'">g</a></span>';
+    return $html;
+}
+
+/////////////////////////////////////////////////////////////////
+
+function admin_simple_input($simple_input = array()) {
+    static $_simple_input_id=0;
+    ?><div id="simple_input_<?=$_simple_input_id;?>"></div><?
+    ?><script>$(function() { SimpleInputs[<?=$_simple_input_id;?>] = (new SimpleInputCls(<?=json_encode($simple_input);?>, <?=$_simple_input_id++;?>)); });</script><?
+}
+
+function _admin_simple_input($simple_input = array()) {
+    static $_simple_input_id=0;
+    $simple_input['data'] = json_decode($simple_input['data'], true);
+    foreach ($simple_input['data'] as $item){
+        admin_simple_input_form($simple_input, $item);
+    }
+    ?><button class="simple_butt" onclick="return false;"><?=($simple_input['add_button_text'] ? $simple_input['add_button_text'] : 'добавить');?></button><?
+}
+function admin_simple_input_form($simple_input, $item) {
+    static $_simple_input_id=0;
+    ?><div id="simple_input_<?=$_simple_input_id;?>"><?
+    foreach ($simple_input['fields'] as $name=>$field) {
+        ?><?=$field['title'];?> <input <?=$field['add'];?> name="<?=$simple_input['form_name']?>[]" value="<?=($item[$field['field']] ? $item[$field['field']] : $field['default']);?>">&nbsp;<?
+    }
+    ?> <button class="simple_butt" onclick="return false;">удалить</button></div><?
+    $_simple_input_id++;
+}
+
+function admin_simple_input_assemble($arr) {
+    $_arr = array();
+    foreach ($arr as $item) $_arr[] = $item;
+    return $_arr;
+}
+
+?>

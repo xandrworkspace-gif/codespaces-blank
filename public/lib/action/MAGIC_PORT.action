@@ -1,0 +1,105 @@
+<?
+require_once("lib/area_teleport.lib");
+
+if (!in_array($subject['object_class'], array(OBJECT_CLASS_USER))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id'] || $subject['instance_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+$area_teleport_id = intval($in['ref']);
+$area_teleport = area_teleport_get(array('id' => $area_teleport_id, 'kind' => $subject['kind']));
+if(!$area_teleport) {
+    $out['error'] = translate('Невозможно!');
+    return;
+}
+$area = area_get($area_teleport['area_id']);
+if (!$area) {
+    $out['error'] = translate('Невозможно!');
+    return;
+}
+
+$info = area_teleport_info($subject, $area_teleport['id']);
+if($info['status'] != 100){
+    $out['error'] = translate($info['error']);
+    return;
+}
+
+$user_area = area_get($subject['area_id']);
+if ($user_area['code'] == 'arena') {	// выход из арены
+    require_once("lib/fight.lib");
+    $request_user = fight_request_user_get(false,$subject['id']);
+    if ($request_user) {
+        $out['error'] = translate('Вы не можете выйти, т.к. участвуете в заявке на бой!');
+        return;
+    }
+} elseif ($user_area['code'] == 'bg') {	// выход из комнаты заявок на БГ
+    $allow = true;
+    require_once("lib/bg.lib");
+    $bg = bg_get(array('t'.$subject['kind'].'_area_id' => $user_area['id']));
+    if ($bg['id']) {
+        $allow = false;
+        if ($bg['id'] && bg_lock($bg['id'], 1)) {
+            $bg_user = bg_user_get(array('user_id' => $subject['id'], 'status' => BG_USER_STATUS_PENDING));
+            if ($bg_user) $out['error'] = translate('Вы не можете выйти, т.к. подтвердили заявку на участие!');
+            else {
+                $user = user_get($subject['id']);
+                if (!$user['instance_id']) $allow = true;
+            }
+            bg_unlock($bg['id']);
+        }
+    }
+    require_once("lib/slaughter.lib");
+    $slaughter = slaughter_get(array('t'.$subject['kind'].'_area_id' => $user_area['id']));
+    if ($slaughter['id']) {
+        $allow = false;
+        if (slaughter_lock($slaughter['id'])) {
+            $slaughter_user = slaughter_user_get(array('user_id' => $subject['id'], 'status' => SLAUGHTER_USER_STATUS_PENDING));
+            if ($slaughter_user) $out['error'] = translate('Вы не можете выйти, т.к. подтвердили заявку на участие!');
+            else {
+                $user = user_get($subject['id']);
+                if (!$user['instance_id']) $allow = true;
+            }
+            slaughter_unlock($slaughter['id']);
+        }
+    }
+    if (!$allow) return;
+
+} elseif ($user_area['code'] == 'casino') {	// выход из казино
+    area_casino_exit($subject, array('exit_cas' => true));
+}
+
+$area_teleport_user = area_teleport_user_get(array('user_id' => $subject['id'], 'area_teleport_id' => $area_teleport['id']));
+if($area_teleport_user){
+    area_teleport_user_save(array(
+        'id' => $area_teleport_user['id'],
+        '_set' => sql_pholder(' ctime = ?, dtime = ?, cnt = cnt + 1', time_current(), mktime(23, 59, 59) + 1),
+    ));
+}else{
+    area_teleport_user_save(array(
+        'user_id' => $subject['id'],
+        'area_teleport_id' => $area_teleport['id'],
+        'ctime' => time_current(),
+        'dtime' => mktime(23, 59, 59) + 1,
+        'cnt' => 1,
+    ));
+}
+
+user_save(array(
+    'id' => $subject['id'],
+    'area_id' => $area_teleport['area_id'],
+    'area_ftime' => 0,
+    'instance_id' => 0,
+    'raid_id' => 0,
+    'trade_id' => $area['trade_id'],
+    'flags2' => $subject['flags2'] & ~USER_FLAG2_IN_ESTATE,
+));
+
+require_once("lib/global_event.lib");
+_global_event_trigger(GLOBAL_EVENT_TYPE_GO_LOCA, 1, $subject['id']);
+
+$subject['area_id'] = $area['id'];
+
+$out['status'] = ACTION_STATUS_OK;
+$out['param_success'] = array('url_close'=> 'area.php');
+
+chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $session_user['id'], array('func' => 'tProcessMenu("b06", {"force": true});'));

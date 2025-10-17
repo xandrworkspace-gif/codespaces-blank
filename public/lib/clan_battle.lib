@@ -1,0 +1,746 @@
+<?
+
+require_once("lib/clan.lib");
+require_once("lib/fight.lib");
+require_once("lib/clan_battle_season.lib");
+
+if (!defined('CLAN_BATTLE_MIN_COUNT')) define('CLAN_BATTLE_MIN_COUNT', 20);
+define('CLAN_BATTLE_TIME_TO_BUFF', 600);
+define('CLAN_BATTLE_TIME_TO_USE_RESERV', 180);
+
+define('CLAN_BATTLE_STAT_DEFAULT_MU', 1000);
+define('CLAN_BATTLE_STAT_DEFAULT_SIGMA', CLAN_BATTLE_STAT_DEFAULT_MU / 3);
+define('CLAN_BATTLE_STAT_MAX_PROVISION', CLAN_BATTLE_STAT_DEFAULT_MU / 5);
+
+define('CLAN_BATTLE_USER_CONFIRM_TIME', 15*60); // Время для членов клана для подтверждения участия в КБ.
+
+define('CLAN_BATTLE_MAX_RESERV', 0.2); // Максимальный размер резерва от общего числа игроков
+
+// Имена и поля таблиц
+define('TABLE_CLAN_BATTLES','clan_battles');
+define('FIELD_CLAN_BATTLES','');
+define('TABLE_CLAN_BATTLE_USERS','clan_battle_users');
+define('FIELD_CLAN_BATTLE_USERS','');
+define('TABLE_CLAN_BATTLE_ROOMS','clan_battle_rooms');
+define('FIELD_CLAN_BATTLE_ROOMS','');
+define('TABLE_CLAN_BATTLE_REQUESTS','clan_battle_requests');
+define('FIELD_CLAN_BATTLE_REQUESTS','');
+define('TABLE_CLAN_BATTLE_USER_REQUESTS','clan_battle_user_requests');
+define('FIELD_CLAN_BATTLE_USER_REQUESTS','');
+
+define('CLAN_BATTLE_STATUS_SCHEDULED', 0);
+define('CLAN_BATTLE_STATUS_PREPARATION', 1);
+define('CLAN_BATTLE_STATUS_RUNNING', 2);
+define('CLAN_BATTLE_STATUS_FINISHED', 3);
+define('CLAN_BATTLE_STATUS_FAILED', 4);
+
+define('CLAN_BATTLE_WINNER_NA', 0);
+define('CLAN_BATTLE_WINNER_FIRST', 1);
+define('CLAN_BATTLE_WINNER_SECOND', 2);
+
+define('CLAN_BATTLE_FLAG_RESERV_DISPATCHED_1', 0x0001);
+define('CLAN_BATTLE_FLAG_RESERV_DISPATCHED_2', 0x0002);
+define('CLAN_BATTLE_FLAG_READY_TEAM_1', 0x0004);
+define('CLAN_BATTLE_FLAG_READY_TEAM_2', 0x0008);
+
+define('CLAN_BATTLE_REQUEST_FLAG_LOCKED', 0x0001);
+define('CLAN_BATTLE_REQUEST_FLAG_SPAMED', 0x0002);
+
+global $clan_battle_rooms_hash;
+$clan_battle_rooms_hash = array(
+	1 => array('id' => 1, 'title' => translate('Серый остров')),
+	2 => array('id' => 2, 'title' => translate('Зеленый остров')),
+	3 => array('id' => 3, 'title' => translate('Золотой остров')),
+    /*4 => array('id' => 4, 'title' => translate('Красный остров')),
+    5 => array('id' => 5, 'title' => translate('Синий остров'))*/
+);
+
+function clan_battle_log($message) {
+	logfile(SERVER_ROOT.PATH_LOGS.'clan_battle.log', $message);
+}
+
+function clan_battle_finish($clan_battle, $winner = false) {
+	global $db_3;
+
+	$clan_battle['status'] = $winner ? CLAN_BATTLE_STATUS_FINISHED : CLAN_BATTLE_STATUS_FAILED;
+	$clan_battle['winner'] = $winner ? $winner : 0;
+	$clan_battle['ftime'] = time_current();
+	
+	clan_battle_save($clan_battle, sql_pholder(' AND server_id = ?', SERVER_ID));
+	
+	if ($clan_battle['first_clan_server_id'] != SERVER_ID) crossserver_clan_battle_delete(array('id' => $clan_battle['id'], 'server_id' => SERVER_ID), $clan_battle['first_clan_server_id']);
+	if ($clan_battle['second_clan_server_id'] != SERVER_ID) crossserver_clan_battle_delete(array('id' => $clan_battle['id'], 'server_id' => SERVER_ID), $clan_battle['second_clan_server_id']);
+	
+	clan_battle_log(sprintf('Clan battle [%d] finished. Winner clan: [%s], status: %s', $clan_battle['id'], $winner ? ($winner == 1 ? $clan_battle['first_clan_id'].'@'.$clan_battle['first_clan_server_id'] : $clan_battle['second_clan_id'].'@'.$clan_battle['second_clan_server_id']) : 'NONE', $clan_battle['status'] == CLAN_BATTLE_STATUS_FINISHED ? 'FINISHED' : 'FAILED'));
+	
+	if ($winner) {
+		clan_battle_process_winner($clan_battle);
+	} elseif (defined('CLAN_BATTLE_NO_WINNER_BONUS') && CLAN_BATTLE_NO_WINNER_BONUS) {
+
+        clan_stock_add_artikul($clan_battle['first_clan_id'], CLAN_ZSHETON_OPORY_ID, 20);
+        clan_stock_add_artikul($clan_battle['second_clan_id'], CLAN_ZSHETON_OPORY_ID, 20);
+
+		$user_ids = get_hash(clan_battle_user_list(array('clan_battle_id' => $clan_battle['id'])), 'user_id', 'user_id');
+		$users = $user_ids ? make_hash(user_list(array('id' => $user_ids))) : array();
+		foreach($user_ids as $user_id) {
+			$user = isset($users[$user_id]) ? $users[$user_id] : false;
+			if (!$user) continue;
+			NODE_SWITCH(null, $user['id']);
+			bonus_apply($user, CLAN_BATTLE_NO_WINNER_BONUS);
+		}
+	}
+}
+
+function clan_battle_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_BATTLES,$ref,$add);
+}
+
+function clan_battle_list($ref=false, $add='', $fields='*') {
+	global $db_2;
+	return common_list($db_2, TABLE_CLAN_BATTLES, $ref, $add, $fields);
+}
+
+function clan_battle_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CLAN_BATTLES, $ref, $add);
+}
+
+function clan_battle_save($param,$add='') {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_BATTLES,$param,FIELD_CLAN_BATTLES,'id',$add);
+}
+
+function clan_battle_delete($ref, $add='') {
+	global $db_2;
+	$clan_battle = clan_battle_get($ref, $add);
+	if (!$clan_battle) return false;
+	
+	$delete_user_request_clan_ids = array();
+	if ($clan_battle['first_clan_server_id'] == SERVER_ID) $delete_user_request_clan_ids[] = $clan_battle['first_clan_id'];
+	if ($clan_battle['second_clan_server_id'] == SERVER_ID) $delete_user_request_clan_ids[] = $clan_battle['second_clan_id'];
+	
+	clan_battle_user_request_delete(array('clan_id' => $delete_user_request_clan_ids));
+	
+	common_delete($db_2,TABLE_CLAN_BATTLES,false,sql_pholder(' AND id = ? AND server_id = ?', $clan_battle['id'], $clan_battle['server_id']));
+	if ($clan_battle['server_id'] == SERVER_ID) {
+		clan_battle_user_delete(false, sql_pholder(' AND clan_battle_id = ?', $clan_battle['id']));
+		clan_battle_room_delete(false, sql_pholder(' AND clan_battle_id = ?', $clan_battle['id']));
+	}
+	
+	if ($clan_battle['instance_id'] && ($clan_battle['server_id'] == SERVER_ID)) {
+		$users = user_list(array('instance_id' => $clan_battle['instance_id']));
+		if ($users) {
+			foreach ($users as $user) {
+				user_save(array(
+					'id' => $user['id'],
+					'instance_id' => 0,
+					'raid_id' => 0,
+				));
+				if ($user['flags'] & USER_FLAG_CSERVER_GUEST) crossserver_user_return($user['id']);
+			}
+		}
+	}
+	
+	return true;
+}
+
+function clan_battle_is_active() {
+	require_once("lib/crossserver.lib");
+	
+	$cnt = clan_battle_count(false, sql_pholder(' AND status <= ? AND server_id = ?', CLAN_BATTLE_STATUS_RUNNING, SERVER_ID));
+	if ($cnt > 0) return true;
+	
+	foreach (common_get_servers('CB') as $srv_id => $srv) {
+		if ($srv['id'] == SERVER_ID) continue;
+		
+		$cnt = crossserver_clan_battle_count($srv_id, false, sql_pholder(' AND status <= ? AND server_id = ?', CLAN_BATTLE_STATUS_RUNNING, $srv_id));
+		if ($cnt > 0) return true;
+	}
+	
+	return false;
+}
+
+function clan_battle_request_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_BATTLE_REQUESTS,$ref,$add);
+}
+
+function clan_battle_request_list($ref=false, $add='', $fields='*') {
+	global $db_2;
+	return common_list($db_2, TABLE_CLAN_BATTLE_REQUESTS, $ref, $add, $fields);
+}
+
+function clan_battle_request_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CLAN_BATTLE_REQUESTS, $ref, $add);
+}
+
+function clan_battle_request_save($param,$add='') {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_BATTLE_REQUESTS,$param,FIELD_CLAN_BATTLE_REQUESTS,'id',$add);
+}
+
+function clan_battle_request_delete($ref,$add='') {
+	global $db_2;
+	common_delete($db_2,TABLE_CLAN_BATTLE_REQUESTS,$ref,$add);
+	return true;
+}
+
+
+
+
+
+
+
+function clan_battle_user_request_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_BATTLE_USER_REQUESTS,$ref,$add,'user_id');
+}
+
+function clan_battle_user_request_list($ref=false, $add='', $fields='*') {
+	global $db_2;
+	return common_list($db_2, TABLE_CLAN_BATTLE_USER_REQUESTS, $ref, $add, $fields);
+}
+
+function clan_battle_user_request_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CLAN_BATTLE_USER_REQUESTS, $ref, $add);
+}
+
+function clan_battle_user_request_save($param,$add='') {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_BATTLE_USER_REQUESTS,$param,FIELD_CLAN_BATTLE_USER_REQUESTS,'user_id',$add);
+}
+
+function clan_battle_user_request_delete($ref,$add='') {
+	global $db_2;
+	common_delete($db_2,TABLE_CLAN_BATTLE_USER_REQUESTS,$ref,$add,'user_id');
+	return true;
+}
+
+
+
+
+
+function clan_battle_process_winner($clan_battle, $room = false) {
+	global $clan_battle_rooms_hash;
+	$room = intval($room);
+	$status = false;
+	$other_server_bonuses = array();
+	do {
+		$params = array('clan_battle_id' => $clan_battle['id']);
+		if ($room > 0) {
+			$params['room'] = $room;
+			$clan_battle_room = clan_battle_room_get($params);
+			if (!$clan_battle_room || !$clan_battle_room['winner_clan_num']) break;
+			$winner_num = $clan_battle_room['winner_clan_num'];
+		} else {
+			$winner_num = $clan_battle['winner'];
+			if (!$winner_num) return false;
+		}
+
+		$clan_user_ids = get_hash_grp(clan_battle_user_list($params), 'clan_num', 'user_id', 'user_id');
+		if (!isset($clan_user_ids[1])) $clan_user_ids[1] = array();
+		if (!isset($clan_user_ids[2])) $clan_user_ids[2] = array();
+		$user_ids = array_merge($clan_user_ids[1], $clan_user_ids[2]);
+		$users = $user_ids ? make_hash(user_list(array('id' => $user_ids))) : array();
+		$auths = $user_ids ? make_hash(auth_list('', array('uid' => $user_ids)), 'uid') : array();
+		foreach ($clan_user_ids as $clan_num => $user_ids) {
+			$bonus_id = $clan_num == $winner_num ? constant('CLAN_BATTLE'.($room > 0 ? '_ROOM' : '').'_WIN_BONUS') : constant('CLAN_BATTLE'.($room > 0 ? '_ROOM' : '').'_LOOSE_BONUS');
+			if ($clan_battle_room) {
+				$msg = $clan_num == $winner_num ? translate('Вы захватили %s!') : translate('Вы проиграли битву за %s!');
+				chat_msg_send_system(sprintf($msg, $clan_battle_rooms_hash[$room]['title']), CHAT_CHF_RAID, array('raid_id' => $clan_battle['instance_id'].$clan_num));
+			} else {
+				$msg = $clan_num == $winner_num ? translate('Вы победили в клановой битве!') : translate('Вы проиграли клановую битву!');
+				chat_msg_send_system($msg, CHAT_CHF_RAID, array('raid_id' => $clan_battle['instance_id'].$clan_num));
+			}
+			
+			if ($bonus_id <= 0) continue;
+			foreach($user_ids as $user_id) {
+				$auth = isset($auths[$user_id]) ? $auths[$user_id] : false;
+				if (!$auth) continue;
+				if ($auth['current_server_id'] == SERVER_ID) {
+					$user = isset($users[$user_id]) ? $users[$user_id] : false;
+					if (!$user) continue;
+					NODE_SWITCH(null, $user['id']);
+					bonus_apply($user, $bonus_id);
+				}
+			}
+		}
+	} while(0);
+	
+	if ($room <= 0) {
+		$clans = array(
+			1 => array(
+				'id' => $clan_battle['first_clan_id'],
+				'server_id' => $clan_battle['first_clan_server_id'],
+				'rating' => $clan_battle['first_clan_server_id'] == SERVER_ID ? clan_battle_rating_get($clan_battle['first_clan_id']) : crossserver_clan_battle_rating_get($clan_battle['first_clan_server_id'], $clan_battle['first_clan_id'])
+			),
+			2 => array(
+				'id' => $clan_battle['second_clan_id'],
+				'server_id' => $clan_battle['second_clan_server_id'],
+				'rating' => $clan_battle['second_clan_server_id'] == SERVER_ID ? clan_battle_rating_get($clan_battle['second_clan_id']) : crossserver_clan_battle_rating_get($clan_battle['second_clan_server_id'], $clan_battle['second_clan_id'])
+			)
+		);
+		
+		$winner_clan = $clans[$winner_num];
+		$looser_clan = $clans[$winner_num%2 + 1];
+
+        if($winner_clan['id']){
+            clan_stock_add_artikul($winner_clan['id'], CLAN_ZSHETON_OPORY_ID, 25);
+        }
+        if($looser_clan['id']){
+            clan_stock_add_artikul($looser_clan['id'], CLAN_ZSHETON_OPORY_ID, 15);
+        }
+
+		$b = CLAN_BATTLE_STAT_DEFAULT_SIGMA/1.5;
+		$t = CLAN_BATTLE_STAT_DEFAULT_SIGMA/100;
+		
+		$s_winner = $winner_clan['rating']['s'] + $t;
+		$s_looser = $looser_clan['rating']['s'] + $t;
+		
+		$s_winner2 = $s_winner*$s_winner;
+		$s_looser2 = $s_looser*$s_looser;
+		
+		$c2 = 2*$b*$b + $s_winner2 + $s_looser2;
+		$c = sqrt($c2);
+		
+		$u_diff_c_v = clan_battle_v(($winner_clan['rating']['u'] - $looser_clan['rating']['u'])/$c);
+		$u_diff_c_w = clan_battle_w(($winner_clan['rating']['u'] - $looser_clan['rating']['u'])/$c);
+		$u_winner_diff = ($s_winner2/$c) * $u_diff_c_v;
+		$u_looser_diff = -1 * ($s_looser2/$c) * $u_diff_c_v;
+		
+		$s_winner_appl = sqrt(1 - ($s_winner2/$c2) * $u_diff_c_w);
+		$s_looser_appl = sqrt(1 - ($s_looser2/$c2) * $u_diff_c_w);
+		
+		// актуализируем множитель так, чтобы аддитивный модификатор $t попал в итоговый апдейт рейтинга
+		// очевидно, если $t == 0, то это - тождественное преобразование
+		$s_winner_appl = $s_winner * $s_winner_appl / $winner_clan['rating']['s'];
+		$s_looser_appl = $s_looser * $s_looser_appl / $looser_clan['rating']['s'];
+		
+		if ($winner_clan['server_id'] == SERVER_ID) $diff_winner = clan_battle_apply_rating($winner_clan['id'], $u_winner_diff, $s_winner_appl, $clan_battle['server_id'], $clan_battle['id']);
+		else $diff_winner = crossserver_clan_battle_apply_rating($winner_clan['server_id'], $winner_clan['id'], $u_winner_diff, $s_winner_appl, $clan_battle['server_id'], $clan_battle['id']);
+		
+		if ($looser_clan['server_id'] == SERVER_ID) $diff_looser = clan_battle_apply_rating($looser_clan['id'], $u_looser_diff, $s_looser_appl, $clan_battle['server_id'], $clan_battle['id']);
+		else $diff_looser = crossserver_clan_battle_apply_rating($looser_clan['server_id'], $looser_clan['id'], $u_looser_diff, $s_looser_appl, $clan_battle['server_id'], $clan_battle['id']);
+		
+		$params = array(
+			'id' => $clan_battle['id'],
+			($winner_num == 1 ? 'first' : 'second').'_clan_rating_diff' => $diff_winner,
+			($winner_num == 2 ? 'first' : 'second').'_clan_rating_diff' => $diff_looser
+		);
+		
+		clan_battle_save($params, sql_pholder(' AND server_id = ?', SERVER_ID));
+		
+		chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,get_hash($users, 'id', 'id'),array('func' => sprintf("top.frames['main_frame'].frames['main'].location.href='clan_battle_info.php?clan_battle_id=%d&server_id=%d&inner=1'", $clan_battle['id'], SERVER_ID)));
+	}
+
+	return $status;
+}
+
+function clan_battle_calc_decay($inactivity_time) {
+	if (!(int)$inactivity_time) return array('u' => 0, 's' => 0);
+	
+	$u_delay   = 60 * 60 * 24 * 14; // первые две недели не трогает среднее значение
+	$u_per_day = CLAN_BATTLE_STAT_DEFAULT_MU / 85;
+	$s_delay   = 60 * 60 * 24 * 7; // первую неделю штрафы не выдаются
+	$s_per_day = CLAN_BATTLE_STAT_DEFAULT_SIGMA / 33;
+	
+	$u_time = max($inactivity_time - $u_delay, 0);
+	$s_time = max($inactivity_time - $s_delay, 0);
+
+	$u_add = ($u_time / (60 * 60 * 24)) * $u_per_day;
+	$s_add = ($s_time / (60 * 60 * 24)) * $s_per_day;
+	
+	return array('u' => $u_add, 's' => $s_add);
+}
+
+function clan_battle_apply_decay($season_clan) {
+	if ($season_clan['server_id'] == SERVER_ID) $rating = clan_battle_rating_get($season_clan['clan_id']);
+	else $rating = crossserver_clan_battle_rating_get($season_clan['server_id'], $season_clan['clan_id']);
+	
+	if (clan_battle_displayed_rating($rating) <= 0) return 0;
+	if (!$season_clan['last_clan_battle']) return 0;
+	
+	$decay = clan_battle_calc_decay(time_current() - $season_clan['last_clan_battle']);
+	if ($season_clan['last_decay'] > $season_clan['last_clan_battle']) {
+		$decay_old = clan_battle_calc_decay($season_clan['last_decay'] - $season_clan['last_clan_battle']);
+		$decay['u'] -= $decay_old['u'];
+		$decay['s'] -= $decay_old['s'];
+	}
+	
+	$u_new = $rating['u'] - $decay['u'];
+	$s_new = $rating['s'] + $decay['s'];
+	
+	$u_add = $u_new - $rating['u'];
+	$s_mul = $s_new / $rating['s'];
+	
+	clan_battle_log(sprintf('Applying decay: clan_id = %d, server_id = %d, u_add = %d, s_mul = %.2f', $season_clan['clan_id'], $season_clan['server_id'], $u_add, $s_mul));
+	if ((!$u_add && $s_mul == 1) || (defined('CLAN_BATTLE_SEASON_DECAY_DRY_RUN') && CLAN_BATTLE_SEASON_DECAY_DRY_RUN)) return 0;
+
+	if ($season_clan['server_id'] == SERVER_ID) $skill_diff = clan_battle_apply_rating($season_clan['clan_id'], $u_add, $s_mul);
+	else $skill_diff = crossserver_clan_battle_apply_rating($season_clan['server_id'], $season_clan['clan_id'], $u_add, $s_mul);
+	
+	return $skill_diff;
+}
+
+function clan_battle_displayed_rating($rating) {
+	return max(0, $rating['u'] - 3 * $rating['s']);
+}
+
+function clan_battle_apply_rating($clan_id, $u_diff, $s_appl, $clan_battle_server_id=false, $clan_battle_id=false) {
+	require_once('lib/clan_info.lib');
+	$rating = clan_battle_rating_get($clan_id);
+	
+	$current_show_stat = clan_battle_displayed_rating($rating);
+	
+	$rating['u'] += $u_diff;
+	$s_th = min($rating['s'], 60);
+	$rating['s'] *= $s_appl;
+	if ($rating['s'] < $s_th) $rating['s'] = $s_th;
+	
+	clan_stat_save(array(
+		'_add' => sql_pholder(' AND clan_id = ? AND clan_stat_artikul_id = ?', $clan_id, CLAN_BATTLE_STAT_MU),
+		'_set' => sql_pholder('total_value = ?, clan_value = ?', $rating['u'], $rating['u'])
+	));
+	clan_stat_save(array(
+		'_add' => sql_pholder(' AND clan_id = ? AND clan_stat_artikul_id = ?', $clan_id, CLAN_BATTLE_STAT_SIGMA),
+		'_set' => sql_pholder('total_value = ?, clan_value = ?', $rating['s'], $rating['s'])
+	));
+	
+	$show_stat = clan_battle_displayed_rating($rating);
+	clan_stat_save(array(
+		'_add' => sql_pholder(' AND clan_id = ? AND clan_stat_artikul_id = ?', $clan_id, CLAN_BATTLE_STAT_SHOW),
+		'_set' => sql_pholder('total_value = ?, clan_value = ?', $show_stat, $show_stat)
+	));
+	
+	if ($clan_battle_id) clan_info_save(array('_add' => sql_pholder(' AND clan_id = ?', $clan_id), '_set' => 'last_clan_battle = '.time_current()));
+	
+	clan_battle_season_score_commit($clan_id, $show_stat, $clan_battle_server_id, $clan_battle_id);
+	
+	return intval(round($show_stat - $current_show_stat));
+}
+
+function erf($x)
+{
+	$pi = pi();
+	$a = (8*($pi - 3))/(3*$pi*(4 - $pi));
+	$x2 = $x * $x;
+
+	$ax2 = $a * $x2;
+	$num = (4/$pi) + $ax2;
+	$denom = 1 + $ax2;
+
+	$inner = (-$x2)*$num/$denom;
+	$erf2 = 1 - exp($inner);
+
+	return sgn($x)*sqrt($erf2);
+}
+
+function sgn($int) {
+    if($int > 0) return 1;
+    if($int < 0) return -1;
+    return 0;
+}
+
+function clan_battle_v($val) {
+	$gauss_unit = (1/sqrt(2*pi())) * pow(2.71828183, -($val*$val/2));
+	$cdf = (1 + erf($val/sqrt(2))) / 2;
+	
+	return $gauss_unit/$cdf;
+}
+
+function clan_battle_w($val) {
+	$v = clan_battle_v($val);
+	return $v*($v + $val);
+}
+
+function clan_battle_rating_get($clan_id, $extended = false) {
+	require_once('lib/clan_info.lib');
+	$clan_stats = get_hash(clan_stat_list(array('clan_id' => $clan_id, 'clan_stat_artikul_id' => array(CLAN_BATTLE_STAT_MU, CLAN_BATTLE_STAT_SIGMA))), 'clan_stat_artikul_id', 'total_value');
+
+	$u = isset($clan_stats[CLAN_BATTLE_STAT_MU]) && $clan_stats[CLAN_BATTLE_STAT_MU] > 0 ? $clan_stats[CLAN_BATTLE_STAT_MU] : CLAN_BATTLE_STAT_DEFAULT_MU;
+	$s = isset($clan_stats[CLAN_BATTLE_STAT_SIGMA]) && $clan_stats[CLAN_BATTLE_STAT_SIGMA] > 0 ? $clan_stats[CLAN_BATTLE_STAT_SIGMA] : CLAN_BATTLE_STAT_DEFAULT_SIGMA;
+
+	$clan_rating = array(
+		'u' => $u,
+		's' => $s
+	);
+	
+	if ($extended) {
+		$clan_info = clan_info_get($clan_id);
+		$clan_rating['t_mlt'] = max(1, min(10, ceil((time_current() - $clan_info['last_clan_battle']) / 86400)));
+	}
+	
+	return $clan_rating;
+}
+
+function clan_battle_get_scores() {
+	$tmp_stats = clan_stat_list(array('clan_stat_artikul_id' => array(CLAN_BATTLE_STAT_MU, CLAN_BATTLE_STAT_SIGMA, CLAN_BATTLE_STAT_SHOW)));
+	$stats = array();
+	$clan_stats_hash = array();
+	foreach ($tmp_stats as $stat) {
+		if ($stat['clan_stat_artikul_id'] == CLAN_BATTLE_STAT_SHOW) $stats[$stat['clan_id']] = $stat['total_value'];
+		$clan_stats_hash[$stat['clan_id']][$stat['clan_stat_artikul_id']] = $stat['total_value'];
+	}
+	unset($tmp_stats);
+	foreach ($clan_stats_hash as $clan_id => $clan_stats) {
+		if ($clan_stats[CLAN_BATTLE_STAT_MU] == 0 && $clan_stats[CLAN_BATTLE_STAT_SIGMA] == 0) unset($stats[$clan_id]);
+	}
+	unset($clan_stats_hash);
+	
+	return $stats;
+}
+
+function clan_battle_online_in_prep_area() {
+	global $NODE_NUMS, $online_prep_area_user_ids;
+	$online_prep_area_user_ids = array();
+	
+	$cache = new Cache('CLAN_BATTLE_PREP_AREA_ONLINE_'.SERVER_ID);
+	if (!$cache->isValid()) {
+		$add = sql_pholder(' AND area_id = ?', CLAN_BATTLE_PREP_AREA_ID);
+		$sessions = array();
+		foreach($NODE_NUMS as $nn) {
+			if ($nn == FRIDGE_NN) continue;
+			NODE_PUSH($nn);
+			$tmp_sessions = session_list(null, null, null, $add, 'uid,stime,invisibility_time');
+			foreach($tmp_sessions as $tmp_session) {
+				$sessions[] = $tmp_session;
+			}
+			NODE_POP($nn);
+		}
+		$sessions = make_hash($sessions, 'uid');
+		foreach($sessions as $session) {
+			if (check_online($session, true)) $online_prep_area_user_ids[$session['uid']] = $session['uid']; // @TODO: Разобраться с невидимостью
+		}
+		$cache->update($online_prep_area_user_ids, 30);
+	} else {
+		$online_prep_area_user_ids = $cache->get();
+	}
+	
+	return $online_prep_area_user_ids;
+}
+
+function clan_battle_ready_users_list($clan_ids) {
+	$online_prep_area_user_ids = clan_battle_online_in_prep_area();
+	$res = array();
+	
+	$grades = clan_grade_list(false, sql_pholder(' AND clan_id IN (?@) AND permissions & ?', $clan_ids, CLAN_PERM_FLAG_ATTACK_CLAN));
+	$clan_grades = array();
+	foreach ($grades as $g) $clan_grades[$g['clan_id']][] = $g['id'];
+	$add = '';
+	foreach ($clan_grades as $clan_id => $grades) $add .= (mb_strlen($add) > 0 ? ' OR ' : ' AND (').sql_pholder('(clan_id = ? AND grade_id IN (?@))', $clan_id, $grades);
+	$clan_supervisors = false;
+	if (mb_strlen($add) > 0) {
+		$add .= ')';
+		global $db_2;
+		$clan_supervisors = get_hash_grp(common_list($db_2,TABLE_CLAN_MEMBERS,array('status' => CM_STATUS_ACTIVE), $add), 'clan_id', 'user_id', 'user_id');
+	}
+
+	$users = user_list(array('area_id' => CLAN_BATTLE_PREP_AREA_ID, 'clan_id' => $clan_ids));
+
+	if (empty($users)) return $res;
+	$add = sql_pholder(' AND user_id IN (?@)', get_hash($users, 'id', 'id'));
+	$clan_battle_season = clan_battle_season_get_active();	
+	if ($clan_battle_season['lock_time'] > 0){
+		$add .= sql_pholder(' AND stime < ?', $clan_battle_season['lock_time']);
+	}
+	
+	$clan_members = $users ? make_hash(common_list($db_2,TABLE_CLAN_MEMBERS, array('status' => CM_STATUS_ACTIVE), $add), 'user_id') : array();
+	
+	foreach($users as $user) {
+		if ($user['instance_id']) continue;
+		if (!$clan_members[$user['id']]) continue;
+		if (isset($online_prep_area_user_ids[$user['id']])) {
+			$res[$user['clan_id']]['users'][$user['id']]['id'] = $user['id'];
+			if ($clan_supervisors && isset($clan_supervisors[$user['clan_id']][$user['id']])) $res[$user['clan_id']]['supervisors'][$user['id']] = $user['id'];
+		}
+	}
+	
+	return $res;
+}
+
+function clan_battle_apply_provision($clan_list, $max_rating) {
+	// удаляем клановые статистики у всех кланов
+	clan_stat_save(array(
+		'_add' => sql_pholder(' AND clan_stat_artikul_id IN (?@) ', array(CLAN_BATTLE_STAT_MU, CLAN_BATTLE_STAT_SIGMA, CLAN_BATTLE_STAT_SHOW)),
+		'_set' => sql_pholder('total_value = ?, clan_value = ?', 0, 0)
+	));
+	
+	if (!$clan_list) return true;
+	
+	$clan_stat_list = array();	
+	foreach($clan_list as $k => $clan) {
+		foreach (array(CLAN_BATTLE_STAT_MU, CLAN_BATTLE_STAT_SIGMA, CLAN_BATTLE_STAT_SHOW) as $stat_id) {
+			$value = 0;
+			switch ($stat_id) {
+				case CLAN_BATTLE_STAT_MU:
+					$value = CLAN_BATTLE_STAT_DEFAULT_MU + $clan['skill'];
+					break;
+				case CLAN_BATTLE_STAT_SIGMA:
+					$value = CLAN_BATTLE_STAT_DEFAULT_SIGMA;
+					break;
+				case CLAN_BATTLE_STAT_SHOW:
+					$value = $clan['skill'];
+					break;
+			}
+			$clan_stat_list[] = array(
+				'clan_id' => $clan['clan_id'],
+				'clan_stat_artikul_id' => $stat_id,
+				'total_value' => $value,
+				'clan_value' => $value,
+			);	
+		}
+	}
+	
+	clan_stat_multi_update($clan_stat_list, array('clan_id', 'clan_stat_artikul_id', 'total_value', 'clan_value'), array('total_value', 'clan_value'));
+	return true;
+}
+
+function clan_battle_user_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_BATTLE_USERS,$ref,$add);
+}
+
+function clan_battle_user_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLAN_BATTLE_USERS,$ref,$add,$field_list);
+}
+
+function clan_battle_user_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_CLAN_BATTLE_USERS,$ref,$add);
+}
+
+function clan_battle_user_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_BATTLE_USERS,$param,FIELD_CLAN_BATTLE_USERS);
+}
+
+function clan_battle_user_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CLAN_BATTLE_USERS,$ref,$add);
+}
+
+function clan_battle_room_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_BATTLE_ROOMS,$ref,$add);
+}
+
+function clan_battle_room_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLAN_BATTLE_ROOMS,$ref,$add,$field_list);
+}
+
+function clan_battle_room_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_CLAN_BATTLE_ROOMS,$ref,$add);
+}
+
+function clan_battle_room_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_BATTLE_ROOMS,$param,FIELD_CLAN_BATTLE_ROOMS);
+}
+
+function clan_battle_room_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CLAN_BATTLE_ROOMS,$ref,$add);
+}
+
+function clan_battle_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('CLAN_BATTLE_'.intval($ref),$timewait,$timelock);
+}
+
+function clan_battle_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('CLAN_BATTLE_'.intval($ref));
+}
+
+function clan_battle_lock_requests() {
+	clan_battle_request_save(array('_set' => ' flags = flags | '.CLAN_BATTLE_REQUEST_FLAG_LOCKED), ' AND 1');
+}
+
+function clan_battle_get_requests() {
+	$clan_ids = get_hash(clan_battle_request_list(), 'clan_id', 'clan_id');
+	$clan_list = $clan_ids ? make_hash(clan_list(array('id' => $clan_ids), '', 'id, title')) : array();
+	if (empty($clan_list)) return array();
+	
+	$clan_stats = get_hash_grp(clan_stat_list(array('clan_id' => get_hash($clan_list, 'id', 'id'), 'clan_stat_artikul_id' => array(CLAN_BATTLE_STAT_MU, CLAN_BATTLE_STAT_SIGMA))), 'clan_id', 'clan_stat_artikul_id', 'total_value');
+	
+	foreach($clan_list as $clan_id => $clan) {
+		$u = isset($clan_stats[$clan_id][CLAN_BATTLE_STAT_MU]) && $clan_stats[$clan_id][CLAN_BATTLE_STAT_MU] ? $clan_stats[$clan_id][CLAN_BATTLE_STAT_MU] : CLAN_BATTLE_STAT_DEFAULT_MU;
+		$s = isset($clan_stats[$clan_id][CLAN_BATTLE_STAT_SIGMA]) && $clan_stats[$clan_id][CLAN_BATTLE_STAT_SIGMA] ? $clan_stats[$clan_id][CLAN_BATTLE_STAT_SIGMA] : CLAN_BATTLE_STAT_DEFAULT_SIGMA;
+		
+		$clan_list[$clan_id]['u'] = $u;
+		$clan_list[$clan_id]['s'] = $s;
+	}
+
+	$user_requests = clan_battle_user_request_list(array('clan_id' => $clan_ids));
+	if (defined('CLAN_BATTLE_SORT_BY_LEVEL') && CLAN_BATTLE_SORT_BY_LEVEL) {
+		$clan_weights = array();
+		if ($user_requests) {
+			$user_requests = make_hash($user_requests, 'user_id');
+			$users_hash = make_hash(user_list(array('id' => array_keys($user_requests))));
+			foreach($users_hash as $clan_user) {
+				if (!$clan_user['clan_id']) continue;
+				$clan_weights[$clan_user['clan_id']] += fight_user_weight($clan_user['level'], 2);
+			}
+		}
+
+		foreach($clan_list as $k => $clan) {
+			$clan_list[$k]['u'] = $clan_weights[$clan['id']];
+		}
+	}
+	
+	global $NODE_NUMS, $SESSION_TTL;
+	foreach ($NODE_NUMS as $nn) {
+		if (!NODE_PUSH($nn)) continue;
+		$user_ids = array();
+		$add = sql_pholder(' AND stime > ?', time_current() - $SESSION_TTL);
+		$online_users = session_list(null, null, null, $add, 'uid', true);
+		foreach($online_users as $online_user) {
+			$user_ids[] = $online_user['uid'];
+		}
+		if ($user_ids) {
+			$online_user_hash = user_list(array('id' => $user_ids), '', false, 'id,clan_id');
+			foreach($online_user_hash as $online_user) {
+				if ($clan_list[$online_user['clan_id']]) {
+					if (!isset($clan_list[$online_user['clan_id']]['online'])) {
+						$clan_list[$online_user['clan_id']]['online'] = 1;
+					} else {
+						$clan_list[$online_user['clan_id']]['online']++;
+					}
+				}
+			}
+		}
+		NODE_POP();
+	}
+	
+	return array_values($clan_list);
+}
+
+function clan_battle_save_unbind($clan_battle) {
+	$params = $clan_battle;
+	$params['_mode'] = CSMODE_INSERT;
+	$id = clan_battle_save($params);
+	
+	$clan_ids = array();
+	if ($clan_battle['first_clan_server_id'] == SERVER_ID) $clan_ids[$clan_battle['first_clan_id']] = $clan_battle['first_clan_id'];
+	if ($clan_battle['second_clan_server_id'] == SERVER_ID) $clan_ids[$clan_battle['second_clan_id']] = $clan_battle['second_clan_id'];
+	
+	if ($clan_ids) clan_battle_request_delete(array('clan_id' => $clan_ids));
+	
+	return $id;
+}
+
+function clan_battle_check_open($session_user = array()){
+    if(defined('CLAN_BATTLE_SHOW_ADMIN') && CLAN_BATTLE_SHOW_ADMIN && ($session_user['flags'] & USER_FLAG_ADMIN)) return true;
+    if(defined('CLAN_BATTLE_SHOW') && CLAN_BATTLE_SHOW) return true;
+    return false;
+}
+
+?>

@@ -1,0 +1,119 @@
+<? # $Id: campaign.lib,v 1.5 2009-10-27 13:46:19 s.ignatenkov Exp $
+
+// Имена и поля таблиц
+define('TABLE_CAMPAIGNS','campaigns');
+define('FIELD_CAMPAIGNS','id, title, stime, dtime, bonus_id, total_codes, used_codes, site_id, new_user_only, multiple_code, partner, restriction_object_id');
+define('TABLE_CAMPAIGN_CODES','campaign_codes');
+define('FIELD_CAMPAIGN_CODES','');
+
+function campaign_get($ref=false, $add='') {
+	global $db_diff;
+	$campaign = common_get($db_diff,TABLE_CAMPAIGNS,$ref,$add);
+	return $campaign;
+}
+
+function campaign_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_CAMPAIGNS,$ref,$add);
+}
+
+function campaign_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_CAMPAIGNS, $ref, $add);
+}
+
+function campaign_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_CAMPAIGNS,$param,FIELD_CAMPAIGNS);
+}
+
+function campaign_delete($ref=false, $add='') {
+	global $db_diff;
+	$campaign = campaign_get($ref, $add);
+	common_delete($db_diff,TABLE_CAMPAIGNS,$ref,$add);
+	campaign_code_delete(array('campaign_id' => $campaign['id']));
+	return true;
+}
+
+
+function campaign_code_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_CAMPAIGN_CODES,$ref,$add);
+}
+
+function campaign_code_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_CAMPAIGN_CODES,$param,FIELD_CAMPAIGN_CODES);
+}
+
+function campaign_code_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_CAMPAIGN_CODES,$ref,$add);
+}
+
+function campaign_code_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff,TABLE_CAMPAIGN_CODES,$ref,$add);
+}
+
+function campaign_gen_code($campaign_id) {
+	$save_tries = 1;
+	do {
+		$code = strtoupper(md5(uniqid($campaign_id.rand(), true)));
+		$code = mb_substr($code,0,4)."-".mb_substr($code,4,4)."-".mb_substr($code,8,4)."-".mb_substr($code,12,4);
+		$status = campaign_code_save(array(
+			'code'        => $code,
+			'campaign_id' => $campaign_id,
+			'_noerr'      => true,
+		));
+		if ($save_tries > 10) break;
+		$save_tries++;
+	} while (!$status);
+	
+	return $status ? $code : false;
+}
+
+// Генерим персональный код
+function campaign_gen_personal_code($campaign_id, $user_id) {
+	$save_tries = 1;
+	do {
+		$code = strtoupper(md5(uniqid($campaign_id.rand(), true)));
+		$personal_code = mb_substr($code,0,4)."-".mb_substr($code,4,4)."-".mb_substr($code,8,4)."-".mb_substr($code,12,4);
+		$status = campaign_code_save(array(
+			'code'        => $personal_code,
+			'campaign_id' => $campaign_id,
+			'user_id'     => $user_id,
+			'_noerr'      => true,
+		));
+		if ($save_tries > 10) break;
+		$save_tries++;
+	} while (!$status);
+	
+	return $status ? $personal_code : false;
+}
+
+function campaign_code_flood_check() {
+	global $session_user;
+	if (!$session_user) return false;
+	
+	$user_skills = make_hash(skill_object_list(OBJECT_CLASS_USER, $session_user), 'skill_id');
+	$flood_amt  = (int)$user_skills['CCODE_FLOOD_AMT']['value'];
+	$flood_last = (int)$user_skills['CCODE_FLOOD_LAST']['value'];
+	
+	if ($flood_amt >= 3) {
+		if (($flood_last + 5 * 60) < time_current()) {
+			skill_object_set_value(OBJECT_CLASS_USER, $session_user['id'], 'CCODE_FLOOD_AMT', 0);
+			return true;
+		} else return false;
+	} else return true;
+}
+
+function campaign_code_flood_update() {
+	global $session_user;
+	if (!$session_user) return;
+	
+	skill_object_set_value(OBJECT_CLASS_USER, $session_user['id'], 'CCODE_FLOOD_AMT', 1, array('relative' => true));
+	skill_object_set_value(OBJECT_CLASS_USER, $session_user['id'], 'CCODE_FLOOD_LAST', time_current());
+}
+
+?>

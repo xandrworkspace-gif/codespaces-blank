@@ -1,0 +1,133 @@
+<? # $Id: recipe.lib,v 1.35 2010-01-15 12:55:25 m.usachev Exp $
+
+// Имена и поля таблиц
+define('TABLE_CUBE_RECIPES','cube_recipes');
+define('FIELD_CUBE_RECIPES','');
+define('TABLE_CUBE_RECIPE_USERS','cube_recipes_users');
+define('FIELD_CUBE_RECIPE_USERS','');
+define('TABLE_CUBE_ARTIFACTS','cube_artifacts');
+define('FIELD_CUBE_ARTIFACTS','');
+define('MAX_CUBE_RECIPE_COUNT',8);
+
+define('ELT_CUBE_ARTIKUL_ID', 7698);
+
+function cube_recipes_get($ref=false, $add='') {
+	global $db;
+		
+	
+	$res=array();
+	if (is_array($ref)) for ($i=1; $i<=8; $i++) {
+		if (!empty($ref["res$i"])) {
+			$res[$ref["res$i"]] = $ref["res$i"];
+		}
+		unset($ref["res$i"]);
+		unset($ref["res{$i}_num"]);
+	}
+
+	if ($res) {
+		sort($res);
+		$ref['ingredients_hash'] = md5(implode(',',$res));
+	}
+
+	return common_get($db,TABLE_CUBE_RECIPES,$ref,$add);
+}
+
+function cube_recipes_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_CUBE_RECIPES,$ref,$add);
+}
+
+function cube_recipes_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_CUBE_RECIPES, $ref, $add);
+}
+
+function cube_recipes_save($param) {
+	global $db;
+	
+	$res=array();
+
+	$artikul_ids = array();
+	if (is_array($param)) for ($i=1; $i<=8; $i++) {
+		if (!empty($param["res$i"])) {
+			$res[$param["res$i"]] = $param["res$i"];
+		    if(intval($res[$param["res$i"]])) {
+                $artikul_ids[intval($res[$param["res$i"]])] = intval($res[$param["res$i"]]);
+            }
+		}
+	}
+
+    $search_field = array();
+	if(intval($param['create_artikul_id']) > 0) $artikul_ids[$param['create_artikul_id']] = $param['create_artikul_id'];
+	if(function_exists('artifact_artikul_list') && $artikul_ids) {
+	    $artikul_hash = make_hash(artifact_artikul_list(array('id' => $artikul_ids)));
+	    foreach ($artikul_hash as $artikul) $search_field[] = mb_strtolower($artikul['title']);
+    }
+	if($search_field) $param['search_field'] = strval(implode(',', $search_field));
+
+	if ($res) {
+		sort($res);
+		$param['ingredients_hash'] = md5(implode(',',$res));
+	}
+	return common_save($db,TABLE_CUBE_RECIPES,$param,FIELD_CUBE_RECIPES);
+}
+
+function cube_recipes_delete($ref) {
+	global $db;
+	return common_delete($db,TABLE_CUBE_RECIPES,$ref);
+}
+
+///////////////////////////////////////
+
+function cube_recipes_user_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_CUBE_RECIPE_USERS,$ref,$add);
+}
+
+function cube_recipes_user_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_CUBE_RECIPE_USERS,$ref,$add);
+}
+
+function cube_recipes_user_count($ref=false, $add='') {
+	global $db;
+	return common_count($db,TABLE_CUBE_RECIPE_USERS,$ref,$add);
+}
+
+function cube_recipes_user_save($param) {
+	global $db;
+	return common_save($db,TABLE_CUBE_RECIPE_USERS,$param,FIELD_CUBE_RECIPE_USERS);
+}
+
+function cube_recipes_user_delete($ref) {
+	global $db;
+	return common_delete($db,TABLE_CUBE_RECIPE_USERS,$ref);
+}
+
+
+///////////////////////////////////////
+
+function cube_artifacts_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_CUBE_ARTIFACTS,$ref,$add);
+}
+
+function cube_artifacts_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_CUBE_ARTIFACTS,$ref,$add);
+}
+
+function cube_artifacts_count($ref=false, $add='') {
+	global $db;
+	return common_count($db,TABLE_CUBE_ARTIFACTS,$ref,$add);
+}
+
+function cube_artifacts_save($param) {
+	global $db;
+	return common_save($db,TABLE_CUBE_ARTIFACTS, $param,FIELD_CUBE_ARTIFACTS);
+}
+
+function cube_artifacts_delete($ref) {
+	global $db;
+	return common_delete($db,TABLE_CUBE_ARTIFACTS,$ref);
+}

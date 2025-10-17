@@ -1,0 +1,486 @@
+<?
+
+require_once("lib/clan.lib");
+require_once("lib/clan_battle.lib");
+
+define('TABLE_CLAN_BATTLE_SEASONS','clan_battle_seasons');
+define('FIELD_CLAN_BATTLE_SEASONS','');
+define('TABLE_CLAN_BATTLE_SEASON_LEAGUES','clan_battle_season_leagues');
+define('FIELD_CLAN_BATTLE_SEASON_LEAGUES','');
+define('TABLE_CLAN_BATTLE_SEASON_CLANS','clan_battle_season_clans');
+define('FIELD_CLAN_BATTLE_SEASON_CLANS','');
+
+define('CLAN_BATTLE_SEASON_STATUS_SCHEDULED',    0); // сезон создан, но не активирован
+define('CLAN_BATTLE_SEASON_STATUS_RUNNING_DRAW', 1); // free-for-all, лиги не сформированы, новые участники прибывают
+define('CLAN_BATTLE_SEASON_STATUS_RUNNING_PLAY', 2); // сформированы лиги, новых участников нет
+define('CLAN_BATTLE_SEASON_STATUS_FINISHED',     3); // сезон завершен
+
+function clan_battle_season_lock($timewait=20, $timelock=600) {
+	global $tq;
+	return $tq->capture('CLAN_BATTLE_SEASON',$timewait,$timelock);
+}
+
+function clan_battle_season_unlock() {
+	global $tq;
+	return $tq->release('CLAN_BATTLE_SEASON');
+}
+
+function clan_battle_season_get_clans($season_clans) {
+  $clans = array();
+	$this_server_clan_ids = array();
+	$server_clan_ids = array();
+	foreach($season_clans as $c) {
+		if ($c['server_id'] == SERVER_ID) $this_server_clan_ids[$c['clan_id']] = $c['clan_id'];
+		$server_clan_ids[$c['server_id']][$c['clan_id']] = $c['clan_id'];
+	}
+	
+	if (!empty($server_clan_ids)) {
+		$add = '';
+		foreach ($server_clan_ids as $server_id => $clan_ids) $add .= (strlen($add) > 0 ? ' OR ' : ' ').sql_pholder(' (server_id = ? AND clan_id IN (?@)) ', $server_id, $clan_ids);
+		$add = ' AND ('.$add.')';
+		$server_clans = clan_crossserver_info_list(false, $add);
+		foreach($server_clans as $c) {
+			$c['id'] = $c['clan_id'];
+			$clans[$c['server_id']][$c['id']] = $c;
+		}
+	}
+
+	$this_srv_diff_ids = array_diff($this_server_clan_ids, $clans[SERVER_ID] ? array_keys($clans[SERVER_ID]) : array());
+	if ($this_srv_diff_ids) {
+		$this_srv_clans = make_hash(clan_list(array('id' => $this_srv_diff_ids)));
+		if ($this_srv_clans) {
+			$exp_artikul = clan_stat_artikul_get(array('type_id'=>USER_STAT_TYPE_SKILL,'object_id'=>USER_STAT_SKILL_EXP));
+			$honor_artikul = clan_stat_artikul_get(array('type_id'=>USER_STAT_TYPE_SKILL,'object_id'=>USER_STAT_SKILL_HONOR));
+			$clans_stat_hash = make_hash(clan_stat_list(array('clan_id'=>array_keys($this_srv_clans), 'clan_stat_artikul_id' => array($exp_artikul['id'], $honor_artikul['id']))));
+			foreach($clans_stat_hash as $stat) {
+				if ($stat['clan_stat_artikul_id'] == $exp_artikul['id']) {
+					$this_srv_clans[$stat['clan_id']]['stat_level'] = $stat['clan_stat_artikul_level'];
+				} elseif ($stat['clan_stat_artikul_id'] == $honor_artikul['id']) {
+					$this_srv_clans[$stat['clan_id']]['stat_rank'] = $stat['clan_stat_artikul_level'];
+				} 
+			}
+			foreach($this_srv_clans as $clan) {
+				$leader = user_get(clan_leader_id_get($clan['id']));
+				
+				$clan['kind'] = $leader['kind'] ? $leader['kind'] : 0;
+				
+				clan_crossserver_info_save(array(
+					'server_id' => SERVER_ID,
+					'clan_id' => $clan['id'],
+					'title' => $clan['title'],
+					'picture' => $clan['picture'],
+					'kind' => $clan['kind'],
+					'stat_level' => $clan['stat_level'],
+					'stat_rank' => $clan['stat_rank'],
+				));
+				$clan['server_id'] = SERVER_ID;
+				
+				$clans[SERVER_ID][$clan['id']] = $clan;
+			}
+			
+			
+		}
+	}
+
+	return $clans;
+}
+
+function clan_battle_clear_scores() {
+	clan_stat_save(array(
+		'_add' => sql_pholder(' AND clan_stat_artikul_id IN (?@)', array(CLAN_BATTLE_STAT_MU, CLAN_BATTLE_STAT_SIGMA,CLAN_BATTLE_STAT_SHOW)),
+		'_set' => sql_pholder('total_value = ?, clan_value = ?', 0, 0)
+	));
+	
+	$season = clan_battle_season_get_active();
+	if (!$season) return false;
+	
+	clan_battle_season_clan_save(array('_set' => 'skill = 0', '_add' => sql_pholder(' AND season_id = ?', $season['id'])));
+	
+	$cache = new Cache('CLAN_BATTLE_SEASON_CHECKSUM_'.$season['id']);
+	$cache->remove();
+}
+
+// Удаление из текущего сезона расформированных кланов
+function clan_battle_active_season_purge() {
+	if (SERVER_ID != CLAN_BATTLE_SEASON_SERVER_ID) return false;
+	$season = clan_battle_season_get_active();
+	if (!$season || $season['status'] != CLAN_BATTLE_SEASON_STATUS_RUNNING_DRAW) return false;
+	
+	$purge_clans = array();
+	
+	$i = 0;
+	$season_clans = clan_battle_season_clan_list(array('season_id' => $season['id']));
+	clan_battle_log('Deleting inactive clans from active clan battle season...');
+	foreach ($season_clans as $season_clan) {		
+		$clan_id = $season_clan['clan_id'];
+		$srv_id  = $season_clan['server_id'];
+		
+		if (!in_array($srv_id, array_keys(common_get_servers('CB')))) continue;
+		if ($srv_id == SERVER_ID) {
+			$clan = clan_get($clan_id);
+		} else {
+			$clan = crossserver_clan_get($srv_id, $clan_id);
+		}
+		
+		if (!$clan || $clan['flags'] & CLAN_FLAG_DISBANDED) {
+			if (!clan_battle_season_lock()) continue;
+			
+			$i++;
+			clan_battle_log(sprintf('Deleting clan: %s[ID: %d] from server $d', $clan['title'], $clan_id, $srv_id));
+			
+			// переподнимем клан, чтобы актуализировать места
+			$season_clan = clan_battle_season_clan_get(array('season_id' => $season['id'], 'clan_id' => $clan_id, 'server_id' => $srv_id));
+			clan_battle_season_clan_delete($season_clan);
+			clan_battle_season_clan_save(array(
+				'_set' => ' rating_place = rating_place - 1 , rating_place_diff = rating_place_diff + 1 ',
+				'_add' => sql_pholder(' AND season_id = ? AND rating_place > ? ', $season['id'], $season_clan['rating_place']),
+			));
+			
+			clan_battle_season_unlock();
+		}
+	}
+	clan_battle_log(sprintf('Total clans removed from season: %d', $i));
+	
+	return $i;
+}
+
+function clan_battle_season_provisional_rating($source_season_id, $target_season_id) {
+	if (SERVER_ID != CLAN_BATTLE_SEASON_SERVER_ID) return false;
+	$source_season = clan_battle_season_get($source_season_id);
+	$target_season = clan_battle_season_get($target_season_id);
+	if (!$source_season || !$target_season) return false;
+	if (clan_battle_season_clan_count(array('season_id' => $target_season['id']))) return false;
+	
+	if (!clan_battle_season_lock()) return false;
+	
+	global $db_2;
+	$query = sql_pholder(' SELECT MAX(`skill`) FROM ?#TABLE_CLAN_BATTLE_SEASON_CLANS WHERE `season_id` = ? ', $source_season['id']);
+	$max_skill = 0;
+	$db_2->db_GetQueryVal($query, $max_skill);
+	if (!$max_skill) {
+		clan_battle_season_unlock();
+		return false;
+	}
+	// определяем кланы, которые уйдут в новый сезон
+	$source_clans = clan_battle_season_clan_list(array('season_id' => $source_season['id']), ' AND `skill` > 0 ORDER BY `skill` DESC ');
+	$target_clans = array();
+	$i = 0;
+	foreach ($source_clans as $key => $source_clan) {
+		$i++;
+		$target_clan = array();
+		$target_clan['clan_id']      = (int)$source_clan['clan_id'];
+		$target_clan['server_id']    = (int)$source_clan['server_id'];
+		$target_clan['season_id']    = (int)$target_season['id'];
+		$target_clan['skill']        = (int)($source_clan['skill'] * (CLAN_BATTLE_STAT_MAX_PROVISION / $max_skill));
+		$target_clan['rating_place'] = $i;
+		$target_clans[] = $target_clan;
+	}
+	// апдейтим клановые статы
+	crossserver_clan_battle_apply_provision($target_clans, $max_skill);
+	
+	// кидаем в новый сезон кланы
+	clan_battle_season_clan_multi_update($target_clans, array('clan_id', 'server_id', 'season_id', 'skill', 'rating_place'));
+	
+	$cache = new Cache('CLAN_BATTLE_SEASON_CHECKSUM_'.$target_season['id']);
+	if ($cache->isValid()) $cache->remove();
+	
+	clan_battle_season_unlock();
+	
+	clan_battle_active_season_purge();
+
+	return true;
+}
+
+function clan_battle_season_get_active() {
+	$clan_season = clan_battle_season_get(array('status' => array(CLAN_BATTLE_SEASON_STATUS_RUNNING_PLAY, CLAN_BATTLE_SEASON_STATUS_RUNNING_DRAW)));
+	
+	return $clan_season;
+}
+
+function clan_battle_season_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_BATTLE_SEASONS,$ref,$add);
+}
+
+function clan_battle_season_list($ref=false, $add='', $fields='*') {
+	global $db_2;
+	return common_list($db_2, TABLE_CLAN_BATTLE_SEASONS, $ref, $add, $fields);
+}
+
+function clan_battle_season_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CLAN_BATTLE_SEASONS, $ref, $add);
+}
+
+function clan_battle_season_save($param,$add='') {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_BATTLE_SEASONS,$param,FIELD_CLAN_BATTLE_SEASONS,'id',$add);
+}
+
+function clan_battle_season_delete($ref,$add='') {
+	global $db_2;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_2,TABLE_CLAN_BATTLE_SEASONS,$ref,$add);
+	clan_battle_season_clan_delete(array('season_id' => $ref));
+	clan_battle_league_delete(array('season_id' => $ref));
+	
+	$cache = new Cache('CLAN_BATTLE_SEASON_CHECKSUM_'.$season['id']);
+	$cache->remove();
+	
+	return true;
+}
+
+function clan_battle_season_get_checksum($season_id = false) {
+	global $db_2;
+	
+	if (!$season_id) {
+		$season = clan_battle_season_get_active();
+		if (!$season) return false;
+		$season_id = $season['id'];
+	}
+	
+	$cache = new Cache('CLAN_BATTLE_SEASON_CHECKSUM_'.$season_id);
+	if ($cache->isValid()) {
+		return $cache->get();
+	}
+	
+	$row = array();
+	$db_2->db_GetQueryRow(sql_pholder("SELECT SUM(CRC32(CONCAT(clan_id, ',', server_id, ',', league_id, ',', copy_id, ',', skill, ',', rating_place))) as checksum from ".TABLE_CLAN_BATTLE_SEASON_CLANS." where season_id = ? ORDER BY server_id ASC, clan_id ASC", $season_id), $row);
+	$cache->update($row['checksum'], 3600*12);
+	
+	return $row['checksum'];
+}
+
+function clan_battle_season_score_commit($clan_id, $skill, $clan_battle_server_id, $clan_battle_id) {
+	if (!constant('CLAN_BATTLE_SEASON_SERVER_ID')) return false;
+	
+	$season = clan_battle_season_get_active();
+	if (!$season) return false;
+	
+	if (SERVER_ID == CLAN_BATTLE_SEASON_SERVER_ID) {
+		if (clan_battle_season_lock()) {
+			clan_battle_season_score_update($clan_id, SERVER_ID, $skill, $clan_battle_server_id, $clan_battle_id);
+			clan_battle_season_unlock();
+		}
+	} else {
+		crossserver_clan_battle_season_score_update(CLAN_BATTLE_SEASON_SERVER_ID, $clan_id, SERVER_ID, $skill, $clan_battle_server_id, $clan_battle_id);
+	}
+}
+
+function clan_battle_season_score_update($clan_id, $server_id, $skill, $clan_battle_server_id, $clan_battle_id) {
+	$season = clan_battle_season_get_active();
+	if (!$season) return false;
+	
+	$season_clan = clan_battle_season_clan_get(false, sql_pholder(' AND clan_id = ? AND server_id = ? AND season_id = ?', $clan_id, $server_id, $season['id']));
+	if ($season_clan && $skill == $season_clan['skill']) return true;
+	
+	// Жеребьевка уже прошла, больше кланы не попадают в лиги
+	if ($season['status'] == CLAN_BATTLE_SEASON_STATUS_RUNNING_PLAY && !$season_clan) return false;
+	
+	$cache = new Cache('CLAN_BATTLE_SEASON_CHECKSUM_'.$season['id']);
+	$cache->remove();
+	
+	$copy_id = $season_clan ? $season_clan['copy_id'] : 0;
+	$league_id = $season_clan ? $season_clan['league_id'] : 0;
+	$prev_clan = clan_battle_season_clan_get(false, sql_pholder(' AND copy_id = ? AND league_id = ? AND season_id = ? AND skill > ? ORDER BY skill ASC', $copy_id, $league_id, $season['id'], $skill));
+	
+	if (!$season_clan) {
+		$new_place = $prev_clan ? $prev_clan['rating_place'] + 1 : 1;
+		
+		$place_diff = clan_battle_season_clan_save(array(
+			'_cnt' => true,
+			'_set' => 'rating_place = rating_place + 1, rating_place_diff = rating_place_diff - 1',
+			'_add' => sql_pholder(' AND copy_id = ? AND league_id = ? AND season_id = ? AND rating_place >= ?', $copy_id, $league_id, $season['id'], $new_place)
+		));
+		
+		clan_battle_season_clan_save(array(
+			'clan_id' => $clan_id,
+			'server_id' => $server_id,
+			'season_id' => $season['id'],
+			'league_id' => 0,
+			'copy_id' => 0,
+			'skill' => $skill,
+			'rating_place' => $new_place,
+			'rating_place_diff' => $place_diff,
+			'clan_battle_server_id' => $clan_battle_server_id,
+			'clan_battle_id' => $clan_battle_id,
+		));
+	} else {
+		$up = $skill > $season_clan['skill'];
+		
+		$new_place = $prev_clan ? $prev_clan['rating_place'] + ($up ? 1 : 0) : 1;
+		$old_place = $season_clan ? $season_clan['rating_place'] : false;
+		
+		if ($new_place != $old_place) {
+			if ($up) {
+				clan_battle_season_clan_save(array(
+					'_set' => 'rating_place = rating_place + 1, rating_place_diff = rating_place_diff - 1',
+					'_add' => sql_pholder(' AND copy_id = ? AND league_id = ? AND season_id = ? AND rating_place >= ? AND rating_place < ?', $copy_id, $league_id, $season['id'], $new_place, $old_place)
+				));
+			} else {
+				clan_battle_season_clan_save(array(
+					'_set' => 'rating_place = rating_place - 1, rating_place_diff = rating_place_diff + 1',
+					'_add' => sql_pholder(' AND copy_id = ? AND league_id = ? AND season_id = ? AND rating_place > ? AND rating_place <= ?', $copy_id, $league_id, $season['id'], $old_place, $new_place)
+				));
+			}
+		}
+		
+		$set = sql_pholder(' rating_place_diff = rating_place_diff + ? ', $old_place - $new_place);
+		if ($clan_battle_id && $clan_battle_server_id) $set .= sql_pholder(', clan_battle_server_id = ?, clan_battle_id = ? ', $clan_battle_server_id, $clan_battle_id);
+		clan_battle_season_clan_save(array(
+			'skill' => $skill,
+			'rating_place' => $new_place,
+			'_set' => $set,
+			'_add' => sql_pholder(' AND clan_id = ? AND server_id = ? AND season_id = ?', $clan_id, $server_id, $season['id']),
+		));
+	}
+	return true;
+}
+
+function clan_battle_season_league_demote($clan_id, $server_id, $season_id) {
+	$season = clan_battle_season_get_active();
+	if (!$season || $season['id'] != $season_id) return false;
+	if ($season['status'] != CLAN_BATTLE_SEASON_STATUS_RUNNING_PLAY) return false;
+	
+	$demote_clan = clan_battle_season_clan_get(array('clan_id' => $clan_id, 'server_id' => $server_id, 'season_id' => $season_id));
+	if (!$demote_clan) return false;
+	
+	$source_league = clan_battle_league_get($demote_clan['league_id']);
+	if (!$source_league) return false;
+	$source_copy = $demote_clan['copy_id'];
+	
+	$min_skill = $source_league['skill_from'] - $source_league['skill_threshold'];
+	if ($demote_clan['skill'] >= $min_skill) return false;
+	
+	// если мы дошли до этой точки, нужно перебросить клан в другую лигу
+	$target_league = array();
+	
+	$league_list = clan_battle_league_list(array('season_id' => $season['id']));
+	foreach ($league_list as $league) {
+		if (($league['skill_to'] < $source_league['skill_to']) && (!$target_league || ($league['skill_to'] > $target_league['skill_to']))) {
+			$target_league = $league;
+		}
+	}
+	if (!$target_league) return false;
+	
+	if (!clan_battle_season_lock()) return false;
+	// ищем клан в целевой лиге, который выйдет наверх
+	$promote_clan = clan_battle_season_clan_get(false, sql_pholder(' AND season_id = ? AND league_id = ? ORDER BY `skill` DESC ', $season['id'], $target_league['id']));
+	if (!$promote_clan) {
+		// двигаем все кланы в исходной лиге, которые были ниже выкинутого клана
+		clan_battle_season_clan_save(array(
+			'_set' => ' rating_place = rating_place - 1, rating_place_diff = rating_place_diff + 1 ',
+			'_add' => sql_pholder(' AND season_id = ? AND league_id = ? AND copy_id = ? AND rating place > ? ', $season['id'], $source_league['id'], $source_copy, $demote_clan['rating_place']),
+		));
+		
+		// переводим клан в лигу пониже
+		clan_battle_season_clan_save(array(
+			'league_id' => $target_league['id'],
+			'copy_id' => 0,
+			'rating_place' => 1,
+			'rating_place_diff' => 0,
+			'_add' => sql_pholder(' AND clan_id = ? AND server_id = ? AND season_id = ? ', $demote_clan['server_id'], $demote_clan['server_id'], $demote_clan['season_id']),
+		));
+	} else {
+		$target_copy = $promote_clan['copy_id'];
+		
+		// двигаем в исходной лиге кланы, чтобы обеспечить выход оттуда исходного клана
+		clan_battle_season_clan_save(array(
+			'_set' => ' rating_place = rating_place - 1, rating_place_diff = rating_place_diff + 1 ',
+			'_add' => sql_pholder(' AND season_id = ? AND league_id = ? AND copy_id = ? AND rating_place > ? ', $season['id'], $source_league['id'], $source_copy, $demote_clan['rating_place']),
+		));
+		
+		// двигаем в целевой лиге все кланы, позиция которых выше, чем у вставленного (остальные не двигаются, потому как первый клан из этой лиги ушел наверх)
+		$target_league_clans_moved = (int)clan_battle_season_clan_save(array(
+			'_cnt' => true,
+			'_set' => ' rating_place = rating_place - 1, rating_place_diff = rating_place_diff + 1 ',
+			'_add' => sql_pholder(' AND season_id = ? AND league_id = ? AND copy_id = ? AND skill >= ? ', $season['id'], $target_league['id'], $target_copy, $demote_clan['skill']),
+		));
+		
+		// вставляем клан в целевую лигу
+		clan_battle_season_clan_save(array(
+			'league_id' => $target_league['id'],
+			'copy_id' => $target_copy,
+			'rating_place' => $target_league_clans_moved + 1,
+			'rating_place_diff' => -($target_league_clans_moved + 1),
+			'_add' => sql_pholder(' AND clan_id = ? AND server_id = ? AND season_id = ? ', $demote_clan['clan_id'], $demote_clan['server_id'], $demote_clan['season_id']),
+		));
+		
+		// двигаем в исходной лиге кланы, чтобы обеспечить вход туда нового клана
+		clan_battle_season_clan_save(array(
+			'_set' => ' rating_place = rating_place + 1, rating_place_diff = rating_place_diff - 1 ',
+			'_add' => sql_pholder(' AND season_id = ? AND league_id = ? AND copy_id = ? AND skill < ? ', $season['id'], $source_league['id'], $source_copy, $promote_clan['skill']),
+		));
+		$lowest_higher_clan = clan_battle_season_clan_get(false, sql_pholder(' AND season_id = ? AND league_id = ? AND copy_id = ? AND skill >= ? ORDER BY skill ASC ', $season['id'], $source_league['id'], $source_copy, $promote_clan['skill']));
+		
+		// вставляем промоученный клан в исходную лигу
+		clan_battle_season_clan_save(array(
+			'league_id' => $source_league['id'],
+			'copy_id' => $source_copy,
+			'rating_place' => $lowest_higher_clan['rating_place'] + 1,
+			'rating_place_diff' => -($lowest_higher_clan['rating_place'] + 1),
+			'_add' => sql_pholder(' AND clan_id = ? AND server_id = ? AND season_id = ? ', $promote_clan['clan_id'], $promote_clan['server_id'], $promote_clan['season_id']),
+		));
+	}
+	clan_battle_season_unlock();
+	
+	return true;
+}
+
+function clan_battle_league_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_BATTLE_SEASON_LEAGUES,$ref,$add);
+}
+
+function clan_battle_league_list($ref=false, $add='', $fields='*') {
+	global $db_2;
+	return common_list($db_2, TABLE_CLAN_BATTLE_SEASON_LEAGUES, $ref, $add, $fields);
+}
+
+function clan_battle_league_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CLAN_BATTLE_SEASON_LEAGUES, $ref, $add);
+}
+
+function clan_battle_league_save($param,$add='') {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_BATTLE_SEASON_LEAGUES,$param,FIELD_CLAN_BATTLE_SEASON_LEAGUES,'id',$add);
+}
+
+function clan_battle_league_delete($ref,$add='') {
+	global $db_2;
+	common_delete($db_2,TABLE_CLAN_BATTLE_SEASON_LEAGUES,$ref,$add);
+	return true;
+}
+
+function clan_battle_season_clan_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_BATTLE_SEASON_CLANS,$ref,$add);
+}
+
+function clan_battle_season_clan_list($ref=false, $add='', $fields='*') {
+	global $db_2;
+	return common_list($db_2, TABLE_CLAN_BATTLE_SEASON_CLANS, $ref, $add, $fields);
+}
+
+function clan_battle_season_clan_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CLAN_BATTLE_SEASON_CLANS, $ref, $add);
+}
+
+function clan_battle_season_clan_save($param,$add='') {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_BATTLE_SEASON_CLANS,$param,FIELD_CLAN_BATTLE_SEASON_CLANS,'dummy',$add);
+}
+
+function clan_battle_season_clan_delete($ref,$add='') {
+	global $db_2;
+	common_delete($db_2,TABLE_CLAN_BATTLE_SEASON_CLANS,$ref,$add);
+	return true;
+}
+
+function clan_battle_season_clan_multi_update($data, $data_fields) {
+	global $db_2;
+	return common_multi_update($db_2, TABLE_CLAN_BATTLE_SEASON_CLANS, $data, $data_fields);
+}
+?>

@@ -1,0 +1,108 @@
+<?
+require_once("lib/fight.lib");
+
+// Имена и поля таблиц
+define('TABLE_FIGHT_PLANNER','fight_planner');
+define('FIELD_FIGHT_PLANNER','');
+
+// флаги
+define('FIGHT_PLANNER_FLAG_ACTIVE',             0x0001);	// статус - активна\выключена
+//define('FIGHT_PLANNER_FLAG_WB',                 0x0002);	// Великая битва
+define('FIGHT_PLANNER_FLAG_CHATMESSAGE',        0x0004);	// Сообщать в чат за 10,5,3,1 минуту до начала
+define('FIGHT_PLANNER_FLAG_WARIOR',				0x0008);	// Битва за Материк
+define('FIGHT_PLANNER_FLAG_WARDRAGONS',			0x0010);	// Битва драконов
+
+
+function fight_planner_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_FIGHT_PLANNER,$ref,$add);
+}
+
+function fight_planner_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_FIGHT_PLANNER,$ref,$add);
+}
+
+function fight_planner_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,TABLE_FIGHT_PLANNER,$ref,$add);
+}
+
+function fight_planner_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_FIGHT_PLANNER,$param,FIELD_FIGHT_PLANNER);
+}
+
+function fight_planner_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff,TABLE_FIGHT_PLANNER,$ref,$add);
+}
+
+///////////////////////
+
+function fight_planner_cron_message($value, $min) {
+    $area = area_get($value['area_id']);
+    //chat_msg_send_system('До начала"' . $value['title'] . '" на локации ' . $area['title'] . ' осталось ' . $min . '</b> <b>' . format_by_count($min, 'минута', 'минуты', 'минут') . '! Нажмите <a href="#" onclick="top.frames[\'main_frame\'].frames[\'main_hidden\'].location.href = \'tp_fp.php?accept=1\'; return false;"  style="color:darkgreen">СЮДА</a> для перемещения.</b>', CHAT_CHF_AREA);
+	chat_msg_send_system('<b>До начала сражения "' . $value['title'] . '" осталось ' . $min . ' ' . format_by_count($min, 'минута', 'минуты', 'минут') . '! Нажмите <a href="#" onclick="top.frames[\'main_frame\'].frames[\'main_hidden\'].location.href = \'tp_fp.php?accept=1\'; return false;"  style="color:darkgreen">СЮДА</a> для перемещения в локацию ' . $area['title'] . '.</b>', CHAT_CHF_AREA);
+
+}
+
+function fight_planner_cron() {
+    // планировщик боев
+    $fight_planner_list = fight_planner_list(false, sql_pholder(" AND (`flags` & ?) != 0 AND stime <= ? ",
+        FIGHT_PLANNER_FLAG_ACTIVE,
+        time_current() + (12*60)
+    ));
+
+    if ($fight_planner_list) {
+        foreach ($fight_planner_list as $key => $value) {
+            $to_next_day = false;
+            do{
+                // проверка дня недели
+                if (!($value['week_flags'] & (1 << date("N")-1))) {
+                    $to_next_day = true;
+                    break;
+                }
+                // отправка сообщения о битве
+                if($value['flags'] & FIGHT_PLANNER_FLAG_CHATMESSAGE) {
+                    $minutesLeft = ($value['stime'] - time()) / 60;
+                    // Условия для отправки уведомления за 10, 5, 3 и 1 минуту до события
+                    if ($minutesLeft <= 10 && $minutesLeft >= 9) {
+                        fight_planner_cron_message($value,10);
+                    } elseif ($minutesLeft <= 5 && $minutesLeft >= 4) {
+                        fight_planner_cron_message($value,5);
+                    } elseif ($minutesLeft <= 3 && $minutesLeft >= 2) {
+                        fight_planner_cron_message($value,3);
+                    } elseif ($minutesLeft <= 1 && $minutesLeft >= 0) {
+                        fight_planner_cron_message($value,1);
+                    }
+					
+                }
+
+                if($value['stime'] > time_current()) break; // Еще не время!
+
+                $area = area_get($value['area_id']);
+                $param=array();
+                if ($value['flags'] & FIGHT_PLANNER_FLAG_WB) $param['fight']['level'] = 1;
+				if ($value['flags'] & FIGHT_PLANNER_FLAG_WARIOR) $param['fight']['type'] = 9;
+				if ($value['flags'] & FIGHT_PLANNER_FLAG_WARDRAGONS) $param['fight']['type'] = 8;
+                $bot1_id = bot_create($value['bot1_artikul_id'],1,$value['area_id'], false, array('flags'=>BOT_FLAG_TEMP));
+                $bot2_id = bot_create($value['bot2_artikul_id'],1,$value['area_id'], false, array('flags'=>BOT_FLAG_TEMP));
+                $bot1 = bot_get($bot1_id);
+                $bot2 = bot_get($bot2_id);
+                $status = fight_attack($bot1, $bot2, $param);
+
+                //chat_msg_send_system('<b>На локации '.$area['title'].'</b> <b>стартовала</b> <b style="color:red">"'.$value['title'].'"</b><b>!</b>', CHAT_CHF_AREA);
+				chat_msg_send_system('<b style="color:red">"'.$value['title'].'"</b> <b>стартовала!</b> <b>Локации: '.$area['title'].'</b>.', CHAT_CHF_AREA);
+
+                $to_next_day = true;
+            }while(0);
+            if($to_next_day) {
+                fight_planner_save(array(
+                    '_set' => sql_pholder(" stime = ? + time ", strtotime("+1 day 00:00")),
+                    '_add' => sql_pholder(" AND id = ? ", $value['id']),
+                ));
+            }
+        }
+    }
+}

@@ -1,0 +1,316 @@
+<? # $Id: log.lib,v 1.11 2008-10-29 10:59:05 a.uteshev Exp $
+
+// Имена и поля таблиц
+define('TABLE_HELP_LOG','help_log');
+define('FIELD_HELP_LOG','');
+
+define('TABLE_HELP_LOG_MESSAGE','help_log_message');
+define('FIELD_HELP_LOG_MESSAGE','');
+
+define('TABLE_HELP_LOG_LOG','help_log_log');
+define('FIELD_HELP_LOG_LOG','');
+
+define('TABLE_HELP_LOG_POST','help_log_post');
+define('FIELD_HELP_LOG_POST','');
+
+define('HELP_LOG_USER_LEVEL_MIN', 2);
+define('HELP_LOG_PIC_USER_LEVEL_MIN', 4);
+
+//Для ошибок квестов
+define('QUEST_ERROR_STATUS_WAIT', 0);
+define('QUEST_ERROR_STATUS_AWAIL', 1);
+define('QUEST_ERROR_STATUS_TESTED', 2);
+define('QUEST_ERROR_STATUS_COMPLETE', 3);
+
+//Замечания
+define('QUEST_ERROR_FLAG_FREEZE', 0x000001); // Квест зависает
+define('QUEST_ERROR_FLAG_DESC', 0x000002); // Неправильное описание
+define('QUEST_ERROR_FLAG_STRIKE', 0x000004); // Неправильная цель
+define('QUEST_ERROR_FLAG_AWARD', 0x000008); // Нет награды
+
+$quest_errors_flags_hash = array(
+    QUEST_ERROR_FLAG_FREEZE => 'Квест зависает',
+    QUEST_ERROR_FLAG_DESC => 'Неправильное описание',
+    QUEST_ERROR_FLAG_STRIKE => 'Неправильная цель',
+    QUEST_ERROR_FLAG_AWARD => 'Нет награды',
+);
+
+$help_errors_statuses = array(
+    -1 => 'Отклонить',
+    0 => '---',
+    1 => 'Ожидает обработки',
+    2 => 'Взят в работу',
+    3 => 'Исправлено',
+    4 => 'Выполнено',
+);
+
+$help_errors_statuses_u = array(
+    -1 => 'Отклонен',
+    0 => '---',
+    1 => 'Ожидает обработки',
+    2 => 'Взят в работу',
+    3 => 'Исправлен',
+    4 => 'Выполнен',
+);
+
+$help_errors_notes = array(
+    0 => 'Не указано',
+    1 => 'Письмо (Просьба уточнить)',
+);
+
+define('HELP_LOG_TYPE_TECH', 1);
+define('HELP_LOG_TYPE_PAY', 2);
+define('HELP_LOG_TYPE_ACCOUNT', 3);
+define('HELP_LOG_TYPE_ERROR', 4);
+define('HELP_LOG_TYPE_OTHER', 5);
+define('HELP_LOG_TYPE_GAME', 6);
+define('HELP_LOG_TYPE_CLAIM', 7);
+define('HELP_LOG_TYPE_OFFER', 8);
+define('HELP_LOG_TYPE_AGENT', 9);
+
+$log_error_types = array(
+    HELP_LOG_TYPE_TECH => 'Технические проблемы',
+    HELP_LOG_TYPE_PAY => 'Вопросы оплаты',
+    HELP_LOG_TYPE_ACCOUNT => 'Безопасность аккаунта',
+    HELP_LOG_TYPE_ERROR => 'Внутриигровые вопросы',
+    HELP_LOG_TYPE_OTHER => 'Общие вопросы',
+    HELP_LOG_TYPE_GAME => 'Внутриигровые проблемы',
+    HELP_LOG_TYPE_CLAIM => 'Жалобы',
+    HELP_LOG_TYPE_OFFER => 'Предложения',
+    HELP_LOG_TYPE_AGENT => 'Обращение агента',
+);
+
+define('HELP_LOG_OFFER_TYPE_STANDART', 1);
+define('HELP_LOG_OFFER_TYPE_QUEST', 2);
+define('HELP_LOG_OFFER_TYPE_FIGHT', 3);
+define('HELP_LOG_OFFER_TYPE_ARTIFACT', 4);
+define('HELP_LOG_OFFER_TYPE_SKILL', 5);
+define('HELP_LOG_OFFER_TYPE_PROFESSION', 6);
+
+define('HELP_LOG_ACTION_MESSAGE', 1); //Ответ на тикет
+define('HELP_LOG_ACTION_SET_STATUS', 2); //Установлен статус
+define('HELP_LOG_ACTION_FINISH', 3); //Тикет закрыт
+define('HELP_LOG_ACTION_CREATE', 4); //Создан тикет для юзера
+
+$help_log_action_hash = array(
+    HELP_LOG_ACTION_MESSAGE => 'Ответ на тикет',
+    HELP_LOG_ACTION_SET_STATUS => 'Установлен статус',
+    HELP_LOG_ACTION_FINISH => 'Тикет закрыт',
+    HELP_LOG_ACTION_CREATE => 'Создан тикет для юзера',
+);
+
+$help_log_message_status_hash = array(
+    0 => '---',
+    1 => 'Прочитано',
+);
+
+$help_errors_types = array(
+    HELP_LOG_TYPE_OTHER => array(
+        1 => array('id' => 1,'title' => 'Общие вопросы', 'type' => 0,),
+    ),
+    HELP_LOG_TYPE_TECH => array(
+        1 => array('id' => 1,'title' => 'Квесты', 'type' => 0,),
+        2 => array('id' => 2,'title' => 'Бои', 'type' => 0,),
+        3 => array('id' => 3,'title' => 'Интерфейс/орфография', 'type' => 0,),
+        4 => array('id' => 4,'title' => 'Баг/другое', 'type' => 0,),
+    ),
+    HELP_LOG_TYPE_GAME => array(
+        1 => array('id' => 1,'title' => 'Ошибки в игровом процессе', 'type' => 0,),
+        2 => array('id' => 2,'title' => 'Проблема с предметами', 'type' => 0,),
+        3 => array('id' => 3,'title' => 'Проблема с характеристиками', 'type' => 0,),
+        4 => array('id' => 4,'title' => 'Проблема с кланом', 'type' => 0,),
+        5 => array('id' => 5,'title' => 'Профессии', 'type' => 0,),
+        6 => array('id' => 6,'title' => 'Другое', 'type' => 0,),
+    ),
+    HELP_LOG_TYPE_PAY => array(
+        1 => array('id' => 1,'title' => 'Не пришли бриллианты', 'type' => 0,),
+        2 => array('id' => 2,'title' => 'Другое', 'type' => 0,),
+    ),
+    HELP_LOG_TYPE_CLAIM => array(
+        1 => array('id' => 1,'title' => 'Жалоба на стража', 'type' => 0,),
+        2 => array('id' => 2,'title' => 'Жалоба на игрока', 'type' => 0,),
+    ),
+    HELP_LOG_TYPE_OFFER => array(
+        1 => array('id' => 1,'title' => 'Предложения', 'type' => 0,),
+    ),
+);
+
+$help_form_time = array(
+    1 => 3600,
+    2 => 3600,
+    3 => 1800,
+    4 => 900,
+    5 => 450,
+    6 => 450,
+);
+
+function help_error_format($cnt, $type){
+    switch($type){
+        case HELP_LOG_TYPE_TECH:
+            return format_by_count($cnt, 'тех. ошибка', 'тех. ошибки', 'тех. ошибок');
+            break;
+        case HELP_LOG_TYPE_PAY:
+            return format_by_count($cnt, 'вопрос оплаты', 'вопроса оплаты', 'вопросов оплаты');
+            break;
+        case HELP_LOG_TYPE_ACCOUNT:
+            return format_by_count($cnt, 'ошибка аккаунта', 'ошибки аккаунта', 'ошибок аккаунта');
+            break;
+        case HELP_LOG_TYPE_ERROR:
+            return format_by_count($cnt, 'ошибка игры', 'ошибки игры', 'ошибок игры');
+            break;
+        case HELP_LOG_TYPE_OTHER:
+            return format_by_count($cnt, 'общий вопрос', 'общих вопроса', 'общих вопросов');
+            break;
+        case HELP_LOG_TYPE_GAME:
+            return format_by_count($cnt, 'игровой вопрос', 'игровых вопроса', 'игровых вопросов');
+            break;
+        case HELP_LOG_TYPE_CLAIM:
+            return format_by_count($cnt, 'жалоба', 'жалобы', 'жалоб');
+            break;
+        case HELP_LOG_TYPE_OFFER:
+            return format_by_count($cnt, 'предложение', 'предложения', 'предложений');
+            break;
+        case HELP_LOG_TYPE_AGENT:
+            return format_by_count($cnt, 'вопрос адмена', 'вопроса адмена', 'вопросов адмена');
+            break;
+    }
+}
+
+function help_log_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_HELP_LOG,$ref,$add);
+}
+
+function help_log_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_HELP_LOG,$ref,$add);
+}
+
+function help_log_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,TABLE_HELP_LOG,$ref,$add);
+}
+
+function help_log_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_HELP_LOG,$param,FIELD_HELP_LOG);
+}
+
+function help_log_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff,TABLE_HELP_LOG,$ref,$add);
+}
+
+/////////////////////////////////////////////
+
+function help_log_post_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_HELP_LOG_POST,$ref,$add);
+}
+
+function help_log_post_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_HELP_LOG_POST,$ref,$add);
+}
+
+function help_log_post_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,TABLE_HELP_LOG_POST, $ref ,$add);
+}
+
+function help_log_post_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_HELP_LOG_POST,$param,FIELD_HELP_LOG_POST);
+}
+
+function help_log_post_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff,TABLE_HELP_LOG_POST,$ref,$add);
+}
+
+/////////////////////////////////////////////
+
+function help_log_log_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_HELP_LOG_LOG,$ref,$add);
+}
+
+function help_log_log_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_HELP_LOG_LOG,$ref,$add);
+}
+
+function help_log_log_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,TABLE_HELP_LOG_LOG, $ref ,$add);
+}
+
+function help_log_log_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_HELP_LOG_LOG,$param,FIELD_HELP_LOG_LOG);
+}
+
+function help_log_log_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff,TABLE_HELP_LOG_LOG,$ref,$add);
+}
+
+/////////////////////////////////////////////
+
+function help_log_message_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_HELP_LOG_MESSAGE,$ref,$add);
+}
+
+function help_log_message_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_HELP_LOG_MESSAGE,$ref,$add);
+}
+
+function help_log_message_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,TABLE_HELP_LOG_MESSAGE, $ref ,$add);
+}
+
+function help_log_message_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_HELP_LOG_MESSAGE,$param,FIELD_HELP_LOG_MESSAGE);
+}
+
+function help_log_message_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff,TABLE_HELP_LOG_MESSAGE,$ref,$add);
+}
+
+function help_form_time($level = 1){
+    global $help_form_time;
+    if(!$help_form_time[$level]) return 450;
+    return $help_form_time[$level];
+}
+
+function help_log_count_cache($update = false){
+    global $log_error_types;
+    $help_log_cache = new Cache(md5('HELP_LOG_CACHER'));
+    if (!$help_log_cache->get() || $update) {// Проверим кеш
+        $help_log_info = array();
+        foreach($log_error_types as $k=>$v){
+            $help_log_info[$k] = help_log_count(false,' AND type = '.$k.' AND status < 3 AND status >= 0');
+        }
+        $help_log_cache->update($help_log_info,60);
+        return $help_log_info;
+    }else{
+        return $help_log_cache->get();
+    }
+}
+
+function help_log_script_remove($text){
+    return preg_replace('/script.*?\/script/ius', '', $text)
+        ? preg_replace('/script.*?\/script/ius', '', $text)
+        : $text;
+}
+
+function help_log_user_print($user = array()){
+    return $user['nick']." <a href=\"#\" onclick=\"showUserInfo('".$user['nick']."', '".SERVER_URL."');return false;\" title=\"Информация о персонаже\"><img src=\"/images/player_info.gif\" border=\"0\" align=\"absmiddle\"></a>";
+}
+
+?>

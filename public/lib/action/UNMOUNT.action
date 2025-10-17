@@ -1,0 +1,22 @@
+<? # $Id: UNMOUNT.action,v 1.7 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "расседлать жывотное"
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+
+$mount_id =$subject['mount_id'];
+if ($mount_id) {
+	$mount = artifact_get($mount_id);
+	if (!$mount || $mount['user_id'] != $subject['id']) {
+		$mount_id = 0;
+	}
+}
+if (!$mount_id) {
+	$out['error'] = sprintf(translate('У Вас нет активного животного.'));
+	return;
+}
+
+$object = $mount;
+include_once('lib/action/PUT_OFF.action');
+
+?>

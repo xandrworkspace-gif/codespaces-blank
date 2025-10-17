@@ -1,0 +1,300 @@
+<?php
+
+define('TABLE_HAVENS_GIFT_LIST','havens_gift');
+define('FIELD_HAVENS_GIFT_LIST','');
+define('TABLE_HAVENS_GIFT_USER_LIST','havens_gift_user');
+define('FIELD_HAVENS_GIFT_USER_LIST','');
+define('TABLE_HAVENS_GIFT_DICE_LIST','havens_gift_dice');
+define('FIELD_HAVENS_GIFT_DICE_LIST','');
+
+define('DICE_MAX_GAME_DAY', 5); //Максимум игор в день
+define('DICE_MAX_CAST', 24); //Максимум значение костей
+define('DICE_SUPER_PRIZE_GAME_CNT', 35); //Супер игра
+define('DICE_DAYS_SBROS_SU', 3); //Через 3 дня прогресс сгорает по супер игре
+define('DICE_GAME_MIN_LEVEL_USER', 3); //Минимальный уровень игрока
+
+define('THROW_TYPE_GAME',  1);
+define('THROW_TYPE_SUPER', 2);
+
+$dice_cast_info = array(
+    1 => array(
+        //Бесплатно
+        'number' => 1,
+        'count' => 1,
+    ),
+    2 => array(
+        'money_type' => MONEY_TYPE_GAME,
+        'money' => 15.00,
+        'number' => 2,
+        'count' => 1,
+    ),
+    3 => array(
+        'money_type' => MONEY_TYPE_GAME,
+        'money' => 50.00,
+        'number' => 3,
+        'count' => 2,
+    ),
+    4 => array(
+        'money_type' => MONEY_TYPE_GOLD,
+        'money' => 0.3,
+        'number' => 4,
+        'count' => 2,
+    ),
+    5 => array(
+        'money_type' => MONEY_TYPE_GOLD,
+        'money' => 1,
+        'number' => 5,
+        'count' => 3,
+        'cast_stage1' => true,
+    ),
+);
+
+$dice_part_stage_1 = array(
+    1 => array('id' => 1, 'days' => 7, 'artikul_id' => 0, 'artikul_cnt' => 0, 'bonus_id' => 10613,),
+    2 => array('id' => 2, 'days' => 30, 'artikul_id' => 0, 'artikul_cnt' => 0, 'bonus_id' => 10614,),
+);
+
+$dice_part_stage_2 = array(
+    1 => array('id' => 1, 'game_cnt' => 25, 'artikul_id' => 10456, 'artikul_cnt' => 1, 'bonus_id' => 10615,),
+    2 => array('id' => 2, 'game_cnt' => 50, 'artikul_id' => 10456, 'artikul_cnt' => 1, 'bonus_id' => 10616,),
+    3 => array('id' => 3, 'game_cnt' => 85, 'artikul_id' => 10456, 'artikul_cnt' => 1, 'bonus_id' => 10617,),
+    4 => array('id' => 4, 'game_cnt' => 150, 'artikul_id' => 10456, 'artikul_cnt' => 1, 'bonus_id' => 10618,),
+);
+
+function dice_game_cast($num = 0){
+    if($num == 0) return false;
+    $casts = array();
+    for($i = 0; $i < $num; $i++){
+        $m = mt_rand(1,100) > 50 ? mt_rand(4,6) : 6;
+        $casts[] = mt_rand(1,$m);
+    }
+    return $casts;
+}
+
+function dice_game_cast_sum($casts = array()){
+    if(!$casts) return 0;
+    $sum = 0;
+    foreach ($casts as $cast){
+        $sum += $cast;
+    }
+    if($sum > DICE_MAX_CAST) $sum = DICE_MAX_CAST; //Фикс
+    return $sum;
+}
+
+#Работа с базой данных
+function havens_gift_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_HAVENS_GIFT_LIST,$ref,$add);
+}
+
+function havens_gift_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_HAVENS_GIFT_LIST,$ref,$add);
+}
+
+function havens_gift_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_HAVENS_GIFT_LIST, $ref, $add);
+}
+
+function havens_gift_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_HAVENS_GIFT_LIST,$param,FIELD_HAVENS_GIFT_LIST);
+}
+
+function havens_gift_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_HAVENS_GIFT_LIST,$ref,$add);
+    return true;
+}
+
+
+function havens_gift_user_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_HAVENS_GIFT_USER_LIST,$ref,$add);
+}
+
+function havens_gift_user_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_HAVENS_GIFT_USER_LIST,$ref,$add);
+}
+
+function havens_gift_user_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_HAVENS_GIFT_USER_LIST, $ref, $add);
+}
+
+function havens_gift_user_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_HAVENS_GIFT_USER_LIST,$param,FIELD_HAVENS_GIFT_USER_LIST);
+}
+
+function havens_gift_user_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_HAVENS_GIFT_USER_LIST,$ref,$add);
+    return true;
+}
+
+
+function havens_gift_dice_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_HAVENS_GIFT_DICE_LIST,$ref,$add);
+}
+
+function havens_gift_dice_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_HAVENS_GIFT_DICE_LIST,$ref,$add);
+}
+
+function havens_gift_dice_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_HAVENS_GIFT_DICE_LIST, $ref, $add);
+}
+
+function havens_gift_dice_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_HAVENS_GIFT_DICE_LIST,$param,FIELD_HAVENS_GIFT_DICE_LIST);
+}
+
+function havens_gift_dice_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_HAVENS_GIFT_DICE_LIST,$ref,$add);
+    return true;
+}
+#Работа с базой данных
+
+function havens_gift_dice_adv_open($user = array()){
+    if(((defined('DICE_ADV_GLOBAL_OPEN_ADMIN') && DICE_ADV_GLOBAL_OPEN_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('DICE_ADV_GLOBAL_OPEN') && DICE_ADV_GLOBAL_OPEN)) {
+        return true;
+    }
+    return false;
+}
+
+function havens_gift_game_access(&$access_game, &$access_super_game, &$dice_cast){
+    global $dice_cast_info;
+    global $havents_gift_user,$session_user;
+    //Определяем логику...
+    if($session_user['level'] < DICE_GAME_MIN_LEVEL_USER){
+        $access_game = null;
+        $access_super_game = null;
+        return false;
+    }
+
+    if($session_user['flags'] & USER_FLAG_JAIL || $session_user['flags'] & USER_FLAG_PUNISH){
+        $access_game = null;
+        $access_super_game = null;
+        return false;
+    }
+
+    if($havents_gift_user['dtime'] <= time_current()){
+        //Нужно дождаться обновления крона!
+        $access_game = null;
+        $access_super_game = null;
+    }
+    $dice_cast = $dice_cast_info[$havents_gift_user['today_game_cnt']];
+
+    if(!$dice_cast || $havents_gift_user['today_game_cnt'] > DICE_MAX_GAME_DAY){
+        //Обычная игра при таком раскаладе недоступна
+        $access_game = null;
+    }
+
+    if($havents_gift_user['progress_super_game_cnt'] < DICE_SUPER_PRIZE_GAME_CNT){
+        $access_super_game = null; //Супер игра не доступна
+    }else{
+        $access_game = null; //Если супер-игра доступна, то обычная игра не доступна
+    }
+
+    if($access_game){
+        $user_money = user_get_money_amount($dice_cast['money_type'], $session_user['id']);
+        if($dice_cast['money'] > $user_money){
+            $access_game = null;
+            //Недостаточно денег!
+        }
+    }
+}
+
+function havens_gift_cron(){
+    //Сбрасывает обычную игру
+    havens_gift_user_save(array(
+        '_add' => sql_pholder(' AND dtime < ?', time_current()),
+        '_set' => sql_pholder(' today_game_cnt = ?, dtime = ? ', 1, (mktime(23,59,59) + 1)),
+    ));
+    //Сбрасывает супер игру после 3 дней не игры
+    havens_gift_user_save(array(
+        '_add' => sql_pholder(' AND mtime < ?', time_current() - (DICE_DAYS_SBROS_SU * 60 * 60 * 24)),
+        '_set' => sql_pholder(' progress_super_game_cnt = ? ', 0),
+    ));
+}
+
+function dice_part_stage1_add(&$havents_gift_user) {
+    global $dice_part_stage_1;
+    if(!$havents_gift_user['id']) return false;
+    $max_day = 0;
+    foreach ($dice_part_stage_1 as $item){
+        $max_day = max($max_day, $item['days']);
+    }
+    if($havents_gift_user['stage1_day'] + 1 >= $max_day) {
+        return false;
+    }
+    havens_gift_user_save(array(
+        'id' => $havents_gift_user['id'],
+        '_set' => sql_pholder(' stage1_day = stage1_day + 1, stage1_dtime = ?', mktime(23,59,59) + 1 + 86400),
+    ));
+    $havents_gift_user['stage1_day'] += 1;
+    foreach ($dice_part_stage_1 as $item){
+        if($havents_gift_user['stage1_day'] == $item['days'] && $item['id'] > $havents_gift_user['stage1_status']) {
+            $havents_gift_user['stage1_status'] = $item['id'];
+            havens_gift_user_save(array(
+                'id' => $havents_gift_user['id'],
+                '_set' => sql_pholder(' stage1_status = ?', $item['id']),
+            ));
+            if($item['bonus_id']){
+                $user = user_get($havents_gift_user['user_id']);
+                bonus_apply($user, $item['bonus_id']);
+            }
+            break;
+        }
+    }
+    chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$havents_gift_user['user_id'],array('func' => "refresh_dice_stage(1);"));
+    return true;
+}
+
+function dice_part_stage1_cron() {
+    havens_gift_user_save(array(
+        '_add' => sql_pholder(' AND stage1_day >= 2 AND stage1_dtime != 0 AND stage1_dtime < ?', time_current()),
+        '_set' => sql_pholder(' stage1_day = stage1_day - 2, stage1_dtime = 0, stage1_status = 0'),
+    ));
+    havens_gift_user_save(array(
+        '_add' => sql_pholder(' AND stage1_day < 2 AND stage1_dtime != 0 AND stage1_dtime < ?', time_current()),
+        '_set' => sql_pholder(' stage1_day = 0, stage1_dtime = 0, stage1_status = 0'),
+    ));
+}
+
+function dice_part_stage2_add(&$havents_gift_user) {
+    global $dice_part_stage_2;
+    if(!$havents_gift_user['id']) return false;
+    $max_game_cnt = 0;
+    foreach ($dice_part_stage_2 as $item){
+        $max_game_cnt = max($max_game_cnt, $item['game_cnt']);
+    }
+    if($havents_gift_user['stage2'] + 1 >= $max_game_cnt) {
+        return false;
+    }
+    if($havents_gift_user['dtime'] <= time_current()) return false; //Дождемся обнуления крона
+    havens_gift_user_save(array(
+        'id' => $havents_gift_user['id'],
+        '_set' => sql_pholder(' stage2 = stage2 + 1, stage2_dtime = ?', strtotime(date('Y-m-d', mktime(0, 0, 0, date('m')+1, 1, date('Y'))))),
+    ));
+    chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$havents_gift_user['user_id'],array('func' => "refresh_dice_stage(2);"));
+    return true;
+}
+
+function dice_part_stage2_cron() {
+    havens_gift_user_save(array(
+        '_add' => sql_pholder(' AND stage2_dtime != 0 AND stage2_dtime < ?', time_current()),
+        '_set' => sql_pholder(' stage2 = 0, stage2_dtime = 0, stage2_status = 0'),
+    ));
+}

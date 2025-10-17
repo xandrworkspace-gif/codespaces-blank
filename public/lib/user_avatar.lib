@@ -1,0 +1,110 @@
+<?php
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/common.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/user_info.lib");
+
+define('TABLE_USER_AVATARS','user_avatars');
+define('FIELD_USER_AVATARS','');
+define('TABLE_USER_AVATAR_ARTIKULS','user_avatar_artikuls');
+define('FIELD_USER_AVATAR_ARTIKULS','');
+
+define('USER_AVATAR_FLAG_HUMAN',  0x01);
+define('USER_AVATAR_FLAG_MAGMAR', 0x02);
+define('USER_AVATAR_FLAG_MALE',   0x04);
+define('USER_AVATAR_FLAG_FEMALE', 0x08);
+define('USER_AVATAR_FLAG_UNIQUE', 0x10);
+
+function user_avatar_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_USER_AVATARS, $ref, $add);
+}
+
+function user_avatar_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_USER_AVATARS, $ref, $add);
+}
+
+function user_avatar_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_USER_AVATARS, $ref, $add);
+}
+
+function user_avatar_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_USER_AVATARS, $param, FIELD_USER_AVATARS);
+}
+
+function user_avatar_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff, TABLE_USER_AVATARS, $ref, $add);
+}
+
+function user_avatar_check_expired($user_id) {
+	$expire_list = user_avatar_list(array('user_id' => $user_id), sql_pholder(' AND (dtime > 0 AND dtime <= ?) ', time_current()));
+	foreach ($expire_list as $expire_avatar) {
+		$artikul = user_avatar_artikul_get($expire_avatar['artikul_id']);
+		user_avatar_delete($expire_avatar);
+		logserv_log_note(array(
+			'note' => sprintf(translate('Удаление образа %s.'), $artikul['title']),
+			'comment' => translate('Образ удален по сроку годности.'),
+		),$user_id);
+	}
+
+	$user_info = user_info_get($user_id);
+	if (!$user_info['avatar_id']) return false;
+	$avatar = user_avatar_get($user_info['avatar_id']);
+	if (!$avatar) {
+		user_info_save(array(
+			'_set' => ' avatar_id = 0 ',
+			'_add' => sql_pholder(' AND uid = ? ', $user_id),
+		));
+		return false;
+	}
+	return $avatar;
+}
+
+function user_avatar_check_avail($user, $avatar_artikul) {
+	$flags = $avatar_artikul['flags'];
+	if ($flags & USER_AVATAR_FLAG_UNIQUE) return false;
+	
+	$avail = false;
+	if ($user['kind'] == KIND_HUMAN) $avail = ($avail || ($flags & USER_AVATAR_FLAG_HUMAN));
+	if ($user['kind'] == KIND_MAGMAR) $avail = ($avail || ($flags & USER_AVATAR_FLAG_MAGMAR)); 
+	if ($user['gender'] == GENDER_MALE) $avail = ($avail || ($flags & USER_AVATAR_FLAG_MALE));
+	if ($user['gender'] == GENDER_FEMALE) $avail = ($avail || ($flags & USER_AVATAR_FLAG_FEMALE));
+	return $avail;
+}
+
+function user_avatar_artikul_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_USER_AVATAR_ARTIKULS, $ref, $add);
+}
+
+function user_avatar_artikul_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_USER_AVATAR_ARTIKULS, $ref, $add);
+}
+
+function user_avatar_artikul_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_USER_AVATAR_ARTIKULS, $ref, $add);
+}
+
+function user_avatar_artikul_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_USER_AVATAR_ARTIKULS, $param, FIELD_USER_AVATAR_ARTIKULS);
+}
+
+function user_avatar_artikul_delete($artikul_id) {
+	global $db_diff;
+	if (!$artikul_id) return false;
+	$avatar_ids = get_hash(user_avatar_list(array('artikul_id' => $artikul_id)), 'id', 'id');
+	if($avatar_ids) user_info_save(array(
+		'_set' => ' avatar_id = 0 ',
+		'_add' => sql_pholder(' AND avatar_id IN (?@) ', $avatar_ids),
+	));
+	if($avatar_ids) user_avatar_delete(array('id' => $avatar_ids));
+	return common_delete($db_diff, TABLE_USER_AVATAR_ARTIKULS, array('id' => $artikul_id));
+}
+
+

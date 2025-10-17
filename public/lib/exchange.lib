@@ -1,0 +1,385 @@
+<?
+define('EXCHANGE_DEBUG', false);
+
+define('EXCHANGE_REQUEST', 'exchange_request');
+define('EXCHANGE_REQUEST_LOG', 'exchange_request_log');
+define('EXCHANGE_USER_LOG', 'exchange_user_log');
+define('EXCHANGE_USER', 'exchange_user');
+
+define('EXCHANGE_REQUEST_TYPE_BUY', 1);
+define('EXCHANGE_REQUEST_TYPE_SELL', 2);
+
+define('EXCHANGE_REQUEST_LOG_TYPE_CLOSE_REQUEST', 1);
+define('EXCHANGE_REQUEST_LOG_TYPE_EDIT_REQUEST', 2);
+define('EXCHANGE_REQUEST_LOG_TYPE_CLOSE_REQUEST_SELL', 3);
+define('EXCHANGE_REQUEST_LOG_TYPE_EDIT_REQUEST_SELL', 4);
+
+$exchange_request_log_type_hash = array(
+    EXCHANGE_REQUEST_LOG_TYPE_CLOSE_REQUEST => 'Продажа [C]',
+    EXCHANGE_REQUEST_LOG_TYPE_EDIT_REQUEST => 'Продажа',
+    EXCHANGE_REQUEST_LOG_TYPE_CLOSE_REQUEST_SELL => 'Покупка [C]',
+    EXCHANGE_REQUEST_LOG_TYPE_EDIT_REQUEST_SELL => 'Покупка',
+);
+
+define('EXCHANGE_USER_LOG_MONEY_ADD', 1);
+define('EXCHANGE_USER_LOG_MONEY_GIVE', 2);
+
+$exchange_user_log_type_hash = array(
+    EXCHANGE_USER_LOG_MONEY_ADD => 'Положил',
+    EXCHANGE_USER_LOG_MONEY_GIVE => 'Снял',
+);
+
+function exchange_request_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,EXCHANGE_REQUEST,$ref,$add);
+}
+
+function exchange_request_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,EXCHANGE_REQUEST,$ref,$add);
+}
+
+function exchange_request_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, EXCHANGE_REQUEST, $ref, $add);
+}
+
+function exchange_request_save($param) {
+    global $db_2;
+    return common_save($db_2,EXCHANGE_REQUEST,$param);
+}
+
+function exchange_request_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,EXCHANGE_REQUEST,$ref);
+}
+
+//////////////////////////////////////////////////////////////////
+
+function exchange_request_log_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,EXCHANGE_REQUEST_LOG,$ref,$add);
+}
+
+function exchange_request_log_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,EXCHANGE_REQUEST_LOG,$ref,$add);
+}
+
+function exchange_request_log_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, EXCHANGE_REQUEST_LOG, $ref, $add);
+}
+
+function exchange_request_log_save($param) {
+    global $db_2;
+    return common_save($db_2,EXCHANGE_REQUEST_LOG,$param);
+}
+
+function exchange_request_log_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,EXCHANGE_REQUEST_LOG,$ref);
+}
+
+/////////////////////////////////////////////////////////////////
+
+function exchange_user_log_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,EXCHANGE_USER_LOG,$ref,$add);
+}
+
+function exchange_user_log_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,EXCHANGE_USER_LOG,$ref,$add);
+}
+
+function exchange_user_log_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, EXCHANGE_USER_LOG, $ref, $add);
+}
+
+function exchange_user_log_save($param) {
+    global $db_2;
+    return common_save($db_2,EXCHANGE_USER_LOG,$param);
+}
+
+function exchange_user_log_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,EXCHANGE_USER_LOG,$ref);
+}
+
+//////////////////////////////////////////////////////////////////
+
+function exchange_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,EXCHANGE_USER,$ref,$add);
+}
+
+function exchange_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,EXCHANGE_USER,$ref,$add);
+}
+
+function exchange_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, EXCHANGE_USER, $ref, $add);
+}
+
+function exchange_user_save($param) {
+    global $db_2;
+    return common_save($db_2,EXCHANGE_USER,$param);
+}
+
+function exchange_user_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,EXCHANGE_USER,$ref);
+}
+
+//////////////////////////////////////////////////////////////////
+
+function exchange_lock($timewait=20, $timelock=60) {
+    global $tq;
+    return $tq->capture('EXCHANGE_GLOBAL',$timewait,$timelock);
+}
+
+function exchange_unlock() {
+    global $tq;
+    return $tq->release('EXCHANGE_GLOBAL');
+}
+
+function exchange_close_requset(&$ex_request, $exchange_user, &$amount, &$balance){
+    //Закрываем реквест
+    $amount -= $ex_request['amount'];
+    if(exchange_request_save(array('id' => $ex_request['id'], 'amount' => 0))) { //На всякий
+        exchange_request_delete($ex_request['id']);
+        $_exchange_user = exchange_user_get(array('user_id' => $ex_request['user_id']));
+
+        if(EXCHANGE_DEBUG) {
+            echo 'Было у '.$exchange_user['user_id'].' '.html_money_str(MONEY_TYPE_GAME, $exchange_user['money_1']).' | '.html_money_str(MONEY_TYPE_GOLD, $exchange_user['money_3']).'<br>';
+            echo 'Было у '.$_exchange_user['user_id'].' '.html_money_str(MONEY_TYPE_GAME, $_exchange_user['money_1']).' | '.html_money_str(MONEY_TYPE_GOLD, $_exchange_user['money_3']).'<br>';
+        }
+
+        //Отправляем бабки пользователю в биржу
+        exchange_user_save(array('id' => $_exchange_user['id'], '_set' => sql_pholder(' money_1 = money_1 + ?', $ex_request['amount'] * $ex_request['sell_price'])));
+        //Отправляем бабки
+        exchange_user_save(array('id' => $exchange_user['id'], '_set' => sql_pholder(' money_3 = money_3 + ?', $ex_request['amount'])));
+        $balance -= $ex_request['amount'] * $ex_request['sell_price'];
+        $ex_request['balance_buy'] -= $ex_request['amount'] * $ex_request['sell_price'];
+        if($ex_request['balance_buy'] > 0) { //Вернуть остаток...
+            exchange_user_save(array('id' => $_exchange_user['id'], '_set' => sql_pholder(' money_1 = money_1 + ?', $ex_request['balance_buy'])));
+            if(EXCHANGE_DEBUG) echo 'В связи с закрытием заявки, было возвращено на счет игроку '.$_exchange_user['user_id'].': '.html_money_str(MONEY_TYPE_GAME, $ex_request['balance_buy']).'<br>';
+        }
+
+        //Лог
+        exchange_request_log_add(EXCHANGE_REQUEST_LOG_TYPE_CLOSE_REQUEST, $ex_request['amount'], MONEY_TYPE_GOLD, $ex_request['amount'] * $ex_request['sell_price'], MONEY_TYPE_GAME, $exchange_user['user_id'], $_exchange_user['user_id'], $ex_request['id']);
+    }
+}
+
+function exchange_edit_requset($ex_request, $exchange_user, &$amount, &$balance, $cnt_buy){
+    //Закрываем реквест
+    $amount -= $cnt_buy;
+    //exchange_request_delete($ex_request['id']);
+    $_exchange_user = exchange_user_get(array('user_id' => $ex_request['user_id']));
+
+    if(EXCHANGE_DEBUG) {
+        echo 'Было у '.$exchange_user['user_id'].' '.html_money_str(MONEY_TYPE_GAME, $exchange_user['money_1']).' | '.html_money_str(MONEY_TYPE_GOLD, $exchange_user['money_3']).'<br>';
+        echo 'Было у '.$_exchange_user['user_id'].' '.html_money_str(MONEY_TYPE_GAME, $_exchange_user['money_1']).' | '.html_money_str(MONEY_TYPE_GOLD, $_exchange_user['money_3']).'<br>';
+    }
+
+    //Отправляем бабки пользователю в биржу
+    exchange_user_save(array('id' => $_exchange_user['id'], '_set' => sql_pholder(' money_1 = money_1 + ?', $cnt_buy * $ex_request['sell_price'])));
+    //Отправляем бабки
+    exchange_user_save(array('id' => $exchange_user['id'], '_set' => sql_pholder(' money_3 = money_3 + ?', $cnt_buy)));
+    $balance -= $cnt_buy * $ex_request['sell_price'];
+
+    //Сохраним заявку
+    exchange_request_save(array('id' => $ex_request['id'], '_set' => sql_pholder(' balance_sell = balance_sell - ?, amount = amount - ?', $cnt_buy, $cnt_buy)));
+
+    //Лог
+    exchange_request_log_add(EXCHANGE_REQUEST_LOG_TYPE_EDIT_REQUEST, $cnt_buy, MONEY_TYPE_GOLD, $cnt_buy * $ex_request['sell_price'], MONEY_TYPE_GAME, $exchange_user['user_id'], $_exchange_user['user_id'], $ex_request['id']);
+}
+
+function exchange_close_requset_sell(&$ex_request, $exchange_user, &$amount, &$balance){
+    //Закрываем реквест
+    $amount -= $ex_request['amount'];
+    if(exchange_request_save(array('id' => $ex_request['id'], 'amount' => 0))) { //На всякий
+        exchange_request_delete($ex_request['id']);
+        $_exchange_user = exchange_user_get(array('user_id' => $ex_request['user_id']));
+
+        if(EXCHANGE_DEBUG) {
+            echo 'Было у '.$exchange_user['user_id'].' '.html_money_str(MONEY_TYPE_GAME, $exchange_user['money_1']).' | '.html_money_str(MONEY_TYPE_GOLD, $exchange_user['money_3']).'<br>';
+            echo 'Было у '.$_exchange_user['user_id'].' '.html_money_str(MONEY_TYPE_GAME, $_exchange_user['money_1']).' | '.html_money_str(MONEY_TYPE_GOLD, $_exchange_user['money_3']).'<br>';
+        }
+
+        //Отправляем бабки пользователю в биржу
+        exchange_user_save(array('id' => $_exchange_user['id'], '_set' => sql_pholder(' money_3 = money_3 + ?', $ex_request['amount'])));
+        //Отправляем бабки
+        exchange_user_save(array('id' => $exchange_user['id'], '_set' => sql_pholder(' money_1 = money_1 + ?', $ex_request['amount'] * $ex_request['sell_price'])));
+        $balance -= $ex_request['amount'];
+
+        //Лог
+        exchange_request_log_add(EXCHANGE_REQUEST_LOG_TYPE_CLOSE_REQUEST_SELL, $ex_request['amount'] * $ex_request['sell_price'], MONEY_TYPE_GAME, $ex_request['amount'], MONEY_TYPE_GOLD, $exchange_user['user_id'], $_exchange_user['user_id'], $ex_request['id']);
+    }
+}
+
+
+function exchange_edit_requset_sell($ex_request, $exchange_user, &$amount, &$balance, $cnt_buy){
+    //Закрываем реквест
+    $amount -= $cnt_buy;
+    //exchange_request_delete($ex_request['id']);
+    $_exchange_user = exchange_user_get(array('user_id' => $ex_request['user_id']));
+
+    if(EXCHANGE_DEBUG) {
+        echo 'Было у '.$exchange_user['user_id'].' '.html_money_str(MONEY_TYPE_GAME, $exchange_user['money_1']).' | '.html_money_str(MONEY_TYPE_GOLD, $exchange_user['money_3']).'<br>';
+        echo 'Было у '.$_exchange_user['user_id'].' '.html_money_str(MONEY_TYPE_GAME, $_exchange_user['money_1']).' | '.html_money_str(MONEY_TYPE_GOLD, $_exchange_user['money_3']).'<br>';
+    }
+
+    //Отправляем бабки пользователю в биржу
+    exchange_user_save(array('id' => $_exchange_user['id'], '_set' => sql_pholder(' money_3 = money_3 + ?', $cnt_buy)));
+    //Отправляем бабки
+    exchange_user_save(array('id' => $exchange_user['id'], '_set' => sql_pholder(' money_1 = money_1 + ?', $cnt_buy * $ex_request['sell_price'])));
+    $balance -= $cnt_buy;
+
+    //Сохраним заявку
+    exchange_request_save(array('id' => $ex_request['id'], '_set' => sql_pholder(' balance_buy = balance_buy - ?, amount = amount - ?', $ex_request['sell_price'] * $cnt_buy, $cnt_buy)));
+
+    //Лог
+    exchange_request_log_add(EXCHANGE_REQUEST_LOG_TYPE_EDIT_REQUEST_SELL, $cnt_buy * $ex_request['sell_price'], MONEY_TYPE_GAME, $cnt_buy, MONEY_TYPE_GOLD, $exchange_user['user_id'], $_exchange_user['user_id'], $ex_request['id']);
+}
+
+function exchange_print_debug($txt){
+    if(EXCHANGE_DEBUG) echo $txt;
+}
+
+function exchange_request_log_add($type, $money, $money_type, $rmoney, $rmoney_type, $user_id, $r_user_id = 0, $rid = 0){
+
+    if(EXCHANGE_DEBUG) {
+        $exchange_user = exchange_user_get(array('user_id' => $user_id));
+        $_exchange_user = exchange_user_get(array('user_id' => $r_user_id));
+        echo 'Стало у '.$exchange_user['user_id'].' '.html_money_str(MONEY_TYPE_GAME, $exchange_user['money_1']).' | '.html_money_str(MONEY_TYPE_GOLD, $exchange_user['money_3']).'<br>';
+        echo 'Стало у '.$_exchange_user['user_id'].' '.html_money_str(MONEY_TYPE_GAME, $_exchange_user['money_1']).' | '.html_money_str(MONEY_TYPE_GOLD, $_exchange_user['money_3']).'<br>';
+    }
+
+    return exchange_request_log_save(array(
+        'type' => $type,
+        'user_id' => $user_id,
+        'ruser_id' => $r_user_id,
+        'money_type' => $money_type,
+        'money' => $money,
+        'rmoney_type' => $rmoney_type,
+        'rmoney' => $rmoney,
+        'rid' => $rid,
+        'ctime' => time_current(),
+    ));
+}
+
+function tpl_exchange_print_main(){?>
+    <div id="exchange_div" style="display:none; z-index: 900; position: absolute; width: 710px; height: 450px;" class="popup_global_container">
+        <div class="popup-top-left">
+            <div class="popup-top-right">
+                <div class="popup-top-center">
+                    <div class="popup_global_title"></div>
+                    <div class="popup_global_close_btn" style="z-index: 10000;" onclick="_top().hFrMe('exchange');"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="popup-left-center">
+            <div class="popup-right-center">
+                <div class="popup_global_content" class="w100 h100">
+                    <iframe id="exchange_iframe" width="100%" height="100%" frameborder="0" name="exchange_iframe" scrolling="yes"></iframe>
+                </div>
+            </div>
+        </div>
+
+        <div class="popup-left-bottom">
+            <div class="popup-right-bottom">
+                <div class="popup-bottom-center"></div>
+            </div>
+        </div>
+    </div>
+<?}
+
+//Еще пока не знаю уместен ли лок, наверное на всякий сделать нужно!) Но я не уверен нужен ли он... В заявках уже учтено dtime при котором не обрабатывать заявки.
+function exchange_cron($lock = false) {
+    if($lock) {
+        $exchange_lock = false;
+        $request_count = exchange_request_count(false, sql_pholder(' AND dtime < ?', time_current()));
+        if (!$request_count || $request_count <= 0) return false;
+        $i = 0;
+        do {
+            if (!exchange_lock(1, 120)) { //Укажем на всякий 2 минуты
+                $i++;
+                continue;
+            }
+            $exchange_lock = true;
+        } while ($i > 10);
+        if (!$exchange_lock) return false;
+    }
+    //Работа с заявками
+    $request_list = exchange_request_list(false, sql_pholder(' AND dtime < ?', time_current()));
+    foreach ($request_list as $request){
+        $error = false;
+        if(!exchange_close_request($error, $request)) {
+            //Все равно удалим, но запишем в лог чтобы потом можно было разобраться.
+            $request['error'] = $error;
+            logfile(EXCHANGE_REQUEST_LOG_F, json_encode($request), false);
+            exchange_request_delete($request['id']);
+        }
+    }
+    if($lock) exchange_unlock();
+}
+
+function exchange_close_request(&$error, $request = false, $ref = false, $user_id = false, $lock = false){
+    if(!$request && !$ref) return false;
+    $add = ''.($user_id ? sql_pholder(' AND user_id = ?', $user_id) : '').sql_pholder(' AND dtime > ?', time_current());
+    $user_req = ($request ? $request : exchange_request_get($ref, $add));
+    if(!$ref) $ref = intval($user_req['id']);
+    if(!$ref) {
+        $error = 'Не найдена заявка #ID';
+        return false;
+    }
+    if(!$user_req){
+        $error = 'Не найдена заявка, или время заявки истекло!';
+        return false;
+    }
+    $exchange_user = exchange_user_get(array('user_id' => ($user_id ? $user_id : $user_req['user_id'])));
+    if(!$exchange_user){
+        $error = 'Ошибка!';
+        return false;
+    }
+    if($lock) {
+        if (!exchange_lock()) {
+            $error = 'В данный момент уже производится операция, пожалуйста попробуйте снова.';
+            return false;
+        }
+    }
+    exchange_request_delete($ref);
+    if($user_req['type'] == EXCHANGE_REQUEST_TYPE_BUY){
+        exchange_user_save(array(
+            'id' => $exchange_user['id'],
+            '_set' => sql_pholder(' money_1 = money_1 + ?', $user_req['sell_price'] * $user_req['amount']),
+        ));
+    }elseif($user_req['type'] == EXCHANGE_REQUEST_TYPE_SELL){
+        exchange_user_save(array(
+            'id' => $exchange_user['id'],
+            '_set' => sql_pholder(' money_3 = money_3 + ?', $user_req['amount']),
+        ));
+    }
+    return true;
+}
+
+function exchange_open($user = array()){
+    if(((defined('EXCHANGE_WAL_GLOBAL_OPEN_ADMIN') && EXCHANGE_WAL_GLOBAL_OPEN_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('EXCHANGE_WAL_GLOBAL_OPEN') && EXCHANGE_WAL_GLOBAL_OPEN && !(defined('EXCHANGE_WAL_GLOBAL_OPEN_ADMIN') && EXCHANGE_WAL_GLOBAL_OPEN_ADMIN))) {
+        return true;
+    }
+    return false;
+}

@@ -1,0 +1,99 @@
+<? # $Id: RESURRECT.action,v 1.21 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "воскресить"
+
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if ($action['object_class'] == OBJECT_CLASS_AREA) { // действие вызывается с местоположения
+	$valid = false;
+	$link_list = area_link_list($action['object_id'],false," AND active=1");
+	if ($link_list) {
+		foreach ($link_list as $link) {
+			if ($link['kind'] && $link['kind'] != $subject['kind']) continue;
+			if ($link['action_id']) {
+				$area_action = action_object_get($action['object_class'], $action['object_id'], $link['action_id']);
+				if ($area_action) {
+					$valid = true;
+					break;
+				}
+			}
+		}
+	}
+	if (!$valid) return;
+}
+
+if (!($subject['flags'] & USER_FLAG_GHOST)) {
+	$out['error'] = translate('Воскрешать можно только призраков!');
+	return;
+}
+
+$mirror_solumir = artifact_count(1926, $subject['id'], 'TEMP_EFFECT');
+if($mirror_solumir){
+    $out['error'] = translate('Душа потеряна!');
+    return;
+}
+
+//телепортация
+if ($action['common']) {
+	if ($subject['instance'] || $session_user['id'] != $subject['id'])
+		return;
+	if($subject['level']<2)
+		$to_area_id = $kind_info[$subject['kind']]['start_area_id'];
+	elseif ($subject['level']>15) {
+		require_once("lib/quest.lib");
+		NODE_PUSH(null, $subject['id']);
+		$quest_user = quest_user_get(array('quest_id' => USER_QUEST_BIG_LEVEL_RESSURECT, 'user_id' => $subject['id'], 'status' => QUEST_STATUS_FINISHED));
+		NODE_POP();
+		$to_area_id = $quest_user ?
+					  $kind_info[$subject['kind']]['big_level_city_area_id'] :
+					  $kind_info[$subject['kind']]['city_area_id'];
+	} else
+		$to_area_id = $kind_info[$subject['kind']]['city_area_id'];
+
+	if ($in['paidResurrect']) {
+		$area = area_get($subject['area_id']);
+		$in_own_location = (($area['flags'] & AREA_FLAG_NO_INVISIBLE_MAGMAR) && ($session_user['kind'] == KIND_HUMAN)) ||
+						   (($area['flags'] & AREA_FLAG_NO_INVISIBLE_HUMAN) && ($session_user['kind'] == KIND_MAGMAR));
+		if ($in_own_location && !($subject['flags2'] & USER_FLAG2_GHOST_WALK)) {
+			$comment = translate('Платное воскрешение');
+			$status = user_make_payment(MONEY_TYPE_GAME, $subject['id'], -PAID_RESURRECT_COST,$comment,false, array(MONEY_STAT_OPERATION_LOST,MONEY_STAT_OPERATION_PURE_LOST));
+			if ($status) {
+				$to_area_id = $subject['area_id'];
+				logserv_log_operation(array(
+				   'money_type' => MONEY_TYPE_GAME,
+				   'amount' => -PAID_RESURRECT_COST,
+				   'comment' => translate('Платное воскрешение'),
+				), $subject['id']);
+			}
+		}
+	}
+	$param = array(
+		'id' => $subject['id'],
+		'area_id' => $to_area_id,
+		'instance_id' => 0,
+		'raid_id' => 0,
+		'flags2' => $subject['flags2'] & ~(USER_FLAG2_IN_ESTATE | USER_FLAG2_GHOST_WALK),
+	);
+	
+	//user_change_chat_channels($subject, $param);
+	user_save($param);
+}
+
+user_resurrect($subject['id']);
+
+if ($session_user['id'] == $subject['id']) {
+	$out['param_success'] = array('msg' => translate('Вы воскрешены! Войдите в новую жизнь уверенным шагом победителя!'), 'msg_title' => translate('Воскрешение'), 'update_swf' => 1);
+} else {
+	$out['param_success'] = array('msg' => sprintf(translate('Вы воскресили игрока %s!'),user_is_invisible($subject) ? translate('Невидимка') : $subject['nick']), 'msg_title' => translate('Воскрешение'), 'update_swf' => 1);
+	chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => 'updateHP()'));
+	chat_msg_send_system(sprintf(translate('Игрок %s воскресил вас!'), user_is_invisible($session_user) ? translate('Невидимка') : html_user_info($session_user)), CHAT_CHF_USER, $subject['id']);
+	chat_msg_send_system(sprintf(translate('Вы воскресили игрока %s!'), user_is_invisible($subject) ? translate('Невидимка') : html_user_info($subject)), CHAT_CHF_USER, $session_user['id']);
+}
+chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => 'updateSwf({inventory:""});'));
+$out['status'] = ACTION_STATUS_OK;
+
+?>

@@ -1,0 +1,119 @@
+<?
+require_once("lib/cube_recipe.lib");
+require_once("lib/artifact.lib");
+require_once("tpl/artifact.tpl");
+require_once("tpl/borders.tpl");
+
+function cube_recepie_generate_cache(){
+    global $db_info;
+
+    if (!(defined('CUBE_RECEPIE_CACHE_GEN') && CUBE_RECEPIE_CACHE_GEN)) {
+        return false;
+    }
+
+    $recipes = cube_recipes_list(false);
+    $cnt_lib = 0;
+
+    common_truncate($db_info, 'cube_recepie');
+    common_save_settings(array('CUBE_RECEPIE_CACHE_GEN' => ''));
+
+    if (!empty($recipes)) foreach ($recipes as $key => $value) {
+        $artikuls_ids[$value['create_artikul_id']] = 1;
+        $artikuls_ids[$value['res1']] = 1;
+        $artikuls_ids[$value['res2']] = 1;
+        $artikuls_ids[$value['res3']] = 1;
+        $artikuls_ids[$value['res4']] = 1;
+        $artikuls_ids[$value['res5']] = 1;
+        $artikuls_ids[$value['res6']] = 1;
+        $artikuls_ids[$value['res7']] = 1;
+        $artikuls_ids[$value['res8']] = 1;
+    }
+    if (isset($artikuls_ids[0])) unset($artikuls_ids[0]);
+
+
+    $artikuls = $artikuls_ids ? make_hash(artifact_artikul_list(array('id'=>array_keys($artikuls_ids)))) : array();
+
+    if (!empty($recipes)) foreach ($recipes as $key => $value) {
+        $create_artikul=$artikuls[$value['create_artikul_id']];
+        if ($recipes[$key]['create_artikul_cnt']>1)
+            $create_artikul['title'] .= " (".$recipes[$key]['create_artikul_cnt'].")";
+        $recipes[$key]['title'] = $create_artikul['title'];
+        $create_artikul['_cnt'] = $recipes[$key]['create_artikul_cnt'];
+        $recipes[$key]['link'] = _articul_link_v2($create_artikul);
+        $recipes[$key]['link2'] = _articul_link($create_artikul);
+    }
+    common_fldsort($recipes, false, 'title');
+
+    tpl_artifact_alt_prepare($artikuls, OBJECT_CLASS_ARTIFACT_ARTIKUL);
+
+    /*$result = '';
+    foreach ($artikuls as $art){
+        $result .= tpl_artifact_alt($art, array('mode' => 'return'));
+    }*/
+
+    common_save($db_info, 'cube_recepie', array('data' => ''));
+    $result = '';
+
+    if (!empty($recipes)) foreach ($recipes as $recipe) {
+            ob_start();
+            $ingridients=array();
+            $ingridients2=array();
+
+            for ($i=1; $i<=8; $i++){
+                if (!$recipe["res$i"]) continue;
+                $articul = $artikuls[$recipe["res$i"]];
+                if ($recipe["res{$i}_num"]>1) $articul['title'] .= " (".$recipe["res{$i}_num"].")";
+                $articul['_cnt'] = $recipe["res{$i}_num"];
+                $ingridients[]=_articul_link_v2($articul);
+                $ingridients2[]=_articul_link($articul);
+            }
+
+
+            if ($ingridients) $ingridients = implode('', $ingridients);
+            if ($ingridients2) $ingridients2 = implode(', ', $ingridients2);
+            ?>
+
+            <tr>
+                <td>
+                    <table>
+                        <tr><td><?=$recipe['link']?></td></tr>
+                        <tr><td><?=$recipe['link2']?></td></tr>
+                    </table>
+                </td>
+                <td>
+                    <table>
+                        <tr><td><?=$ingridients?></td></tr>
+                        <tr><td><?=$ingridients2?></td></tr>
+                    </table>
+                </td>
+            </tr>
+
+
+        <?
+        $result = ob_get_clean();
+        common_save($db_info, 'cube_recepie', array('data' => $result));
+    }
+}
+
+function _articul_link_v2($art){
+    global $quality_info;
+    ob_start();
+    tpl_artifact_print($art, array(
+        'object_class' => OBJECT_CLASS_ARTIFACT_ARTIKUL,
+        'add_table' => sprintf('onClick="showArtifactInfo(false,%d);return false;" style="cursor:pointer;"', $art['id']),
+        'np' => array(
+            'cnt' => $art['_cnt'],
+        ),
+        'alt_simple' => true,
+    ));
+    return ob_get_clean();
+}
+
+function _articul_link($art, $alt = false){
+    global $quality_info;
+    if(!$alt){
+        return sprintf('<b><a href="/artifact_info.php?artikul_id=%d" target="_blank" style="color:%s" div_id="AA_%d" onClick="showArtifactInfo(false,%d);return false;">%s</a></b>',$art['id'],$quality_info[$art['quality']]['color'],$art['id'],$art['id'],$art['title']);
+    }else{
+        return sprintf('<b><a href="/artifact_info.php?artikul_id=%d" target="_blank" style="color:%s" div_id="AA_%d" onMouseOver="artifactAltSimple(%d,2,event)" onMouseOut="artifactAltSimple(%d,0,event)" onClick="showArtifactInfo(false,%d);return false;">%s</a></b>',$art['id'],$quality_info[$art['quality']]['color'],$art['id'],$art['id'],$art['id'],$art['id'],$art['title']);
+    }
+}

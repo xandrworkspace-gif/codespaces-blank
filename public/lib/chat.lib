@@ -1,0 +1,634 @@
+<?
+require_once("/home/admin/web/dwar.fun/public_html/include/wbds.inc");
+require_once("/home/admin/web/dwar.fun/public_html/lib/user.lib");
+
+define('CHAT_AREA_ID_BROADCAST', 99999990);
+define('CHAT_AREA_ID_AREAALL', 88888880);
+define('CHAT_AREA_ID_INST',       1000000);
+define('CHAT_TRADE_ID',       1000);
+
+// Флаги каналов чата
+define('CHAT_CHF_AREA',  0x0001);
+define('CHAT_CHF_USER',  0x0002);
+define('CHAT_CHF_CLAN',  0x0004);
+define('CHAT_CHF_TRADE', 0x0008);
+define('CHAT_CHF_PARTY', 0x0010);
+define('CHAT_CHF_RAID',  0x0020);
+define('CHAT_CHF_ALLY',  0x0040);
+define('CHAT_CHF_FIGHT', 0x0080);
+define('CHAT_CHF_AUX',   0x0100);	// вспомогательные каналы: 100+раса - каналы жалоб
+
+// Типы сообщения
+define('CHAT_MSG_TYPE_DEFAULT', 0);
+define('CHAT_MSG_TYPE_SYSTEM', 1);
+define('CHAT_MSG_TYPE_BROADCAST', 2);
+define('CHAT_MSG_TYPE_SPECIAL', 3);
+
+// коды для специальных сообщений
+define('CODE_RESET_CHAT', 1);
+define('CODE_REDIRECT', 101);
+define('CODE_CHANGE_TITLE', 102);
+define('CODE_UNALLOC', 103);
+define('CODE_CALL_JSFUNC', 104);
+define('CODE_CALL_ASFUNC', 105);
+
+define('CHAT_LOG_FLAGS_HIDE', 0x0000001); //Скрытый лог
+
+global $WBDS;
+$WBDS = new WBDS(explode(",", WBDS_SERVERS));
+
+define('TABLE_CHAT_LOG', 'chat_log');
+define('FIELD_CHAT_LOG', '');
+
+$channel_avail = array(
+    CHAT_CHF_AREA => array('id' => CHAT_CHF_AREA, 'channel' => 'main', 'channel_avail' => array(CHAT_CHF_AREA, CHAT_CHF_FIGHT), 'bg_color' => '#5A0000', 'title' => 'Основной', 'title2' => 'Основной чат', 'def_color' => 0,),
+    CHAT_CHF_TRADE => array('id' => CHAT_CHF_TRADE, 'channel' => 'trade', 'channel_avail' => array(CHAT_CHF_TRADE, CHAT_CHF_FIGHT), 'bg_color' => '#cc00ff', 'title' => 'Торговый', 'title2' => 'Торговый чат', 'def_color' => 2,),
+    CHAT_CHF_RAID => array('id' => CHAT_CHF_RAID, 'channel' => 'raid', 'channel_avail' => array(CHAT_CHF_RAID, CHAT_CHF_FIGHT), 'bg_color' => '#ff7800', 'title' => 'Рейд', 'title2' => 'Рейд', 'def_color' => 1,),
+    CHAT_CHF_PARTY => array('id' => CHAT_CHF_PARTY, 'channel' => 'party', 'channel_avail' => array(CHAT_CHF_PARTY, CHAT_CHF_FIGHT), 'bg_color' => '#0033ff', 'title' => 'Группа', 'title2' => 'Группа', 'def_color' => 4,),
+    CHAT_CHF_ALLY => array('id' => CHAT_CHF_ALLY, 'channel' => 'ally', 'channel_avail' => array(CHAT_CHF_ALLY, CHAT_CHF_CLAN), 'bg_color' => '#009999', 'title' => 'Альянс', 'title2' => 'Альянс', 'def_color' => 5,),
+    CHAT_CHF_CLAN => array('id' => CHAT_CHF_CLAN, 'channel' => 'clan', 'channel_avail' => array(CHAT_CHF_CLAN, CHAT_CHF_FIGHT), 'bg_color' => '#007a03', 'title' => 'Клан', 'title2' => 'Клан', 'def_color' => 6,),
+    CHAT_CHF_FIGHT => array('id' => CHAT_CHF_FIGHT, 'channel' => 'fight', 'channel_avail' => array(CHAT_CHF_FIGHT), 'bg_color' => '#000000', 'title' => 'Бой', 'title2' => 'Бой', 'def_color' => 3,),
+);
+
+$chat_colors_visible = array(
+    0 => array('id' => 0, 'title' => 'Коричневый', 'color' => '#5A0000', 't_cl' => 'cml_loc',),
+    1 => array('id' => 1, 'title' => 'Оранжевый', 'color' => '#ff7800', 't_cl' => 'cml_loc',),
+    2 => array('id' => 2, 'title' => 'Фиолетовый', 'color' => '#cc00ff', 't_cl' => 'cml_loc',),
+    3 => array('id' => 3, 'title' => 'Черный', 'color' => '#000000', 't_cl' => 'cml_loc',),
+    4 => array('id' => 4, 'title' => 'Синий', 'color' => '#0033ff', 't_cl' => 'cml_loc',),
+    5 => array('id' => 5, 'title' => 'Бирюзовый', 'color' => '#009999', 't_cl' => 'cml_loc',),
+    6 => array('id' => 6, 'title' => 'Зеленый', 'color' => '#007a03', 't_cl' => 'cml_loc',),
+    7 => array('id' => 7, 'title' => 'Голубой', 'color' => '#99CCFF', 't_cl' => 'cml_loc',),
+    8 => array('id' => 8, 'title' => 'Розовый', 'color' => '#FF62B0', 't_cl' => 'cml_loc',),
+    9 => array('id' => 9, 'title' => 'Серый', 'color' => '#808080', 't_cl' => 'cml_loc',),
+);
+
+function chat_channel_avail_info($chat_settings = array()){
+    global $channel_avail;
+    $out = array();
+    foreach ($channel_avail as $channel_id=>$channel){
+        if($chat_settings['channel_data'][$channel_id]['channels']){
+            $out[$channel_id][$channel_id] = $channel_id;
+            foreach ($chat_settings['channel_data'][$channel_id]['channels'] as $_ch){
+                $out[$channel_id][$_ch] = $_ch;
+            }
+        }else{
+            foreach ($channel_avail[$channel_id]['channel_avail'] as $v){
+                $out[$channel_id][$v] = $v;
+            }
+        }
+    }
+    return $out;
+}
+
+
+#Работа с базой данных
+function chat_log_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_CHAT_LOG,$ref,$add);
+}
+
+function chat_log_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_CHAT_LOG,$ref,$add);
+}
+
+function chat_log_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_CHAT_LOG, $ref, $add);
+}
+
+function chat_log_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_CHAT_LOG,$param,FIELD_CHAT_LOG);
+}
+
+function chat_log_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_CHAT_LOG,$ref,$add);
+    return true;
+}
+
+function chat_getMsgList(&$obj, &$list, $startMsgId = 0) {
+	global $WBDS;
+
+	if (!$obj || !is_object($obj)) {
+		error_log(__FILE__.":".__LINE__." - Invalid arguments");
+		return false;
+	}
+	$list = array();
+	if (!$WBDS->checkObj($obj)) {
+		if (!$WBDS->uploadObj($obj)) {
+			error_log("chat_getMsgList(): Uploading new object failed");
+			return false;
+		}
+	}
+	if (!$WBDS->getObjLink($obj, array(array(OBJTYPE_MSG, $startMsgId)))) {
+		error_log(__FILE__.":".__LINE__." - Can't download links");
+		return false;
+	}
+	$msgLinks = $obj->getLink(OBJTYPE_MSG, -1);
+	$msgLinks = is_array($msgLinks) ? $msgLinks : array();
+	$msgIDs = array();
+	if (!$msgLinks || !sizeof($msgLinks)) return 0;
+	foreach ($msgLinks as $key => $link) {
+		list($objType, $objId) = $link;
+		if ($objId > $startMsgId) $msgIDs[] = $objId;
+	}
+	rsort($msgIDs);
+	$msgIDs = array_reverse(array_slice($msgIDs, 0, 80)); /* maximum 20 last messages, FIFO */
+	$links = array();
+	foreach ($msgIDs as $idx => $objId) {
+		$links[] = array( 0 => OBJTYPE_MSG, 1 => $objId);
+	}
+	$objList = $WBDS->getObjList($links);
+	if (($objList == false) || !is_array($objList) || (sizeof($objList) == 0)) {
+		return 0;
+	}
+	foreach ($objList as $key => $obj) {
+		$entry = unserialize($obj->get(OBJPROP_CONTENTS));
+		$entry["id"] = $obj->id();
+		$list[] = $entry;
+	}
+	return sizeof($objList);
+}
+
+function chat_saveMsg(&$obj_list, $edit) {
+	global $WBDS;
+
+	if (!$obj_list || !is_array($obj_list)) {
+		error_log(__FILE__.":".__LINE__." - Invalid arguments");
+		return false;
+	}
+	foreach ($obj_list as $obj) {
+		if (!$WBDS->checkObj($obj)) {
+			if (!$WBDS->uploadObj($obj)) {
+				error_log("chat_saveMsg(): Uploading new object failed");
+				return false;
+			}
+		}
+	}
+	if (isset($edit["id"])) {  # update
+		$chatMsg = new ChatMsg($edit['id']);
+		$WBDS->downloadObj($chatMsg);
+	} else {  # insert
+		$chatMsg = new ChatMsg(0);
+	}
+	$contents = serialize($edit);
+	$chatMsg->set(OBJPROP_CONTENTS, $contents);
+	$WBDS->uploadObj($chatMsg);
+	if ($chatMsg->id() > 0) {
+		foreach ($obj_list as $obj) {
+			$WBDS->addObjLink($obj, array(array($chatMsg->type(), $chatMsg->id())));
+		}
+	}
+	return $chatMsg->id();
+}
+
+// ==================================================================================
+
+// $channel - channel bitmask
+// $channel_data: - or can be 'obj_id'
+// 'area_id'
+// 'user_id'
+// 'clan_id'
+function chat_msg_list($channel, $channel_data=false, $msg_id=0) {
+	if (!$channel || !$channel_data) return false;
+	$msg_list = array();
+	$list = array();
+	chat_getMsgList(new Area(CHAT_AREA_ID_BROADCAST), $list, $msg_id);
+	$msg_list = array_merge($msg_list,$list);
+	
+	if ($channel & CHAT_CHF_AREA) {
+		$obj_id = is_array($channel_data) && $channel_data['area_id'] ? $channel_data['area_id']: $channel_data;
+		if ($obj_id) {
+			$list = array();
+			chat_getMsgList(new Area($obj_id), $list, $msg_id);
+			$msg_list = array_merge($msg_list,$list);
+		}
+	}
+	if ($channel & CHAT_CHF_USER) {
+		$obj_id = is_array($channel_data) && $channel_data['user_id'] ? $channel_data['user_id']: $channel_data;
+		if ($obj_id) {
+			$list = array();
+			chat_getMsgList(new User($obj_id), $list, $msg_id);
+			$msg_list = array_merge($msg_list,$list);
+		}
+	}
+	if ($channel & CHAT_CHF_CLAN) {
+		$obj_id = is_array($channel_data) && $channel_data['clan_id'] ? $channel_data['clan_id']: $channel_data;
+		if ($obj_id) {
+			$list = array();
+			chat_getMsgList(new Clan($obj_id), $list, $msg_id);
+			$msg_list = array_merge($msg_list,$list);
+		}
+	}
+	if ($channel & CHAT_CHF_TRADE) {
+		$obj_id = is_array($channel_data) && $channel_data['trade_id'] ? $channel_data['trade_id']: $channel_data;
+		if ($obj_id) {
+			$list = array();
+			chat_getMsgList(new Trade($obj_id), $list, $msg_id);
+			$msg_list = array_merge($msg_list,$list);
+		}
+	}
+	if ($channel & CHAT_CHF_PARTY) {
+		$obj_id = is_array($channel_data) && $channel_data['party_id'] ? $channel_data['party_id']: $channel_data;
+		if ($obj_id) {
+			$list = array();
+			chat_getMsgList(new Party($obj_id), $list, $msg_id);
+			$msg_list = array_merge($msg_list,$list);
+		}
+	}
+	if ($channel & CHAT_CHF_RAID) {
+		$obj_id = is_array($channel_data) && $channel_data['raid_id'] ? $channel_data['raid_id']: $channel_data;
+		if ($obj_id) {
+			$list = array();
+			chat_getMsgList(new Raid($obj_id), $list, $msg_id);
+			$msg_list = array_merge($msg_list,$list);
+		}
+	}
+    if ($channel & CHAT_CHF_ALLY) {
+        $obj_id = is_array($channel_data) && $channel_data['alliance_id'] ? $channel_data['alliance_id']: $channel_data;
+        if ($obj_id) {
+            $list = array();
+            chat_getMsgList(new Ally($obj_id), $list, $msg_id);
+            $msg_list = array_merge($msg_list,$list);
+        }
+    }
+    if ($channel & CHAT_CHF_FIGHT) {
+        $obj_id = is_array($channel_data) && $channel_data['fight_id'] ? $channel_data['fight_id']: $channel_data;
+        if ($obj_id) {
+            $list = array();
+            chat_getMsgList(new CFight($obj_id), $list, $msg_id);
+            $msg_list = array_merge($msg_list,$list);
+        }
+    }
+	if ($channel & CHAT_CHF_AUX) {
+		$obj_id = is_array($channel_data) && $channel_data['aux'] ? $channel_data['aux']: $channel_data;
+		if ($obj_id) {
+			$list = array();
+			chat_getMsgList(new Aux($obj_id), $list, $msg_id);
+			$msg_list = array_merge($msg_list,$list);
+		}
+	}
+	common_fldsort($msg_list);
+	return $msg_list;
+}
+
+// '$channel_data' must be an array or an assoc array
+function chat_msg_send($msg, $channel, $channel_data=false,$param = array()) {
+	if (!$msg || !$channel) return false;
+	$obj_list = array();
+
+	if ($param['apply_tags']) {
+		require_once 'tpl/common.tpl';
+		$msg['msg_text'] = tpl_common_tags($msg['msg_text'], $param['tags_params'] ? $param['tags_params'] : array());
+	}
+	
+	//if ($param["user_level_start"]) $msg['user_level_start'] = (int)$param["user_level_start"];
+	//if ($param["user_level_end"]) $msg['user_level_end'] = (int)$param["user_level_end"];
+	if($param['only_guards']) $msg['only_guards'] = true; //Сообщения видят только стражи и админы.
+	if($param['bg_notify_bg2']) $msg['bg_notify_bg2'] = true;
+
+	if ($param['do_translate']) {
+		$msg['translate'] = array();
+		
+		if ($param['translate_params']) {
+			$i = 0;
+			foreach ($param['translate_params'] as $tp_key => $tp) {
+				if ($param['translate_params_apply_func'][$i]) $tp = call_user_func($param['translate_params_apply_func'][$i], $tp);
+				$msg['msg_text'] = str_replace('{'.$i++.'}', $tp, $msg['msg_text']);
+				if (!is_numeric($tp_key)) $msg['msg_text'] = str_replace($tp_key, $tp, $msg['msg_text']);
+			}				
+		}
+	}
+	
+	if ($channel & CHAT_CHF_AREA) { //  Note this is handled separately
+		$obj_ids = (is_array($channel_data) && $channel_data['area_id']) ? $channel_data['area_id']: $channel_data;
+		if (!$obj_ids) $obj_ids = array(CHAT_AREA_ID_BROADCAST);
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$obj_list[] = new Area($obj_id);
+		}
+	}
+	if ($channel & CHAT_CHF_USER) {
+		$obj_ids = (is_array($channel_data) && $channel_data['user_id']) ? $channel_data['user_id']: $channel_data;
+		if (!$obj_ids) return false;
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$obj_list[] = new User($obj_id);
+		}
+	}
+	if ($channel & CHAT_CHF_CLAN) {
+		$obj_ids = (is_array($channel_data) && $channel_data['clan_id']) ? $channel_data['clan_id']: $channel_data;
+		if (!$obj_ids) return false;
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$obj_list[] = new Clan($obj_id);
+		}
+	}
+	if ($channel & CHAT_CHF_TRADE) {
+		$obj_ids = (is_array($channel_data) && $channel_data['trade_id']) ? $channel_data['trade_id']: $channel_data;
+		if (!$obj_ids) return false;
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$obj_list[] = new Trade($obj_id);
+		}
+	}
+	if ($channel & CHAT_CHF_PARTY) {
+		$obj_ids = (is_array($channel_data) && $channel_data['party_id']) ? $channel_data['party_id']: $channel_data;
+		if (!$obj_ids) return false;
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$obj_list[] = new Party($obj_id);
+		}
+	}
+	if ($channel & CHAT_CHF_RAID) {
+		$obj_ids = (is_array($channel_data) && $channel_data['raid_id']) ? $channel_data['raid_id']: $channel_data;
+		if (!$obj_ids) return false;
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$obj_list[] = new Raid($obj_id);
+		}
+	}
+
+    if ($channel & CHAT_CHF_ALLY) {
+        $obj_ids = (is_array($channel_data) && $channel_data['alliance_id']) ? $channel_data['alliance_id']: $channel_data;
+        if (!$obj_ids) return false;
+        if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+        foreach ($obj_ids as $obj_id) {
+            $obj_list[] = new Ally($obj_id);
+        }
+    }
+
+	if ($channel & CHAT_CHF_AUX) {
+		$obj_ids = (is_array($channel_data) && $channel_data['aux']) ? $channel_data['aux']: $channel_data;
+		if (!$obj_ids) return false;
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$obj_list[] = new Aux($obj_id);
+		}
+	}
+	$msg['stime'] = time_current();
+	$msg['channel'] = $channel;
+	$msg['channel_data'] = $channel_data;
+	return chat_saveMsg($obj_list,$msg);
+}
+
+function chat_msg_delete($msg_id) {
+	global $WBDS;
+	if (!$msg_id) return false;
+	$chatMsg = new ChatMsg($msg_id);
+	return $WBDS->delObj($chatMsg);
+}
+
+function chat_msg_send_system($msg_text, $channel, $channel_data=false, $urgent=false, $param=false) {
+	if (!strlen($msg_text)) return false;
+	$msg = array(
+		'type' => CHAT_MSG_TYPE_SYSTEM,
+		'msg_text' => $msg_text,
+	);
+	if ($urgent) $msg['urgent'] = true;
+	if ($param['event_id']) $msg['event_id'] = $param['event_id'];
+	if ($param['user_kind']) $msg['user_kind'] = $param['user_kind'];
+	if ($param['command']) $msg['command'] = $param['command'];
+    if ($param['bg_notify_bg2']) $msg['bg_notify_bg2'] = true;
+	return chat_msg_send($msg,$channel,$channel_data,$param);
+}
+
+function chat_msg_send_broadcast($msg_text, $user_id, $channel=false, $channel_data=false, $urgent=false, $kind=false) {
+	if (!strlen($msg_text) || !$user_id) return false;
+	$user = user_get($user_id);
+	if (!$user) return false;
+	$msg = array(
+		'type' => CHAT_MSG_TYPE_BROADCAST,
+		'msg_text' => $msg_text,
+		'user_id' => $user_id,
+		'user_nick' => $user['nick'],
+		'msg_color' => $user['msg_color'] ? $user['msg_color']: 'black',
+	);
+	if (!$channel) $channel = CHAT_CHF_AREA;
+	if ($urgent) $msg['urgent'] = true;
+	if ($kind) $msg['user_kind'] = $kind;
+	return chat_msg_send($msg,$channel,$channel_data);
+}
+
+function chat_msg_send_special($code, $channel, $channel_data=false, $param=false) {
+	if (!$code) return false;
+	$msg = array(
+		'type' => CHAT_MSG_TYPE_SPECIAL,
+		'code' => $code,
+		'param' => $param,
+	);
+	return chat_msg_send($msg,$channel,$channel_data);
+}
+
+function chat_msg_send_party($msg_text,$party_id,$param=array()) {
+	if (!strlen($msg_text)) return false;
+	if (!$party_id) return false;
+	require_once("lib/party.lib");
+	$msg = array(
+		'type' => CHAT_MSG_TYPE_SYSTEM,
+		'msg_text' => $msg_text,
+	);
+	if ($param['session_user_id']) {
+		$sql = sql_pholder(' AND user_id<>?',$param['session_user_id']);
+	}
+	$party = party_get($party_id);
+	if ($party['flags'] & PARTY_FLAG_NOCHAT) return false;
+	$party_list = party_member_list($party_id,PM_STATUS_ACTIVE,$sql);
+	$user_ids = get_hash($party_list,'user_id','user_id');
+	$where = false;
+	if($param['instance_id'] && is_array($user_ids) && $user_ids) {
+		$instance = instance_get($param['instance_id']);
+		if($instance['artikul_id']) $where = instance_artikul_get($instance['artikul_id']);
+		$user_ids = user_list(false,sql_pholder(' AND id IN (?@)',$user_ids),false,'id');
+		$user_ids = get_hash($user_ids,'id','id');
+	}elseif ($param['area_id'] && is_array($user_ids) && $user_ids) {
+		$user_ids = user_list(false,sql_pholder(' AND area_id=? AND id IN (?@)',$param['area_id'],$user_ids),false,'id');
+		$user_ids = get_hash($user_ids,'id','id');
+	}
+
+	if($where) $msg['msg_text'] = '['.$where['title'].'] '.$msg['msg_text'];
+
+    if ($param['do_translate']) {
+        $msg['translate'] = array();
+
+        if ($param['translate_params']) {
+            $i = 0;
+            foreach ($param['translate_params'] as $tp_key => $tp) {
+                if ($param['translate_params_apply_func'][$i]) $tp = call_user_func($param['translate_params_apply_func'][$i], $tp);
+                $msg['msg_text'] = str_replace('{'.$i++.'}', $tp, $msg['msg_text']);
+                if (!is_numeric($tp_key)) $msg['msg_text'] = str_replace($tp_key, $tp, $msg['msg_text']);
+            }
+        }
+    }
+
+	return chat_msg_send($msg,CHAT_CHF_USER,$user_ids);
+}
+
+// ===================================================================================================================
+
+global $__elems, $__lang;
+$__elems[1] = array(
+	1 => explode(' ','a e i'),
+	2 => explode(' ','ad af ah an ar as ax be ca ce co da de do ea ed ef el em er es et ex fa fe fi fo fy ga ge he ia id il im in ir is ix ka ke la le ma me mo na ne of ol on or ox pa pe py qe ra re ri ro sa se so ta te to ve vi vo ya'),
+);
+$__elems[2] = array(
+	1 => explode(' ','j k n o u v'),
+	2 => explode(' ','ab ad ah aj an ar at av aw az ba be bh br bz da de do du ed ef eg ej eh el em ep er es et ev ew ez fa fe fh fi fo fr ga go gu ha he hi ho hu ib ic ig ik il in ip ir it iv iz ja jo ju ka ke kr me mh mn mo na ne of ol on or os ov ow oz pa pe ph pk po ra re rh ri ro sa se sh so ta te th to ve vi vo vh za zh zi zo zu'),
+);
+/*
+$__elems[1] = array(
+	1 => explode(' ','а е и о у'),
+	2 => explode(' ','аб ав аг ад аи ал ам ан ао ар ас ат ау аф ах аэ ба бе би бл бо бу га ге ги го гу да де ди до ду ев ег ед ел ем ен ер ес ет еф ех иб ив иг ид ил им ин ио ир ис ит иу иф их ка ке ки кл ко ку ла ле ли ло лу ма ме ми мо му на не ни но ну об ов ог од ол ом он ор ос от оу оф ох оэ па пе пи пу пра ре ри ро са се си со су та те ти то ту уд уи ул ум уп ур ус ут уф уэ фа фе фи фо фу ха хе хи хо'),
+);
+$__elems[2] = array(
+	1 => explode(' ','а в и к о с у'),
+	2 => explode(' ','аб ав аг ад аж аз ак ал ам ан ап ар ас ат аф ах ац ач ба бе би бо бу га ге ги го гу да де ди до ду ев ег ед еж ез ек ел ем ен ер ес ет еф ех ец еч иб ив иг ид ил иж из ик ил им ин ип ир ис ит иф их иц ич ка ке ки ко ку ла ле ли ло лу ма ме ми мо му на не ни но ну об ов ог од ож оз ок ол ом он ор ос от оф ох оц оч па пе пи пу по ра ре ри ро са се си со су та те ти то ту уб ув уд уж уз ук ул ум ун уп ур ус ут уф ух уц уч фа фе фи фо фу ха хе хи хо'),
+);*/
+
+$__lang = 1;
+
+function __acword($matches) {
+	global $__elems, $__lang;
+	$word = $matches[1];
+	$word = strtolower($word);
+	$wordL = strlen($word);
+	$h = md5($word);
+	$k = intval(substr($h,0,4),16);
+	$lmin = $wordL*0.8;
+	$lmax = $wordL*1.2;
+	$len = ceil($lmin + $k % max($lmax-$lmin,1));
+	$str = '';
+	$r = $__lang;
+	$rI = 0;
+	$_e = $__elems[$__lang];
+	while ($len > 0) {
+		$r += ord($word{$rI%$wordL})^5678 + ord($word{($rI+1)%$wordL})^1234;
+		$_eL = min(count($_e),$len);
+		$_eA = $_e[$_eL];
+		$_eC = count($_eA);
+		$_s = $_eA[($_eC + $r) % $_eC];
+		$_sL = strlen($_s);
+		$str .= $_s;
+		$len -= $_sL;
+		$rI += $_sL;
+	}
+	$word = ucfirst($matches[1]);
+	if ($matches[1]{0} == $word{0}) $str = ucfirst($str);
+	return $str;
+}
+
+function chat_abracadabra($text, $lang=1) {
+	global $__elems, $__lang;
+	$__lang = $lang;
+	$text = strip_tags($text);
+	$text = preg_replace_callback('/(\S+)/','__acword',$text);
+	return $text;
+}
+
+define('CHAT_MARQUEE_TYPE_LR', 'alternate');
+define('CHAT_MARQUEE_TYPE_SCROLL', 'scroll');
+define('CHAT_MARQUEE_TYPE_STOP', 'slide');
+
+$chat_marquee_type_hash = array(
+    CHAT_MARQUEE_TYPE_LR => 'ходит туда сюда',
+    CHAT_MARQUEE_TYPE_SCROLL => 'полная прокрутка',
+    CHAT_MARQUEE_TYPE_STOP => 'доходит до конца и останавливается',
+);
+
+define('CHAT_MARQUEE_DIRECTION_DOWN', 'down');
+define('CHAT_MARQUEE_DIRECTION_LEFT', 'left');
+define('CHAT_MARQUEE_DIRECTION_RIGHT', 'right');
+define('CHAT_MARQUEE_DIRECTION_UP', 'up');
+
+$chat_marquee_direction_hash = array(
+    CHAT_MARQUEE_DIRECTION_DOWN => 'сверху вниз',
+    CHAT_MARQUEE_DIRECTION_LEFT => 'справа налево',
+    CHAT_MARQUEE_DIRECTION_RIGHT => 'в правую сторону',
+    CHAT_MARQUEE_DIRECTION_UP => 'вверх',
+);
+
+function marquee_send($channel, $channel_data=false, $marquee = array()){
+    chat_msg_send_special(CODE_CALL_JSFUNC, $channel, $channel_data, array('func' => "top.MController.add(".json_encode($marquee).");"));
+}
+
+function find_criminal_messages_cron() {
+	global $find_criminal_messages_ids;
+
+	if(!(defined('TELEGRAM_BOT_ERROR_TOKEN') && TELEGRAM_BOT_ERROR_TOKEN)) return;
+
+	$dir = SERVER_ROOT.'private/tg/';
+	if(!is_dir($dir)) mkdir($dir, 0775, true);
+
+	foreach ($find_criminal_messages_ids as $uid) {
+		$fname = $dir.intval($uid).'.inc';
+		$info = array();
+		if(file_exists($fname)) $info = json_decode(file_get_contents($fname), true);
+		if(!$info['last_message']) {
+			$chat_get_message = chat_log_get(false, sql_pholder(' AND date >= ? ORDER BY date ASC', mktime(0,0,0)));
+			$chat_get_message_id = $chat_get_message['id'];
+			if(!$chat_get_message_id) continue;
+			$info['last_message'] = $chat_get_message_id;
+		}else{
+			$chat_get_message_id = intval($info['last_message']);
+		}
+
+		$chat_message_list =  chat_log_list(false, sql_pholder(' AND id > ? ORDER BY date ASC LIMIT 0, 1000', $chat_get_message_id));
+
+		$cur_msg_id = 0;
+		$messages_len = array();
+		$messages = array();
+		foreach ($chat_message_list as $msg) {
+			$t_cl =
+				($msg['channel'] & CHAT_CHF_AREA ? '🌎':
+					($msg['channel'] & CHAT_CHF_USER ? '👥':
+						($msg['channel'] & CHAT_CHF_CLAN ? '🔰':
+							($msg['channel'] & CHAT_CHF_TRADE ? '📢':
+								($msg['channel'] & CHAT_CHF_PARTY ? '🔒':
+									($msg['channel'] & CHAT_CHF_RAID ? '⚔':
+										($msg['channel'] & CHAT_CHF_AUX ? 'AUX':
+											'🌎')))))));
+
+			$msg_html = '['.$t_cl.date("H:i",$msg['date']).'] '.($msg['type'] ? '<b>' : '').$msg['user'];
+			$msg_html .= ($msg['to_user'] ? ' » '.$msg['to_user'] : '').($msg['type'] ? '</b>' : '').': '.$msg['message'];
+			$msg_html .= ''.PHP_EOL;
+
+			if($messages_len[$cur_msg_id] + mb_strlen($msg_html) > 4096) {
+				$cur_msg_id++;
+			}
+
+			$messages_len[$cur_msg_id] += mb_strlen($msg_html);
+			$messages[$cur_msg_id] .= $msg_html;
+			if($msg['id']) $info['last_message'] = $msg['id'];
+		}
+
+		foreach ($messages as $message) {
+			try{
+				$website="https://api.telegram.org/bot".TELEGRAM_BOT_ERROR_TOKEN;
+				$params=[
+					'chat_id' => $uid,
+					'text' => $message,
+					'parse_mode' => 'HTML',
+				];
+				$ch = curl_init($website . '/sendMessage');
+				curl_setopt($ch, CURLOPT_HEADER, false);
+				curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+				curl_setopt($ch, CURLOPT_POST, 1);
+				curl_setopt($ch, CURLOPT_POSTFIELDS, ($params));
+				curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+				$result = curl_exec($ch);
+				vardump($result);
+				curl_close($ch);
+			}catch (Exception $e){}
+		}
+
+		file_put_contents($fname, json_encode($info));
+	}
+}
+
+
+
+?>

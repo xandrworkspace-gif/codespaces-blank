@@ -1,0 +1,117 @@
+<?
+
+define('TABLE_CLAN_BONUS_ARTIKUL', 'clan_bonus_artikul');
+
+define('CLAN_BONUS_TYPE_HONOR', 1);
+define('CLAN_BONUS_TYPE_SKILL', 2);
+define('CLAN_BONUS_TYPE_BOT_MONEY', 3);
+define('CLAN_BONUS_TYPE_DOUBLE_DROP', 4);
+define('CLAN_BONUS_TYPE_UNLIM_HP', 5);
+
+$clan_bonus_type_hash = array(
+    CLAN_BONUS_TYPE_HONOR => 'коэф. авторитета',
+    CLAN_BONUS_TYPE_SKILL => 'плюс к характеристике',
+    CLAN_BONUS_TYPE_BOT_MONEY => 'деньги с мобов',
+    CLAN_BONUS_TYPE_DOUBLE_DROP => 'шанс двойного дропа',
+    CLAN_BONUS_TYPE_UNLIM_HP => 'восстанавливать здоровье моментально',
+);
+
+define('CLAN_BONUS_FLAG_DISABLED', 0x000001);
+$clan_bonus_flags_hash = array(
+    CLAN_BONUS_FLAG_DISABLED => 'Отключен',
+);
+
+define('CLAN_BONUS_CACHE_TTL', 600); //10 минут.
+
+//Зависимости
+require_once("/home/admin/web/dwar.fun/public_html/lib/rating.lib");
+
+//////////////////////////////////////////////
+
+function clan_bonus_artikul_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CLAN_BONUS_ARTIKUL,$ref,$add);
+}
+
+function clan_bonus_artikul_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_CLAN_BONUS_ARTIKUL,$ref,$add);
+}
+
+function clan_bonus_artikul_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_CLAN_BONUS_ARTIKUL, $ref, $add);
+}
+
+function clan_bonus_artikul_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CLAN_BONUS_ARTIKUL,$param);
+}
+
+function clan_bonus_artikul_delete($ref, $add='') {
+    global $db_2;
+    if(!$ref)return false;
+    common_delete($db_2,TABLE_CLAN_BONUS_ARTIKUL,$ref,$add);
+    return true;
+}
+
+//////////////////////////////////////////////
+
+//Возвращает текущие бонусы.
+function clan_bonus_exist($clan_id) {
+    $clan_bonus_info_cache = false;
+    if(!is_array($clan_id)){
+        if(defined('CLAN_BONUS_CLAN_ID') && CLAN_BONUS_CLAN_ID){
+            if ($clan_id != CLAN_BONUS_CLAN_ID) return false;
+        }
+        $clan_bonus_info = array();
+        $clan_bonus_info_cache = new Cache(md5('CLAN_BONUS_INFO_'.$clan_id));
+        $clan_bonus_info = &$clan_bonus_info_cache->get();
+        if($clan_bonus_info['clan']) {
+            $clan = $clan_bonus_info['clan'];
+        } else{
+            $clan = clan_get($clan_id);
+        }
+    }else {
+        $clan = $clan_id;
+        if(defined('CLAN_BONUS_CLAN_ID') && CLAN_BONUS_CLAN_ID){
+            if ($clan['id'] != CLAN_BONUS_CLAN_ID) return false;
+        }
+        $clan_bonus_info = array();
+        $clan_bonus_info_cache = new Cache(md5('CLAN_BONUS_INFO_'.$clan['id']));
+    }
+
+    if(!$clan_bonus_info_cache->get()){
+        //Возьмем текущий рейтинг клана
+        $clan_rating = rating_clan_get(array('clan_id' => $clan['id']));
+        $add = '';
+        $add .= sql_pholder(' AND (cond_level <= ? OR cond_level = 0)', $clan['gl_level']);
+        $add .= sql_pholder(' AND (cond_rank <= ? OR cond_rank = 0)', $clan['gl_rank']);
+        $add .= sql_pholder(' AND (cond_clevel <= ? OR cond_clevel = 0)', $clan['level']);
+        $add .= sql_pholder(' AND (cond_rating >= ? OR cond_rating = 0)', ($clan_rating['id'] ? $clan_rating['id'] : 9999));
+        $clan_bonus_list = clan_bonus_artikul_list(false, $add.sql_pholder(' AND !(flags & ?#CLAN_BONUS_FLAG_DISABLED)'));
+        $clan_bonus_info['ctime'] = time_current(); //Для того чтобы в массиве хоть что-то было)
+        $clan_bonus_info['clan_bonus_list'] = $clan_bonus_list;
+        $clan_bonus_info['clan'] = $clan;
+        foreach ($clan_bonus_list as $clan_bonus) {
+            switch ($clan_bonus['type']){
+                case CLAN_BONUS_TYPE_HONOR:
+                case CLAN_BONUS_TYPE_BOT_MONEY:
+                    //Берется наибольший коэфф. не ссумируется
+                    $clan_bonus_info[$clan_bonus['type']] = ($clan_bonus_info[$clan_bonus['type']] > intval($clan_bonus['value1']) ? $clan_bonus_info[$clan_bonus['type']] : intval($clan_bonus['value1']));
+                    break;
+                case CLAN_BONUS_TYPE_SKILL:
+                    $clan_bonus_info[CLAN_BONUS_TYPE_SKILL][$clan_bonus['field']] += intval($clan_bonus['value1']);
+                    break;
+                case CLAN_BONUS_TYPE_DOUBLE_DROP:
+                case CLAN_BONUS_TYPE_UNLIM_HP:
+                    $clan_bonus_info[$clan_bonus['type']] = true;
+                    break;
+            }
+        }
+        $clan_bonus_info_cache->update($clan_bonus_info, CLAN_BONUS_CACHE_TTL);
+    }else{
+        $clan_bonus_info = &$clan_bonus_info_cache->get();
+    }
+    return $clan_bonus_info;
+}

@@ -1,0 +1,314 @@
+<?
+
+define('GLOBAL_EVENT_TYPE_KILL_BOT', 1); //Убийство моба!
+define('GLOBAL_EVENT_TYPE_GREAT_BATTLE', 2); //Великая битва!
+define('GLOBAL_EVENT_TYPE_KILL_USER', 3); //Убийство игрока!
+define('GLOBAL_EVENT_TYPE_GO_PB', 4); //Формирование в полей битв
+define('GLOBAL_EVENT_TYPE_USER_CNT_CHAOT', 5); //Участников хаотических битв
+define('GLOBAL_EVENT_TYPE_RES_GIVE', 6); //Сбор ресурсов
+define('GLOBAL_EVENT_TYPE_GO_LOCA', 7); //Перейти по локации
+
+$global_event_type_hash = array(
+    GLOBAL_EVENT_TYPE_KILL_BOT => 'Убийство моба',
+    GLOBAL_EVENT_TYPE_GREAT_BATTLE => 'Великая битва',
+    GLOBAL_EVENT_TYPE_KILL_USER => 'Убийство игрока',
+    GLOBAL_EVENT_TYPE_GO_PB => 'Формирование в полей битв',
+    GLOBAL_EVENT_TYPE_USER_CNT_CHAOT => 'Участников хаотичных битв',
+    GLOBAL_EVENT_TYPE_RES_GIVE => 'Сбор ресурсов',
+    GLOBAL_EVENT_TYPE_GO_LOCA => 'Перейти по локации',
+);
+
+define('GLOBAL_EVENT_FLAG_ACTIVE', 0x0000001); //Эвент акктивен
+
+$global_event_flags_hash = array(
+    GLOBAL_EVENT_FLAG_ACTIVE => 'Эвент акктивен',
+);
+
+define('TABLE_GLOBAL_EVENT_ARTIKUL_LIST', 'global_event_artikul');
+define('TABLE_GLOBAL_EVENT_USER_LIST', 'global_event_user');
+
+//Зависимости
+require_once("/home/admin/web/dwar.fun/public_html/lib/bonus.lib");
+
+function global_event_artikul_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_GLOBAL_EVENT_ARTIKUL_LIST,$ref,$add);
+}
+
+function global_event_artikul_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_GLOBAL_EVENT_ARTIKUL_LIST,$ref,$add,$field_list);
+}
+
+function global_event_artikul_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_GLOBAL_EVENT_ARTIKUL_LIST, $ref, $add);
+}
+
+function global_event_artikul_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_GLOBAL_EVENT_ARTIKUL_LIST,$param);
+}
+
+function global_event_artikul_delete($ref) {
+    global $db_2;
+    if (!$ref) return false;
+    common_delete($db_2,TABLE_GLOBAL_EVENT_ARTIKUL_LIST,$ref);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+function global_event_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_GLOBAL_EVENT_USER_LIST,$ref,$add);
+}
+
+function global_event_user_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_GLOBAL_EVENT_USER_LIST,$ref,$add,$field_list);
+}
+
+function global_event_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_GLOBAL_EVENT_USER_LIST, $ref, $add);
+}
+
+function global_event_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_GLOBAL_EVENT_USER_LIST,$param);
+}
+
+function global_event_user_delete($ref) {
+    global $db_2;
+    if (!$ref) return false;
+    common_delete($db_2,TABLE_GLOBAL_EVENT_USER_LIST,$ref);
+    return true;
+}
+
+function global_event_user_truncate() {
+    global $db_2;
+    return common_truncate($db_2, TABLE_GLOBAL_EVENT_USER_LIST);
+}
+
+function global_event_trigger_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('EVENT_TRIGGER_'.strval(md5($ref)),$timewait,$timelock);
+}
+
+function global_event_trigger_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('EVENT_TRIGGER_'.strval(md5($ref)));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+function _global_event_trigger($type_id, $val, $user_id = false){
+    if(!(defined('GLOBAL_EVENT_ENABLED') && GLOBAL_EVENT_ENABLED)) return false;
+    if(!(defined('GLOBAL_EVENT_ARTIKUL_ATIME') && GLOBAL_EVENT_ARTIKUL_ATIME > time_current())) return false;
+    if(!(defined('GLOBAL_EVENT_ARTIKUL_DTIME') && GLOBAL_EVENT_ARTIKUL_DTIME)) return false;
+    if(!(defined('GLOBAL_EVENT_ARTIKUL_ID') && GLOBAL_EVENT_ARTIKUL_ID)) return false;
+    if(!(defined('GLOBAL_EVENT_TYPE_ID') && GLOBAL_EVENT_TYPE_ID)) return false;
+    if(!$type_id || !$val) return false;
+    if(GLOBAL_EVENT_TYPE_ID != $type_id) return false;
+    if($val <= 0) return false;
+
+    $global_event = global_event_artikul_get(GLOBAL_EVENT_ARTIKUL_ID);
+    if(!$global_event) return false;
+
+    $lock_data = '['.$type_id.'|'.$global_event['id'].'] '.(is_array($user_id) ? implode("|", $user_id) : $user_id);
+    do{
+        if(!global_event_trigger_lock($lock_data)) break;
+        if(!is_array($user_id) && $user_id && $global_event['point_user_cnt'] > 0) {
+            $global_event_user_get = global_event_user_get(array(
+                'user_id' => $user_id,
+                'global_event_id' => GLOBAL_EVENT_ARTIKUL_ID,
+            ));
+            do{
+                //if($global_event_user_get['point'] >= $global_event['point_user_cnt']) break;
+                if($global_event_user_get['point'] + $val >= $global_event['point_user_cnt'] && $global_event_user_get['lstatus'] == 0){
+                    //Выдаем бонус и баф если надо!
+                    $_user = false;
+                    if($global_event['bonus_user_id'] || $global_event['user_buf_id']) $_user = user_get($user_id);
+                    if($global_event['bonus_user_id'] && $_user){
+                        bonus_apply($_user, $global_event['bonus_user_id']);
+                    }
+                    if($global_event['user_buf_id']){
+                        user_drink_effect($global_event['user_buf_id'], $_user, true);
+                    }
+
+                    global_event_user_save(array(
+                        'id' => $global_event_user_get['id'],
+                        '_set' => sql_pholder(' lstatus = 1, ptime = ?', time_current()),
+                    ));
+                }
+                if ($global_event_user_get) {
+                    global_event_user_save(array(
+                        'id' => $global_event_user_get['id'],
+                        '_set' => sql_pholder(' point = point + ?', $val),
+                    ));
+                } else {
+                    global_event_user_save(array(
+                        'user_id' => $user_id,
+                        'global_event_id' => GLOBAL_EVENT_ARTIKUL_ID,
+                        'point' => $val,
+                        'dtime' => GLOBAL_EVENT_ARTIKUL_DTIME,
+                    ));
+                }
+            }while(0);
+        }
+
+        //Брешь полуфабрикатов
+        if(is_array($user_id) && $user_id && $global_event['point_user_cnt'] > 0) {
+
+            $count_user_ids = count($user_id);
+            $_val_one = floor(($val / $count_user_ids));
+            if($_val_one <= 0) $_val_one = 1;
+
+            $global_event_user_list = make_hash(global_event_user_list(array(
+                'user_id' => $user_id,
+                'global_event_id' => GLOBAL_EVENT_ARTIKUL_ID,
+            )), 'user_id');
+            foreach ($user_id as $_uid){
+                do{
+                    $global_event_user_get = $global_event_user_list[$_uid];
+                    //if($global_event_user_get['point'] >= $global_event['point_user_cnt']) break;
+                    if($global_event_user_get['point'] + $_val_one >= $global_event['point_user_cnt'] && $global_event_user_get['lstatus'] == 0){
+                        //Выдаем бонус и баф если надо!
+                        $_user = false;
+                        if($global_event['bonus_user_id'] || $global_event['user_buf_id']) $_user = user_get($_uid);
+                        if($global_event['bonus_user_id'] && $_user){
+                            bonus_apply($_user, $global_event['bonus_user_id']);
+                        }
+                        if($global_event['user_buf_id']){
+                            user_drink_effect($global_event['user_buf_id'], $_user, true);
+                        }
+
+                        global_event_user_save(array(
+                            'id' => $global_event_user_get['id'],
+                            '_set' => sql_pholder(' lstatus = 1, ptime = ?', time_current()),
+                        ));
+                        $global_event_user_list[$_uid]['lstatus'] = 1;
+                        $global_event_user_list[$_uid]['ptime'] = time_current();
+                    }
+                    if ($global_event_user_get) {
+                        global_event_user_save(array(
+                            'id' => $global_event_user_get['id'],
+                            '_set' => sql_pholder(' point = point + ?', $_val_one),
+                        ));
+                    } else {
+                        global_event_user_save(array(
+                            'user_id' => $_uid,
+                            'global_event_id' => GLOBAL_EVENT_ARTIKUL_ID,
+                            'point' => $_val_one,
+                            'dtime' => GLOBAL_EVENT_ARTIKUL_DTIME,
+                        ));
+                    }
+                }while(0);
+            }
+        }
+    }while(0);
+    global_event_trigger_unlock($lock_data);
+
+    if($global_event['point_all'] >= $global_event['point_cnt']){
+        return false;
+    }
+
+    //Меняем глобальную хуйню
+    global_event_artikul_save(array(
+        'id' => GLOBAL_EVENT_ARTIKUL_ID,
+        '_set' => sql_pholder(' point_all = point_all + ?', $val),
+    ));
+}
+
+function g_e_get_percent($g){
+    return min(floor($g['point_all'] / $g['point_cnt'] * 100), 100);
+}
+
+function global_event_current_get(){
+    if(!(defined('GLOBAL_EVENT_ENABLED') && GLOBAL_EVENT_ENABLED)) return false;
+    if(defined('GLOBAL_EVENT_ARTIKUL_DTIME') && GLOBAL_EVENT_ARTIKUL_DTIME > time_current()){
+        if(defined('GLOBAL_EVENT_ARTIKUL_ID') && GLOBAL_EVENT_ARTIKUL_ID){
+            return GLOBAL_EVENT_ARTIKUL_ID;
+        }
+    }
+    return false;
+}
+
+function global_event_main_control_func($event_set = false){
+    if(!(defined('GLOBAL_EVENT_ENABLED') && GLOBAL_EVENT_ENABLED)) return false;
+    $current_event_id = global_event_current_get();
+    if(!$current_event_id || $event_set){
+        //Возмем предыдущий ивент и посмотрим есть ли там четкие ребята?
+        //bonus_leader_id
+        $global_event_settings = common_get_settings(array('GLOBAL_EVENT_LEADER_AWARD'));
+        $GLOBAL_EVENT_LEADER_AWARD = $global_event_settings['GLOBAL_EVENT_LEADER_AWARD'];
+
+        if(defined('GLOBAL_EVENT_ARTIKUL_ID') && GLOBAL_EVENT_ARTIKUL_ID && !$GLOBAL_EVENT_LEADER_AWARD){
+            $global_event_cur = global_event_artikul_get(GLOBAL_EVENT_ARTIKUL_ID);
+            if($global_event_cur['point_all'] >= $global_event_cur['point_cnt']){
+                //Если все условия выполнены!
+                do{
+                    $limit_cnt = 0;
+                    do{
+                        if(!$global_event_cur['bonus_leader_id_1']) break;
+                        $limit_cnt++;
+                        if(!$global_event_cur['bonus_leader_id_2']) break;
+                        $limit_cnt++;
+                        if(!$global_event_cur['bonus_leader_id_3']) break;
+                        $limit_cnt++;
+                    }while(0);
+
+                    if($limit_cnt <= 0) break; //Награды то не настроены выходим!
+
+                    $global_event_user_list = global_event_user_list(array('global_event_id' => $global_event_cur['id']), sql_pholder(' AND point >= ? ORDER BY point DESC LIMIT '.$limit_cnt, $global_event_cur['point_user_cnt']));
+
+                    if(!$global_event_user_list) break;
+
+                    $i = 1;
+                    foreach ($global_event_user_list as $global_event_user){
+                        if($global_event_cur['bonus_leader_id_'.$i]){
+                            if($global_event_user['point'] >= $global_event_cur['point_user_cnt']){ //Если конечно он выполнил личные условия в т.ч
+                                //Вот он лучший игрок.
+                                $_user = user_get($global_event_user['user_id']);
+                                if($_user){
+                                    bonus_apply($_user, $global_event_cur['bonus_leader_id_'.$i]);
+                                }
+                            }
+                        }
+                        $i++;
+                    }
+                }while(0);
+            }
+            common_save_settings(array(
+                'GLOBAL_EVENT_LEADER_AWARD' => 1,
+            ));
+        }
+
+        //Нужно установить глобальный евент!
+        $global_event_list = make_hash(global_event_artikul_list(false, sql_pholder(' AND flags & ?#GLOBAL_EVENT_FLAG_ACTIVE')));
+        if(!$global_event_list) return false;
+        $global_rand_id = ($event_set ? $event_set : array_rand($global_event_list));
+        $global_event = $global_event_list[$global_rand_id];
+        if(!$global_event) return false;
+
+        //Сбрасываем общее кол-во.
+        global_event_artikul_save(array(
+            'id' => $global_event['id'],
+            'point_all' => 0,
+        ));
+
+        //Очистим статистику игроков?
+        global_event_user_truncate();
+        //Установим новое эвент
+        common_save_settings(array(
+            'GLOBAL_EVENT_ARTIKUL_ID' => $global_event['id'],
+            'GLOBAL_EVENT_TYPE_ID' => $global_event['type_id'],
+            'GLOBAL_EVENT_ARTIKUL_ATIME' => mktime(0, 0, 0) + $global_event['period'],
+            'GLOBAL_EVENT_ARTIKUL_DTIME' => mktime(23, 59, 59) + 1,
+            'GLOBAL_EVENT_LEADER_AWARD' => 0,
+        ));
+    }
+}

@@ -1,0 +1,114 @@
+<? # $Id: ATTACK_BOT.action,v 1.13 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "напасть на бота"
+// Параметры:
+//	$in['group_id'] - группа ботов
+
+require_once("lib/restriction.lib");
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_BOT)) && !$in['group_id']) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+
+if ($object) {
+	if ($object['flags'] & BOT_FLAG_NOATTACK) {
+		$out['error'] = translate('На эту цель нельзя напасть!');
+		return;
+	}
+
+	if ($subject['instance_id']) $instance_root = instance_get_root($subject['instance_id']);
+    if($instance_root['bg_id']) $bg = bg_get($instance_root['bg_id']);
+
+	if ((!$instance_root || ($instance_root['castle_id'] == 0)) && ($subject['kind'] == $object['kind']) && !$bg['wholerace']) {
+		$out['error'] = translate('Вы не можете напасть на цель своей расы!');
+		return;
+	}
+	// Условие для осады замка
+	if ($instance_root && $instance_root['castle_id'] && (($subject['raid_id'] - $instance_root['id']) == $object['kind'])) {
+		$out['error'] = translate('Вы не можете напасть на вашего соратника!');
+		return;
+	}
+	if (!user_is_near($subject,$object)) {
+		$out['error'] = translate('Цель не находится рядом!');
+		return;
+	}
+	if ($object['rtime'] && ($object['rtime'] > time_current())) {
+		$out['error'] = translate('Цель еще не восстановилась!');
+		return;
+	}
+
+	//Новые ограничения
+    $instance_artikul = $area = false;
+    if($subject['instance_id']){
+        $instance = instance_get($subject['instance_id']);
+        if($instance['artikul_id']) $instance_artikul = instance_artikul_get($instance['artikul_id']);
+    }else{
+        $area = area_get($subject['area_id']);
+    }
+    $area_bot = false;
+    if($object['artikul_id'] && $instance_artikul){
+        $area_bot = instance_artikul_bot_get(array('artikul_id' => $instance_artikul['id'], 'bot_artikul_id' => $object['artikul_id']));
+    }elseif($object['artikul_id'] && $area){
+        $area_bot = area_bot_get(array('area_id' => $area['id'], 'bot_artikul_id' => $object['artikul_id']));
+    }
+
+    if($area_bot) {
+        if($instance_artikul) $area_bot['object_class'] = OBJECT_CLASS_INSTANCE_BOT;
+        else $area_bot['object_class'] = OBJECT_CLASS_AREA_BOT;
+        $check_object_list = array();
+        restriction_get_dependent($subject, $check_object_list);
+
+        $restrinction = restriction_check(0, array($area_bot), $check_object_list);
+        if ($restrinction['status'] == RESTRICTION_STATUS_DENY) {
+            $out['error'] = $restrinction['title'];
+            return;
+        } //Если не прошли огранки...
+    }
+}
+require_once("lib/fight.lib");
+$nogreat = 0;
+if ($object['fight_id']){
+	$fight = fight_get($object['fight_id']);
+	if ($fight['flags'] & FIGHT_FLAG_NO_GREAT) $nogreat = 1;
+}
+if (!$nogreat) {
+	if (!($subject['instance_id'] ? instance_lock($subject['instance_id']) : 1)){
+		$out['error'] = translate('Не удалось провести операцию!');
+		return;
+	}
+}
+	$param = array();
+	if ($nogreat) $param['fight_flags'] = FIGHT_FLAG_NO_GREAT;
+	if ($object) {
+		$param['attack_subject_avail'] = true;
+		$out_attack = fight_attack($subject,$object,$param);
+		if (!$out_attack['status']) $out['error'] = $out_attack['error'] ? $out_attack['error']: translate('Невозможно начать нападение!');
+		else {
+			$out['status'] = ACTION_STATUS_OK;
+			if ($object['hunt']) {	// бот участвует в охоте
+				$loc_key = $object['area_id'].'_'.$object['instance_id'];
+				$cache = new Cache('HUNT'.$loc_key);
+				if ($cache->tryLock()) {
+					$data = $cache->get();
+					$data['user_state'][$subject['id']]['x'] = $data['bot_state'][$object['id']]['x'];
+					$data['user_state'][$subject['id']]['y'] = $data['bot_state'][$object['id']]['y'];
+					$cache->update($data,HUNT_CACHE_TIME);
+				}
+			}
+		}
+	} elseif ($in['group_id']) {
+		$out_attack = bot_group_attack($subject['area_id'],$subject['instance_id'],$in['group_id'],$subject['id'],$param);
+		if (!$out_attack['status']) $out['error'] = translate('Невозможно начать нападение!');
+		else {
+			if (($out_attack['bot_cnt'] <= 0) || ($out_attack['attack_cnt'] <= 0)) $out['error'] = translate('Здесь никого нет!');
+			else $out['status'] = ACTION_STATUS_OK;
+		}
+	}
+	if (!$nogreat){
+		if ($subject['instance_id']) instance_unlock($subject['instance_id']);
+	}
+
+?>

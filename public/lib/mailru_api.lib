@@ -1,0 +1,2107 @@
+<?
+require_once("/home/admin/web/dwar.fun/public_html/include/souz.inc");
+require_once("/home/admin/web/dwar.fun/public_html/lib/auth.lib");
+require_once '/home/admin/web/dwar.fun/public_html/include/google/apiClient.php';
+require_once '/home/admin/web/dwar.fun/public_html/include/google/contrib/apiPlusService.php';
+require_once '/home/admin/web/dwar.fun/public_html/include/twitter/EpiOAuth.php';
+require_once '/home/admin/web/dwar.fun/public_html/include/twitter/EpiTwitter.php';
+require_once '/home/admin/web/dwar.fun/public_html/include/facebook_sdk/facebook.php';
+
+define('TABLE_SOC_USERS','soc_users');
+define('FIELD_SOC_USERS','');
+define('TABLE_SOC_FRIENDS','soc_friends');
+define('FIELD_SOC_FRIENDS','');
+define('TABLE_SOC_USER_INVITATIONS','soc_user_invitations');
+define('FIELD_SOC_USER_INVITATIONS','');
+define('TABLE_SOC_RELOAD_REQUESTS','soc_reload_requests');
+define('FIELD_SOC_RELOAD_REQUESTS','');
+define('TABLE_SOC_STREAM_PUBLISH_KEYS','soc_stream_publish_keys');
+define('FIELD_SOC_STREAM_PUBLISH_KEYS','');
+
+define('COOKIE_SOCIAL_SYSTEM_TYPE', 'sstype');
+define('SOC_WIDGET_NEWS_LIMIT', 3);
+
+define('SOC_USER_FLAG_NOWALL',    0x0001);
+define('SOC_USER_FLAG_IS_FEMALE', 0x0002);
+
+
+define('SOC_USER_MAX_FRIENDS_NUM', 1000);
+
+
+define('ODKL_MAGIC_NUMBER', 168785588);
+
+function soc_user_get($ref=false, $add='') {
+	global $db_3;
+	return common_get($db_3,TABLE_SOC_USERS,$ref,$add);
+}
+
+function soc_user_list($ref=false, $add='', $field_list='*') {
+	global $db_3;
+	return common_list($db_3,TABLE_SOC_USERS,$ref,$add,$field_list);
+}
+
+function soc_user_count($ref=false, $add='') {
+	global $db_3;
+	return common_count($db_3,TABLE_SOC_USERS,$ref,$add);
+}
+
+function soc_user_save($param) {
+	global $db_3;
+	return common_save($db_3,TABLE_SOC_USERS,$param,FIELD_SOC_USERS);
+}
+
+function soc_user_delete($ref,$add='') {
+	global $db_3;
+	return common_delete($db_3,TABLE_SOC_USERS,$ref,$add);
+}
+
+function soc_user_multi_update($data, $data_fields, $update_fields = array()) {
+	global $db_3;
+	return common_multi_update($db_3, TABLE_SOC_USERS, $data, $data_fields, $update_fields);
+}
+
+function soc_friend_get($ref=false, $add='') {
+	global $db_3;
+	return common_get($db_3,TABLE_SOC_FRIENDS,$ref,$add);
+}
+
+function soc_friend_list($ref=false, $add='', $field_list='*') {
+	global $db_3;
+	return common_list($db_3,TABLE_SOC_FRIENDS,$ref,$add,$field_list);
+}
+
+function soc_friend_count($ref=false, $add='') {
+	global $db_3;
+	return common_count($db_3,TABLE_SOC_FRIENDS,$ref,$add);
+}
+
+function soc_friend_save($param) {
+	global $db_3;
+	return common_save($db_3,TABLE_SOC_FRIENDS,$param,FIELD_SOC_FRIENDS);
+}
+
+function soc_friend_delete($ref,$add='') {
+	global $db_3;
+	return common_delete($db_3,TABLE_SOC_FRIENDS,$ref,$add);
+}
+
+function soc_user_invitations_get($ref=false, $add='') {
+	global $db_3;
+	return common_get($db_3,TABLE_SOC_USER_INVITATIONS,$ref,$add);
+}
+
+function soc_user_invitations_list($ref=false, $add='', $field_list='*') {
+	global $db_3;
+	return common_list($db_3,TABLE_SOC_USER_INVITATIONS,$ref,$add,$field_list);
+}
+
+function soc_user_invitations_count($ref=false, $add='') {
+	global $db_3;
+	return common_count($db_3,TABLE_SOC_USER_INVITATIONS,$ref,$add);
+}
+
+function soc_user_invitations_save($param) {
+	global $db_3;
+	return common_save($db_3,TABLE_SOC_USER_INVITATIONS,$param,FIELD_SOC_USER_INVITATIONS);
+}
+
+function soc_user_invitations_delete($ref,$add='') {
+	global $db_3;
+	return common_delete($db_3,TABLE_SOC_USER_INVITATIONS,$ref,$add);
+}
+
+function soc_reload_request_get($ref=false, $add='') {
+	global $db_3;
+	return common_get($db_3,TABLE_SOC_RELOAD_REQUESTS,$ref,$add);
+}
+
+function soc_reload_request_list($ref=false, $add='', $field_list='*') {
+	global $db_3;
+	return common_list($db_3,TABLE_SOC_RELOAD_REQUESTS,$ref,$add,$field_list);
+}
+
+function soc_reload_request_count($ref=false, $add='') {
+	global $db_3;
+	return common_count($db_3,TABLE_SOC_RELOAD_REQUESTS,$ref,$add);
+}
+
+function soc_reload_request_save($param) {
+	global $db_3;
+	return common_save($db_3,TABLE_SOC_RELOAD_REQUESTS,$param,FIELD_SOC_RELOAD_REQUESTS);
+}
+
+function soc_reload_request_delete($ref,$add='') {
+	global $db_3;
+	return common_delete($db_3,TABLE_SOC_RELOAD_REQUESTS,$ref,$add);
+}
+
+function soc_stream_publish_key_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_SOC_STREAM_PUBLISH_KEYS,$ref,$add);
+}
+
+function soc_stream_publish_key_list($ref=false, $add='', $field_list='*') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_SOC_STREAM_PUBLISH_KEYS,$ref,$add,$field_list);
+}
+
+function soc_stream_publish_key_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff,TABLE_SOC_STREAM_PUBLISH_KEYS,$ref,$add);
+}
+
+function soc_stream_publish_key_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_SOC_STREAM_PUBLISH_KEYS,$param,FIELD_SOC_STREAM_PUBLISH_KEYS);
+}
+
+function soc_stream_publish_key_delete($ref,$add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_SOC_STREAM_PUBLISH_KEYS,$ref,$add);
+}
+
+abstract class SocialSystem {
+	protected $SYSTEM_ID = 0;
+	static $_systems;
+	protected $_available = false;
+
+	function __construct() {
+		$this->_available = true;
+	}
+
+	// Возвращает объект для работы с нужной социалкой
+	public static function getSystem($soc_name) {
+		$class_name = 'Soc_'.$soc_name;
+		if(!class_exists($class_name)) {
+			return false;
+		}
+		if (!isset($_systems[$class_name])) {
+			$_systems[$class_name] = new $class_name();
+		}
+		return $_systems[$class_name];
+	}
+	
+	// Возвращает список друзей по идентификатору пользователя в соц. сети
+	abstract function get_user_friends($soc_user_id = 0);
+	
+	// Возвращает информацию о пользователях соц. сети
+	abstract function get_user_info($soc_user_ids = array());
+	
+	// Ассоциирует пользователя с соц. сетью
+	abstract function user_associate($user_id = 0, $soc_user_id = 0);
+	
+	// Снятие ассоциации
+	abstract function user_unassociate($user_id = 0);
+	
+	// По входным параметрам подбирает пользователя социалки и добавляет информацию о друзьях
+	function sync_user_friends($soc_user = array(), $reload_info = false) {
+		if (!$soc_user['soc_user_id']) return false;
+		$friend_current = $this->get_user_friends($soc_user['soc_user_id']);
+		if ($friend_current === false) return false;
+		$friend_current = $friend_current ? array_slice($friend_current, 0, SOC_USER_MAX_FRIENDS_NUM) : array();
+		
+		$friends_total = count($friend_current);
+		$friends = make_hash(soc_friend_list(array('soc_user_id' => $soc_user['soc_user_id'], 'soc_system_id' => $this->SYSTEM_ID), '', 'friend_user_id'), 'friend_user_id');
+		$friend_ids = array_keys($friends);
+
+		$ingame_total = $reload_info || !$friend_ids ? 0 : soc_user_count(array('soc_user_id' => $friend_ids, 'soc_system_id' => $this->SYSTEM_ID), ' AND uid > 0');
+		$new_friends = array_diff($friend_current, $friend_ids);
+		$deleted_friends = array_diff($friend_ids, $friend_current);
+		if ($new_friends) {
+			$current_users = make_hash(soc_user_list(array('soc_user_id' => $new_friends, 'soc_system_id' => $this->SYSTEM_ID)), 'soc_user_id');
+			foreach($current_users as $current_user) {
+				if ($current_user['uid']) $ingame_total++;
+			}
+			$new_users = $this->get_user_info(array_diff($new_friends, array_keys($current_users)));
+			if ($new_users) {
+				// пользователи соц. сети, информации о которых ещё нету
+				foreach($new_users as $uid => $new_user) {
+					$new_user['soc_user_id'] = $uid;
+					$new_user['soc_system_id'] = $this->SYSTEM_ID;
+					$new_user['_mode'] = CSMODE_INSERT;
+					soc_user_save($new_user);
+				}
+			}
+			foreach($new_friends as $new_friend) {
+				soc_friend_save(array(
+					'soc_system_id'  => $this->SYSTEM_ID,
+					'soc_user_id'    => $soc_user['soc_user_id'], 
+					'friend_user_id' => $new_friend,
+					'_mode' => CSMODE_REPLACE,
+				));
+			}
+		}
+
+		if ($deleted_friends) {
+			// Сначала посчитаем количество и играющих друзей
+			$cnt = soc_user_count(array(
+				'soc_system_id'  => $this->SYSTEM_ID,
+				'soc_user_id' => $deleted_friends
+			), sql_pholder(' AND uid > 0'));
+			$ingame_total -= $cnt;
+			
+			// Потом всех остальных
+			$cnt = soc_friend_delete(array(
+				'soc_system_id'  => $this->SYSTEM_ID,
+				'soc_user_id'    => $soc_user['soc_user_id'],
+				'friend_user_id' => $deleted_friends
+			));
+			$friends_total -= $cnt;
+		}
+		
+		if ($reload_info && $friend_ids) {
+			$real_info = $this->get_user_info($friend_ids);
+			$current_info = make_hash(soc_user_list(array('soc_user_id' => $friend_ids)), 'soc_user_id');
+			foreach($current_info as $current_user) {
+				if ($current_user['uid']) $ingame_total++;
+			}
+			$diff_friends = array();
+			foreach($real_info as $friend_id => $friend) {
+				foreach($friend as $field => $value) {
+					if ($value != $current_info[$friend_id][$field]) {
+						$diff_friends[$friend_id] = $friend;
+						$diff_friends[$friend_id]['soc_user_id'] = $friend_id;
+						$diff_friends[$friend_id]['soc_system_id'] = $this->SYSTEM_ID;
+						break;
+					}
+				}
+			}
+			if ($diff_friends) {
+				$data_fields = array_keys(reset($diff_friends));
+				$update_fields = array_keys(reset($real_info));
+				soc_user_multi_update($diff_friends, $data_fields, $update_fields);
+			}
+		}
+		
+		soc_user_save(array(
+			'_set' => sql_pholder(' friends_cnt = ?, friend_users_cnt = ?', $friends_total, $ingame_total),
+			'_add' => sql_pholder(' and soc_system_id = ? and soc_user_id = ?', $this->SYSTEM_ID, $soc_user['soc_user_id']),
+		));
+		
+		return true;
+	}
+	
+	// Обновляет виджет приложения в соц. сети
+	abstract function widget_post($soc_user_id, $text);
+	
+	// Обновляет виджет приложения в соц. сети
+	abstract function get_permission($soc_user_id, $permission);
+
+	abstract function get_cookie_name();
+	
+	// Проверяет есть ли кука от социальной сети, для проверки факта ассоциации
+	abstract function check_auth();
+
+	abstract function get_user_link($soc_user);
+
+	function remove_cookie() {
+		$domain = trim(str_replace(array('http://', 'https://'), '', SERVER_URL), ' /');
+
+		common_resetcookie($this->get_cookie_name(), null, null, null, '.'.$domain);
+		common_resetcookie($this->get_cookie_name(), null, null, null, $domain);
+	}
+
+	public function getSystemId() {
+		return $this->SYSTEM_ID;
+	}
+
+	public function isAvailable() {
+		return $this->_available;
+	}
+}
+
+class Soc_MailRu extends SocialSystem {
+	
+	protected $SYSTEM_ID = SOC_SYSTEM_MM;
+	
+	public function sign_server_server($request_params) {
+		ksort($request_params);
+		$params = '';
+		foreach ($request_params as $key => $value) {
+			$params .= $key . '=' . $value;
+		}
+		return md5($params . MAILRU_API_SECRET);
+	}
+	
+	public function request($params) {
+		if (!isset($params['method'])) return false;
+		$params['secure'] = 1;
+		$params['app_id'] = MAILRU_API_APP_ID;
+		$params['sig'] = $this->sign_server_server($params);
+		$url = MAILRU_API_REQUEST_URL;
+		
+		$context  = stream_context_create(array('http' => array(
+			'method'  => 'POST',
+			'header'  => 'Content-type: application/x-www-form-urlencoded',
+			'content' => common_build_request($params),
+		)));
+		
+		$url = MAILRU_API_REQUEST_URL;
+		
+		$result = @file_get_contents($url,false, $context);
+
+		if (!$result) return false;
+		return json_decode($result, true);
+	}
+
+	function invite_friend($soc_user_id, $text) {
+		return false;
+	}
+	
+	function get_user_friends($soc_user_id = 0) {
+		if (!$soc_user_id) return false;
+	
+		$params = array(
+			'method' => 'friends.get',
+			'uid'    => $soc_user_id,
+		);
+		
+		return $this->request($params);
+	}
+
+	function get_user_link($soc_user){
+		$nick = explode('@', $soc_user['email']);
+		return 'http://'.'my.mail.ru/mail/'.reset($nick).'/';
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		if (!$soc_user_ids) return false;
+		if (!is_array($soc_user_ids)) $soc_user_ids = array($soc_user_ids);
+		
+		$user_info = array();
+		// юзеров может быть много, поэтому пачками по 50 штук будем получать
+		$i=0;
+		while (1) {
+			$part = array_slice($soc_user_ids, $i*50, 50);
+			if (!$part) break;
+			$params = array(
+				'method' => 'users.getInfo',
+				'uids'    => join(',', $part),
+			);
+			
+			$result = $this->request($params);
+			if ($result === false) return false;
+			foreach($result as $row) {
+				$fname = (charset_code() == 'CP1251') ? win1251($row['first_name']) : $row['first_name'];
+				$sname = (charset_code() == 'CP1251') ? win1251($row['last_name']) : $row['last_name'];
+				$name = (($fname) ? $fname.' ' : '').$sname;
+				$flags = 0;
+				if ($row['sex'] == 1)//MR:female
+					$flags |= SOC_USER_FLAG_IS_FEMALE;
+				$user_info[$row['uid']] = array(
+					'name'  => $name,
+					'email'  => (charset_code() == 'CP1251') ? win1251($row['email']) : $row['email'],
+					'avatar' => (charset_code() == 'CP1251') ? win1251($row['pic']) : $row['pic'],
+					'flags' => $flags,
+				);
+			}
+			$i++;
+		}
+		
+		return $user_info;
+	}
+	
+	// Ассоциирует пользователя с соц. сетью
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		
+		if (!$soc_user_id) return false;
+		$soc_user = $this->get_user_info($soc_user_id);						
+		$soc_user = reset($soc_user);
+
+		if ($user_id) { // отвязываем пользователя
+			$soc_user_current = soc_user_get(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+			if ($soc_user_current && ($soc_user_current['soc_user_id'] != $soc_user_id)) {
+				$this->user_unassociate($user_id);
+			}
+		} else {
+			if ((!defined('SOUZ_EURO') || !SOUZ_EURO)) {
+				// а есть ли у нас этот пользователь?
+				$uinfo = souz_ep_userinfo($soc_user['email'], MM_SOUZ_EP);
+				// этот пользователь есть в союзе
+				if ($uinfo['pers_id']) {
+					$user_id = $uinfo['pers_id'];
+				}
+			}
+		}
+		$soc_user['uid'] = $user_id;
+		$soc_user['soc_system_id'] = $this->SYSTEM_ID;
+		$soc_user['soc_user_id'] = $soc_user_id;
+		$soc_user['stime'] = time_current();
+		// такой soc_user_id уже может быть но с 0 user_id
+		$soc_user['_mode'] = CSMODE_REPLACE;
+		$soc_user['_cnt'] = true;
+		$result = false;
+		if (soc_user_save($soc_user)) {
+			if ($user_id){
+				soc_reload_request_save(array(
+					'_on_duplicate' => ' uid=uid',
+					'soc_system_id' => $this->SYSTEM_ID,
+					'uid' => $user_id,
+					'access_token' => ''
+				));
+				auth_save(array(
+					'uid' => $user_id,
+					'_set' => sql_pholder('auth_flags = auth_flags | ?',AUTH_FLAG_SOCIAL),
+				));
+			}
+			$result = true;
+			//связываем в союзе
+			if ($soc_user['uid'] && defined('SOUZ_PROJECT_ID') && SOUZ_PROJECT_ID && (!defined('SOUZ_EURO') || !SOUZ_EURO)) {
+				$result = souz_ep_register($soc_user['email'],MM_SOUZ_EP, null, $soc_user['uid']);
+			}		
+		}
+		return $result;
+	}
+	
+	function user_unassociate($user_id = 0) {
+		if (!$user_id) return false;
+		// пробуем удалить в союзе.
+		$soc_user_current = soc_user_get(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+		if (!defined('SOUZ_EURO') || !SOUZ_EURO) {
+			$status = souz_ep_delete($soc_user_current['email'], MM_SOUZ_EP);
+		}
+		if ($soc_user_current)
+			soc_user_save(array(
+				'_set' => 'uid=0',
+				'_add' => sql_pholder(' and soc_system_id=? and uid=?', $this->SYSTEM_ID, $user_id),
+			));
+		$this->remove_cookie();
+	}
+	
+	// Обновляет виджет приложения в соц. сети
+	function widget_post($soc_user_id, $text) {
+		if (!$soc_user_id) return false;
+		$params = array(
+			'method' => 'widget.set',
+			'uid'    => $soc_user_id,
+			'html' => $text
+		);
+
+    	return $this->request($params);
+	}
+	
+	function get_permission($soc_user_id, $permission) {
+		if (!$soc_user_id) return false;
+		$params = array(
+			'method'   => 'users.hasAppPermission',
+			'uid'      => $soc_user_id,
+			'ext_perm' => $permission,
+		);
+
+    	return $this->request($params);
+	}
+
+	function get_cookie_name() {
+		return 'mrc';
+	}
+
+	function check_auth() {
+		if (!isset($_COOKIE[$this->get_cookie_name()])) return false;
+		
+		$mrc_params = explode('&',$_COOKIE[$this->get_cookie_name()]);
+		$mrc_decr = array();
+		foreach($mrc_params as $mrc_param) {
+			$param = explode('=',$mrc_param);
+			if (count($param) != 2) continue;
+			$mrc_decr[$param[0]] = $param[1];
+		}
+		if (!$mrc_decr['oid'] || !$mrc_decr['session_key']) return false;
+		
+		$sig = $mrc_decr['sig'];
+		unset($mrc_decr['sig']);
+		if ($sig != $this->sign_server_server($mrc_decr)) return false;
+		
+		return $mrc_decr['oid'];
+	}
+	
+}
+
+class Soc_Vkontakte extends SocialSystem {
+	
+	protected $SYSTEM_ID = SOC_SYSTEM_VK;
+	
+	private function sign_server_server($request_params) {
+		ksort($request_params);
+		$params = '';
+		foreach ($request_params as $key => $value) {
+				$params .= $key . '=' . $value;
+		}
+		return md5($params . VKONTAKTE_API_SECRET);
+	}
+	
+	function request($params) {
+		if (!isset($params['method'])) return false;
+		unset($request_params['sid']);
+		$params['api_id'] = VKONTAKTE_API_APP_ID;
+		$params['format'] = 'json';
+		$params['sig'] = $this->sign_server_server($params);
+		
+		$context  = stream_context_create(array('http' => array(
+			'method'  => 'POST',
+			'header'  => 'Content-type: application/x-www-form-urlencoded',
+			'content' => common_build_request($params),
+		)));
+		
+		$url = VKONTAKTE_API_REQUEST_URL;
+		// подавляем вывод о том что не смогли достучаться
+		$result = @file_get_contents($url,false, $context);
+		if (!$result) return false;
+		$result = json_decode($result, true);
+		if (!$result || !$result['response']) return false;
+		return $result['response'];
+	}
+	
+	function get_user_friends($soc_user_id = 0) {
+		if (!$soc_user_id) return false;
+	
+		$params = array(
+			'method' => 'friends.get',
+			'uid'    => $soc_user_id,
+			'count'  => SOC_USER_MAX_FRIENDS_NUM
+		);
+		
+		$friends = $this->request($params);
+		
+		if (!$friends) return false;
+		
+		$ret = array();
+		foreach($friends as $friend) {
+			$ret[] = $friend['uid'];
+		}
+		return $ret;
+	}
+
+	function get_user_link($soc_user){
+		return 'http://'.'vkontakte.ru/id'.$soc_user['soc_user_id'];
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		if (!$soc_user_ids) return false;
+		if (!is_array($soc_user_ids)) $soc_user_ids = array($soc_user_ids);
+		$user_info = array();
+		// юзеров может быть много, поэтому пачками по 50 штук будем получать
+		$i=0;
+		while (1) {
+			$part = array_slice($soc_user_ids, $i*50, 50);
+			if (!$part) break;
+			$params = array(
+				'method' => 'getProfiles',
+				'uids'    => join(',', $part),
+				'fields' => 'domain,first_name,last_name,sex,photo_medium,photo'
+			);
+			
+			$result = $this->request($params);
+			if ($result === false) return false;
+			foreach($result as $row) {
+				$fname = (charset_code() == 'CP1251') ? win1251($row['user']['first_name']) : $row['user']['first_name'];
+				$sname = (charset_code() == 'CP1251') ? win1251($row['user']['last_name']) : $row['user']['last_name'];
+				$name = (($fname) ? $fname.' ' : '').$sname;
+				$flags = 0;
+				if ($row['user']['sex'] == 1)//VK:female
+					$flags |= SOC_USER_FLAG_IS_FEMALE;
+				$user_info[$row['user']['uid']] = array(
+					'name'  => $name,
+					'avatar' => ((charset_code() == 'CP1251') ? win1251($row['user']['photo_medium']) : $row['user']['photo_medium']).'|'.((charset_code() == 'CP1251') ? win1251($row['user']['photo']) : $row['user']['photo']),
+					'flags' => $flags,
+				);
+			}
+			$i++;
+		}
+		
+		return $user_info;
+	}
+	
+	// Ассоциирует пользователя с соц. сетью
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		if (!$soc_user_id) return false;
+		
+		$soc_user = $this->get_user_info($soc_user_id);
+		if (!$soc_user) return false;
+		$soc_user = reset($soc_user);
+		$soc_user['email'] = $soc_user_id . '@vkontakte.mail'; // в контакте не дает мыло
+
+		if ($user_id) {
+			$soc_user_current = soc_user_get(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+			if ($soc_user_current && ($soc_user_current['soc_user_id'] != $soc_user_id)) {
+				$this->user_unassociate($user_id);
+				soc_friend_delete(array('soc_system_id' => $this->SYSTEM_ID, 'soc_user_id' => $soc_user_current['soc_user_id']));
+			}
+		} else {
+			if (!defined('SOUZ_EURO') || !SOUZ_EURO) {
+				$uinfo = souz_ep_userinfo($soc_user_id, VK_SOUZ_EP);
+				// этот пользователь есть в союзе
+				if ($uinfo['pers_id']) {
+					$user_id = $uinfo['pers_id'];
+				}
+			}
+		}
+		
+		$soc_user['uid'] = $user_id;
+		$soc_user['soc_system_id'] = $this->SYSTEM_ID;
+		$soc_user['soc_user_id'] = $soc_user_id;
+		$soc_user['stime'] = time_current();
+		// такой soc_user_id уже может быть но с 0 user_id
+		$soc_user['_mode'] = CSMODE_REPLACE;
+		$soc_user['_cnt'] = true;
+		$result = false;
+		if (soc_user_save($soc_user)) {
+			if ($user_id) { 
+				soc_reload_request_save(array(
+					'_on_duplicate' => ' uid=uid',
+					'soc_system_id' => $this->SYSTEM_ID,
+					'uid' => $user_id,
+					'access_token' => ''
+				));
+				auth_save(array(
+					'uid' => $user_id,
+					'_set' => sql_pholder('auth_flags = auth_flags | ?',AUTH_FLAG_SOCIAL),
+				));				
+			}
+			$result = true;
+			//связываем в союзе
+			if ($soc_user['uid'] && defined('SOUZ_PROJECT_ID') && SOUZ_PROJECT_ID && (!defined('SOUZ_EURO') || !SOUZ_EURO)) {
+				$result = souz_ep_register($soc_user['soc_user_id'], VK_SOUZ_EP, null, $soc_user['uid']);
+			}
+		}
+		return $result;
+	}
+
+	function get_cookie_name() {
+		return 'vk_app_'.VKONTAKTE_API_APP_ID;
+	}
+
+	function user_unassociate($user_id = 0) {
+		if (!$user_id) return false;
+		$soc_user_current = soc_user_get(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+		if (!defined('SOUZ_EURO') || !SOUZ_EURO) {
+			$status = souz_ep_delete($soc_user_current['soc_user_id'], VK_SOUZ_EP);
+		}
+		if ($soc_user_current)
+			soc_user_save(array(
+				'_set' => 'uid=0',
+				'_add' => sql_pholder(' and soc_system_id=? and uid=?', $this->SYSTEM_ID, $user_id),
+			));
+		$this->remove_cookie();
+	}
+	
+	// Обновляет виджет приложения в соц. сети
+	function widget_post($soc_user_id, $text) {
+		if (!$soc_user_id) return false;
+		$params = array(
+			'method' => 'widget.set',
+			'uid'    => $soc_user_id,
+			'html' => $text
+		);
+
+    	return $this->request($params);
+	}
+	
+	function invite_friend($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		if (!$soc_user_id) return false;
+		$params = array(
+			'method'   => 'users.hasAppPermission',
+			'uid'      => $soc_user_id,
+			'ext_perm' => $permission,
+		);
+
+    	return $this->request($params);
+	}
+	
+	function check_auth() {
+		if (!isset($_COOKIE[$this->get_cookie_name()])) return false;
+		$valid_keys = array('expire', 'mid', 'secret', 'sid', 'sig');
+		$vk_params = explode('&',$_COOKIE[$this->get_cookie_name()]);
+		$vk_decr = array();
+		foreach($vk_params as $vk_param) {
+			$param = explode('=',$vk_param);
+			if (count($param) != 2) continue;
+			if (!in_array($param[0], $valid_keys)) continue;
+				$vk_decr[$param[0]] = $param[1];
+		}
+		if (!$vk_decr['mid']) return false;
+		
+		$sig = $vk_decr['sig'];
+		unset($vk_decr['sig']);
+		if ($sig != $this->sign_server_server($vk_decr)) return false;
+		
+		return $vk_decr['mid'];
+	}
+}
+
+
+
+
+class Soc_Odnoklassniki extends SocialSystem {
+
+	protected $SYSTEM_ID = SOC_SYSTEM_OK ;
+
+	private function sign_server_server($request_params) {
+		ksort($request_params);
+		$params = '';
+		$access_token = '';
+		if (isset($request_params['access_token'])) {
+			$access_token = $request_params['access_token'];
+			unset($request_params['access_token']);
+		}
+		foreach ($request_params as $key => $value) {
+			$params .= $key . '=' . $value;
+		}		
+		return md5($params . md5($access_token . ODKL_API_PRIVATE_KEY));
+	}
+
+	function request($params) {	
+		if (!isset($params['method'])) return false;
+		if (!isset($params['access_token'])) return false;
+
+		$params['application_key'] = ODKL_API_PUBLIC_KEY;
+		$params['format'] = 'json';
+		$params['sig'] = $this->sign_server_server($params);
+
+		$context  = stream_context_create(array('http' => array(
+			'method'  => 'POST',
+			'header'  => 'Content-type: application/x-www-form-urlencoded',
+			'content' => common_build_request($params),
+		)));
+
+		$url = ODKL_API_METHOD_URL;
+		
+		$result = @file_get_contents($url,false, $context);
+		if (!$result) return false;
+		$result = json_decode($result, true);
+
+		if (!empty($result['error_code'])) {
+			error_log(sprintf('Social auth error: code %d message:"%s" on line %d file %s',$result['error_code'],$result['error_msg'],__LINE__,__FILE__));
+			return false;
+		}
+		return $result;
+	}
+
+	function invite_friend($soc_user_id, $text){
+		if (!$soc_user_id) return false;
+		$text = 'test';
+		//'uid' => 34746792410,
+		$params = array(
+			'method' => 'messages.send',
+			'friend_uid'    => $soc_user_id,
+			'text' => urlencode($text),
+			'access_token' => $this->get_access_token()
+		);
+    	return $this->request($params);		
+	}
+	
+	function get_user_friends($soc_user_id = 0) {
+		$params = array(
+				'method' => 'friends.get',
+				'access_token' => $this->_access_token,
+				);
+		$friends = $this->request($params);
+		
+		if (!$friends) return false;
+		
+		$ret = array();
+		foreach($friends as $friend) {
+			$ret[] = $friend;
+		}
+		return $ret;
+	}
+
+	function get_user_link($soc_user){
+		$user_id = $soc_user['soc_user_id'] ^ ODKL_MAGIC_NUMBER;
+		return 'http://'.'www.odnoklassniki.ru/profile/' . $user_id;
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		if (!$soc_user_ids) return false;
+		if (!is_array($soc_user_ids)) $soc_user_ids = array($soc_user_ids);
+		$user_info = array();
+		// запрашиваем текущего пользователя,
+		// связи с тем что прямым путем с однокалссников получить не удалось.
+		// TODO: разобраться
+		if ($soc_user_ids[0] == $this->check_auth()) {		
+			$params = array('method' => 'users.getCurrentUser',	'access_token' => $this->get_access_token() );
+			$odkl_user = $this->request($params);
+			if ($odkl_user && $odkl_user['uid'] ) {
+				$fname = (charset_code() == 'CP1251') ? win1251($odkl_user['first_name']) : $odkl_user['first_name'];
+					$sname = (charset_code() == 'CP1251') ? win1251($odkl_user['last_name']) : $odkl_user['last_name'];
+					$name = (($fname) ? $fname.' ' : '').$sname;
+					$flags = 0;
+					if ($odkl_user['gender'] == 'female')//OD:female
+						$flags |= SOC_USER_FLAG_IS_FEMALE;
+					$user_info[$odkl_user['uid']] = array(
+						'name'  => $name,
+						'avatar' => (charset_code() == 'CP1251') ? win1251($odkl_user['pic_2']) : $odkl_user['pic_2'],
+						'flags' => $flags,
+					);
+			} else return false;
+		} else {
+			
+			// юзеров может быть много, поэтому пачками по 50 штук будем получать
+			$i=0;
+			while (1) {
+				$part = array_slice($soc_user_ids, $i*50, 50);
+				if (!$part) break;
+				$params = array(
+					'method' => 'users.getInfo',
+					'uids'    => join(',', $part),
+					'fields' => 'uid, first_name,last_name,pic_1',
+					'access_token' => $this->_access_token,
+				);
+				$result = $this->request($params);
+				if ($result === false) return false;
+				foreach($result as $row) {
+					$fname = (charset_code() == 'CP1251') ? win1251($row['first_name']) : $row['first_name'];
+					$sname = (charset_code() == 'CP1251') ? win1251($row['last_name']) : $row['last_name'];
+					$name = (($fname) ? $fname.' ' : '').$sname;
+					$user_info[$row['uid']] = array(
+						'name'  => $name,
+						'avatar' => (charset_code() == 'CP1251') ? win1251($row['pic_1']) : $row['pic_1'],
+					);
+				}
+				$i++;
+			} 
+		}
+		return $user_info;
+	}
+
+	// Ассоциирует пользователя с соц. сетью
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		
+		if (!$soc_user_id) return false;
+
+		$soc_user = $this->get_user_info($soc_user_id);
+		if (!$soc_user) return false;
+
+		$soc_user = reset($soc_user);
+		$soc_user['email'] = $soc_user_id . '@odnoklassniki.mail'; // одноклассники не дает мыло
+
+		if ($user_id) {
+			// удаляем старую привязку к этому пользователю
+			$soc_user_current = soc_user_get(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+			if ($soc_user_current && ($soc_user_current['soc_user_id'] != $soc_user_id)) {
+				$this->user_unassociate($user_id);
+				soc_user_delete(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+			}
+		} else {
+			if (!defined('SOUZ_EURO') || !SOUZ_EURO) {
+				$uinfo = souz_ep_userinfo($soc_user_id, OK_SOUZ_EP);
+				// этот пользователь есть в союзе
+				if ($uinfo['pers_id']) {
+					$user_id = $uinfo['pers_id'];
+				}
+			}
+		}
+		$soc_user['uid'] = $user_id;
+		$soc_user['soc_system_id'] = $this->SYSTEM_ID;
+		$soc_user['soc_user_id'] = $soc_user_id;
+		$soc_user['stime'] = time_current();
+		// такой soc_user_id уже может быть но с 0 user_id
+		$soc_user['_mode'] = CSMODE_REPLACE;
+		$soc_user['_cnt'] = true;
+		$result = false;
+		if (soc_user_save($soc_user)) {
+
+			if ($user_id) {
+				soc_reload_request_save(array(
+					'_on_duplicate' => sql_pholder('access_token = ?', $this->get_access_token()),
+					'soc_system_id' => $this->SYSTEM_ID,
+					'uid' => $user_id,
+					'access_token' => $this->get_access_token(),
+				));
+				auth_save(array(
+					'uid' => $user_id,
+					'_set' => sql_pholder('auth_flags = auth_flags | ?',AUTH_FLAG_SOCIAL),
+				));				
+			}
+			$result = true;
+			if ($soc_user['uid'] && defined('SOUZ_PROJECT_ID') && SOUZ_PROJECT_ID && (!defined('SOUZ_EURO') || !SOUZ_EURO)) {
+				$result = souz_ep_register($soc_user['soc_user_id'], OK_SOUZ_EP, null, $soc_user['uid']);
+			}
+		}
+		return $result;
+	}
+
+	function user_unassociate($user_id = 0) {
+		if (!$user_id) return false;
+		$soc_user_current = soc_user_get(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+		if (!defined('SOUZ_EURO') || !SOUZ_EURO) {
+			$status = souz_ep_delete($soc_user_current['soc_user_id'], OK_SOUZ_EP);
+		}
+		if ($soc_user_current)
+			soc_user_save(array(
+				'_set' => 'uid=0',
+				'_add' => sql_pholder(' and soc_system_id=? and uid=?', $this->SYSTEM_ID, $user_id),
+			));
+		$this->remove_cookie();
+	}
+
+	// Обновляет виджет приложения в соц. сети
+	function widget_post($soc_user_id, $text) {
+		return false;		
+	}
+
+	function get_cookie_name() {
+		return 'okat';
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function create_odkl_cookie($access_token) {
+		$this->remove_cookie();		
+		$params = array('method' => 'users.getCurrentUser',
+						'access_token' => $access_token );
+		$odkl_user = $this->request($params);
+		if ($odkl_user && $odkl_user['uid'] ) {
+			$cookie_values = array(
+				'access_token' => $access_token,
+				'uid' => $odkl_user['uid'],
+			);
+			$cookie_values['sig'] = $this->sign_server_server($cookie_values);
+			$cookie_str = common_build_request($cookie_values);
+			common_resetcookie($this->get_cookie_name(), $cookie_str, time_current() + 1800);
+			return true;
+		}
+		return false;
+	}
+
+	function get_cookie_param($param_name) {
+		if (!isset($_COOKIE[$this->get_cookie_name()])) return false;
+		$session = array();
+		parse_str(trim($_COOKIE[$this->get_cookie_name()],'"'), $session);
+		if (!$session[$param_name] || !$session['sig']) return false;
+		$sig = $session['sig'];
+		unset($session['sig']);
+		if ($sig != $this->sign_server_server($session)) return false;
+		return $session[$param_name];
+	}
+
+	function get_access_token() {
+		return $this->get_cookie_param('access_token');
+	}
+
+	function set_access_token($token) {
+		$this->_access_token = $token;
+	}	
+	
+	function check_auth() {
+		return $this->get_cookie_param('uid');
+	}
+}
+
+class Soc_Facebook extends SocialSystem {
+
+	protected $SYSTEM_ID = SOC_SYSTEM_FB;
+	protected $fb;
+
+	private $_access_token = false;
+	
+	private function getFacebook() {
+		if (!$this->fb) {
+			$this->fb = new Facebook(array(
+				'appId'  => FB_API_APP_ID,
+				'secret' => FB_API_SECRET
+			));
+		}
+		
+		return $this->fb;
+	}
+
+	private function sign_server_server($request_params) {	
+		ksort($request_params);
+		$params = '';
+		foreach ($request_params as $key => $value) {
+			$params .= $key . '=' . $value;
+		}
+		return md5($params . FB_API_SECRET);
+	}
+
+	function request($params) {
+		$method = $params['method'];
+		unset($params['method']);
+
+		if (!$method) return false;
+
+		$query = common_build_request($params);
+		
+		// https
+		$url = FB_API_REQUEST_URL . $method . '?' . $query;		
+		$result = file_get_contents($url);
+
+		if (!$result) return false;
+		$result = json_decode($result, true);
+		return $result;		
+	}
+
+	function invite_friend($soc_user_id, $text) {
+		return false;
+	}
+	
+	
+	function get_user_friends($soc_user_id = 0) {
+		if (!$soc_user_id) return false;
+		$params = array(
+			'method' => 'me/friends',
+		);
+
+		if ($this->get_access_token()) {
+			$params['access_token'] = $this->get_access_token();
+		}
+
+		$friends = $this->request($params);
+
+		if (!$friends['data']) return false;
+		$ret = array();
+		foreach($friends['data'] as $friend) {
+			$ret[] = $friend['id'];
+		}
+		return $ret;
+	}
+
+	function get_user_link($soc_user){
+		return 'http://www.facebook.com/profile.php?id=' . $soc_user['soc_user_id'];
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		
+		if (!$soc_user_ids) return false;
+		if (!is_array($soc_user_ids)) $soc_user_ids = array($soc_user_ids);		
+		$user_info = array();		
+		foreach ($soc_user_ids as $usr_id) {
+			$params = array(
+				'method' => $usr_id == $this->check_auth()?'me':$usr_id,
+				'fields' => 'id,name,first_name,last_name,gender,email,link,username'
+			);
+			if ($usr_id == $this->check_auth()) {
+				$params['access_token'] = $this->get_access_token();
+			}
+			$result = $this->request($params);
+
+			if ($result === false) return false;
+			// фото
+			$result['avatar'] = FB_AVATAR_REQUEST_URL . "$usr_id/picture";
+
+			if (empty($result['email'])) {
+				$result['email'] = sprintf('%d@facebook.mail',$usr_id);
+			}
+			
+			$fname = (charset_code() == 'CP1251') ? win1251($result['first_name']) : $result['first_name'];
+			$sname = (charset_code() == 'CP1251') ? win1251($result['last_name']) : $result['last_name'];
+			$name = (($fname) ? $fname.' ' : '').$sname;
+			$flags = 0;
+			if ($result['gender'] == 'female')//FB:female
+				$flags |= SOC_USER_FLAG_IS_FEMALE;
+			$user_info[$result['id']] = array(
+				'name'  => $name,
+				'email'  => (charset_code() == 'CP1251') ? win1251($result['email']) : $result['email'],
+				'avatar' => (charset_code() == 'CP1251') ? win1251($result['avatar']) : $result['avatar'],
+				'flags' => $flags,
+			);
+		}		
+		return $user_info;
+	}
+
+	// Ассоциирует пользователя с соц. сетью
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		if (!$soc_user_id) return false;
+
+		$soc_user = $this->get_user_info($soc_user_id);		
+		
+		$soc_user = reset($soc_user);
+
+		if ($user_id) {
+			$soc_user_current = soc_user_get(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+
+			if ($soc_user_current && ($soc_user_current['soc_user_id'] != $soc_user_id)) {
+				$this->user_unassociate($user_id);
+				soc_user_delete(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+				soc_friend_delete(array('soc_system_id' => $this->SYSTEM_ID, 'soc_user_id' => $soc_user_current['soc_user_id']));
+			}
+		} else {
+			if (!defined('SOUZ_EURO') || !SOUZ_EURO) {
+				$uinfo = souz_ep_userinfo($soc_user_id, FB_SOUZ_EP);
+				// этот пользователь есть в союзе
+				if ($uinfo['pers_id']) {
+					$user_id = $uinfo['pers_id'];
+				}
+			}
+		}
+
+		$soc_user['uid'] = $user_id;
+		$soc_user['soc_system_id'] = $this->SYSTEM_ID;
+		$soc_user['soc_user_id'] = $soc_user_id;
+		$soc_user['stime'] = time_current();
+		// такой soc_user_id уже может быть но с 0 user_id
+		$soc_user['_mode'] = CSMODE_REPLACE;
+		$soc_user['_cnt'] = true;
+		$result = false;
+		if (soc_user_save($soc_user)) {
+			if ($user_id) {
+				soc_reload_request_save(array(
+					'_on_duplicate' => sql_pholder('access_token = ?', $this->_access_token),
+					'soc_system_id' => $this->SYSTEM_ID,
+					'uid' => $user_id,
+					'access_token' => $this->_access_token
+				));
+				auth_save(array(
+					'uid' => $user_id,
+					'_set' => sql_pholder('auth_flags = auth_flags | ?',AUTH_FLAG_SOCIAL),
+				));					
+			}
+			$result = true;
+			if ($soc_user['uid'] && defined('SOUZ_PROJECT_ID') && SOUZ_PROJECT_ID && (!defined('SOUZ_EURO') || !SOUZ_EURO)) {
+				$result = souz_ep_register($soc_user['soc_user_id'], FB_SOUZ_EP, null, $soc_user['uid']);
+			}
+		}
+		return $result;
+	}
+
+	function user_unassociate($user_id = 0) {
+		if (!$user_id) return false;
+		$soc_user_current = soc_user_get(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+		if (!defined('SOUZ_EURO') || !SOUZ_EURO) {
+			$status = souz_ep_delete($soc_user_current['soc_user_id'], FB_SOUZ_EP);
+		}
+		if ($soc_user_current)
+			soc_user_save(array(
+				'_set' => 'uid=0',
+				'_add' => sql_pholder(' and soc_system_id=? and uid=?', $this->SYSTEM_ID, $user_id),
+			));
+		$this->remove_cookie();
+	}
+
+	// Обновляет виджет приложения в соц. сети
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return 'fbsr_'.FB_API_APP_ID;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	// Not used
+	function get_cookie_param($param_name) {
+		if (!isset($_COOKIE[$this->get_cookie_name()])) return false;
+		$session = array();
+
+		$session = $this->parse_signed_request($_COOKIE[$this->get_cookie_name()]);
+		if (!$session && !$session[$param_name] || !$session['sig']) return false;
+
+		$sig = $session['sig'];
+		unset($session['sig']);
+
+		if ($sig != $this->sign_server_server($session)) return false;		
+		return $session[$param_name];
+	}
+
+	function get_access_token() {
+		if (!$this->_access_token) {
+			$this->_access_token = $this->getFacebook()->getAccessToken();
+		}
+		return $this->_access_token;
+	}
+
+	function set_access_token($token) {
+		$this->_access_token = $token;
+	}
+
+	function check_auth() {
+		return $this->getFacebook()->getUser();
+	}
+}
+
+class Soc_Twitter extends SocialSystem {
+	
+	protected $SYSTEM_ID = SOC_SYSTEM_TW;
+	
+	private $_access_token = false;
+	
+	private $_initialized = false;
+	
+	private function sign_server_server($request_params) {
+		return false;
+	}
+	
+	function init() {
+		if ($this->_initialized) return true;
+		$this->client = new EpiTwitter(TWITTER_CONSUMER_KEY, TWITTER_CONSUMER_SECRET);
+		$this->_initialized = true;
+	}
+	
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+	
+	function authenticate () {
+
+	}
+	
+	function get_auth_url () {
+		return $this->client->getAuthorizationUrl();
+	}
+	
+	function get_user_link($soc_user){
+		return $this->client->getUserLink(substr(0, $soc_user['email'], -12)); // 12 = length(twitter@mail)
+	}
+	
+	function get_user_info($soc_user_ids = array()) {
+		if (! $this->_initialized) $this->init();
+		if (!$soc_user_ids) return false;
+		if (!is_array($soc_user_ids)) $soc_user_ids = array($soc_user_ids);
+		$user_info = array();
+	
+		foreach ($soc_user_ids as $usr_id) {
+			$result = $this->client->getProfile(array('user_id' => $usr_id));
+			$result->email = sprintf('%s@twitter.mail', $result->screen_name);
+			$user_info[$result->id_str] = array(
+						'name'  => (charset_code() == 'CP1251') ? win1251($result->screen_name) : $result->screen_name,
+						'email'  => (charset_code() == 'CP1251') ? win1251($result->email) : $result->email,
+						'avatar' => (charset_code() == 'CP1251') ? win1251($result->profile_image_url) : $result->profile_image_url,
+					);
+		}
+		return $user_info;
+	}
+	
+	// Ассоциирует пользователя с соц. сетью
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		if (!$soc_user_id) return false;
+	
+		$soc_user = reset($this->get_user_info($soc_user_id));
+	
+		if ($user_id) {
+			$soc_user_current = soc_user_get(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+	
+			if ($soc_user_current && ($soc_user_current['soc_user_id'] != $soc_user_id)) {
+				soc_user_delete(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+				soc_friend_delete(array('soc_system_id' => $this->SYSTEM_ID, 'soc_user_id' => $soc_user_current['soc_user_id']));
+			}
+		}
+	
+		$soc_user['uid'] = $user_id;
+		$soc_user['soc_system_id'] = $this->SYSTEM_ID;
+		$soc_user['soc_user_id'] = $soc_user_id;
+		$soc_user['stime'] = time_current();
+		// такой soc_user_id уже может быть но с 0 user_id
+		$soc_user['_mode'] = CSMODE_REPLACE;
+		$soc_user['_cnt'] = true;
+		$result = false;
+		if (soc_user_save($soc_user)) {
+			$result = true;
+			if ($user_id) {
+				soc_reload_request_save(array(
+					'_on_duplicate' => ' uid=uid',
+					'soc_system_id' => $this->SYSTEM_ID,
+					'uid' => $user_id,
+					'access_token' => $this->_access_token
+				));
+				auth_save(array(
+					'uid' => $user_id,
+					'_set' => sql_pholder('auth_flags = auth_flags | ?',AUTH_FLAG_SOCIAL),
+				));					
+			}
+		}
+		return $result;
+	}
+	
+	function user_unassociate($user_id = 0) {
+		if (!$user_id) return false;
+		soc_user_save(array(
+			'_set' => 'uid=0',
+			'_add' => sql_pholder(' and soc_system_id=? and uid=?', $this->SYSTEM_ID, $user_id),
+		));
+		$this->remove_cookie();
+	}
+	
+		// Обновляет виджет приложения в соц. сети
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+	
+	function get_cookie_name() {
+		return 'tw_auth';
+	}
+	
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+	
+	function get_cookie_param($param_name) {
+		return false;
+	}
+	
+	function save_access_token ($token) {
+		$token_arr = array('token'=>$token->oauth_token, 'token_secret'=>$token->oauth_token_secret);
+		setcookie ($this->get_cookie_name(), json_encode($token_arr), time_current()+3600, '/');
+		return true;
+	}
+	
+	function restore_access_token () {
+		$token_arr = json_decode($_COOKIE[$this->get_cookie_name()], true);
+		return $token_arr;
+	}
+
+	function get_access_token() {
+		return $this->client->getAccessToken();
+	}
+
+	function set_access_token($token, $token_secret) {
+		$this->client->setToken($token, $token_secret);
+	}
+
+	function check_auth() {
+		if (! empty ($this->auth)) return $this->auth;
+		if (! empty($_COOKIE['twitter_user_id']) && ! empty($_COOKIE['twitter_user_signature']) && is_numeric($_COOKIE['twitter_user_id'])) {
+			$sign_for_sure = md5($_COOKIE['twitter_user_id'].TWITTER_CONSUMER_SECRET);
+			if ($_COOKIE['twitter_user_signature'] == $sign_for_sure) {
+				$this->auth = $_COOKIE['twitter_user_id'];
+				return $this->auth;
+			} else {
+				return false;
+			}
+		}
+		$this->init();
+		$token_arr = $this->restore_access_token();
+		$this->set_access_token($token_arr['token'], $token_arr['token_secret']);
+		$result = $this->client->get_accountVerify_credentials();
+		$result->email = sprintf('%s@twitter.mail', $result->screen_name);
+		if (! $result || empty($result->id_str)) return false;
+		
+		$this->auth = $result->id_str;
+		setcookie ('twitter_user_id', $result->id_str, time_current()+3600, '/');
+		setcookie ('twitter_user_signature', md5($result->id_str.TWITTER_CONSUMER_SECRET), time_current()+3600, '/');
+		
+		return $this->auth;
+	}
+}
+
+class Soc_GooglePlus extends SocialSystem {
+
+	protected $SYSTEM_ID = SOC_SYSTEM_GGP;
+
+	private $_access_token = false;
+	
+	private $_initialized = false;
+
+	private function sign_server_server($request_params) {	
+		return false;
+	}
+	
+	function init() {
+		if ($this->_initialized) return true;
+		$this->client = new apiClient();
+		$this->client->setClientId(GP_CLIENT_ID);
+		$this->client->setClientSecret(GP_CLIENT_SECRET);
+		$this->client->setRedirectUri(GP_REDIRECT_URI);
+		$this->client->setScopes(array('https://www.googleapis.com/auth/plus.me'));
+		$this->plus = new apiPlusService($this->client);
+		$this->_initialized = true;
+	}
+
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+	
+	function authenticate () {
+		$this->init();
+		$this->client->authenticate();
+	}
+	
+	function get_auth_url () {
+		return $this->client->createAuthUrl();
+	}
+
+	function get_user_link($soc_user){
+		return 'https://plus.google.com/' . $soc_user['soc_user_id'];
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		if (! $this->_initialized) $this->init();
+		if (!$soc_user_ids) return false;
+		if (!is_array($soc_user_ids)) $soc_user_ids = array($soc_user_ids);		
+		$user_info = array();
+
+		if (isset($_COOKIE[$this->get_cookie_name()])) {
+			$this->client->setAccessToken($_COOKIE[$this->get_cookie_name()]);
+		}
+		
+		if (! $this->client->getAccessToken()) {
+			return false;
+		}
+		
+		foreach ($soc_user_ids as $usr_id) {
+			$result = $this->plus->people->get($usr_id);
+			$name = (($fname) ? $fname.' ' : '').$sname;
+			$result['email'] = sprintf('%s@googleplus.mail', $result['id']);
+			$user_info[$result['id']] = array(
+				'name'  => (charset_code() == 'CP1251') ? win1251($result['displayName']) : $result['displayName'],
+				'email'  => (charset_code() == 'CP1251') ? win1251($result['email']) : $result['email'],
+				'avatar' => (charset_code() == 'CP1251') ? win1251($result['image']['url']) : $result['image']['url'],
+			);
+		}		
+		return $user_info;
+	}
+
+	// Ассоциирует пользователя с соц. сетью
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		if (!$soc_user_id) return false;
+
+		$soc_user = $this->get_user_info($soc_user_id);		
+		
+		$soc_user = reset($soc_user);
+
+		if ($user_id) {
+			$soc_user_current = soc_user_get(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+
+			if ($soc_user_current && ($soc_user_current['soc_user_id'] != $soc_user_id)) {
+				soc_user_delete(array('soc_system_id' => $this->SYSTEM_ID, 'uid' => $user_id));
+				soc_friend_delete(array('soc_system_id' => $this->SYSTEM_ID, 'soc_user_id' => $soc_user_current['soc_user_id']));
+			}
+		}
+
+		$soc_user['uid'] = $user_id;
+		$soc_user['soc_system_id'] = $this->SYSTEM_ID;
+		$soc_user['soc_user_id'] = $soc_user_id;
+		$soc_user['stime'] = time_current();
+		// такой soc_user_id уже может быть но с 0 user_id
+		$soc_user['_mode'] = CSMODE_REPLACE;
+		$soc_user['_cnt'] = true;
+		$result = false;
+		if (soc_user_save($soc_user)) {
+			$result = true;
+			if ($user_id) { 
+				soc_reload_request_save(array(
+					'_on_duplicate' => ' uid=uid',
+					'soc_system_id' => $this->SYSTEM_ID,
+					'uid' => $user_id,
+					'access_token' => $this->_access_token
+				));
+				auth_save(array(
+					'uid' => $user_id,
+					'_set' => sql_pholder('auth_flags = auth_flags | ?',AUTH_FLAG_SOCIAL),
+				));
+			}
+		}
+		return $result;
+	}
+
+	function user_unassociate($user_id = 0) {
+		if (!$user_id) return false;
+		soc_user_save(array(
+			'_set' => 'uid=0',
+			'_add' => sql_pholder(' and soc_system_id=? and uid=?', $this->SYSTEM_ID, $user_id),
+		));
+		$this->remove_cookie();
+	}
+
+	// Обновляет виджет приложения в соц. сети
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return 'gpat';
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function get_cookie_param($param_name) {
+		if (!isset($_COOKIE[$this->get_cookie_name()])) return false;
+		$session = json_decode($_COOKIE[$this->get_cookie_name()], true);
+		return $session[$param_name];
+	}
+
+	function get_access_token() {
+		return $this->client->getAccessToken();
+	}
+
+	function set_access_token($token) {
+		$this->client->setAccessToken($token);
+	}
+
+	function check_auth() {
+		$users = $this->get_user_info('me');
+		return reset(array_keys($users));
+	}
+}
+
+class Soc_WKW extends SocialSystem {
+
+	function __construct() {
+		$this->_available = false;
+	}
+
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		return false;
+	}
+
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		return false;
+	}
+
+	function user_unassociate($user_id = 0) {
+		return false;
+	}
+
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return '';
+	}
+
+	function check_auth() {
+		return false;
+	}
+
+	function get_user_link($soc_user) {
+		return '';
+	}
+}
+
+class Soc_StayFriends extends SocialSystem {
+
+	function __construct() {
+		$this->_available = false;
+	}
+
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		return false;
+	}
+
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		return false;
+	}
+
+	function user_unassociate($user_id = 0) {
+		return false;
+	}
+
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return '';
+	}
+
+	function check_auth() {
+		return false;
+	}
+
+	function get_user_link($soc_user) {
+		return '';
+	}
+}
+
+class Soc_MyLife extends SocialSystem {
+
+	function __construct() {
+		$this->_available = false;
+	}
+
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		return false;
+	}
+
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		return false;
+	}
+
+	function user_unassociate($user_id = 0) {
+		return false;
+	}
+
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return '';
+	}
+
+	function check_auth() {
+		return false;
+	}
+
+	function get_user_link($soc_user) {
+		return '';
+	}
+}
+
+class Soc_NaszaKlasa extends SocialSystem {
+
+	function __construct() {
+		$this->_available = false;
+	}
+
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		return false;
+	}
+
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		return false;
+	}
+
+	function user_unassociate($user_id = 0) {
+		return false;
+	}
+
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return '';
+	}
+
+	function check_auth() {
+		return false;
+	}
+
+	function get_user_link($soc_user) {
+		return '';
+	}
+}
+
+class Soc_Wykop extends SocialSystem {
+
+	function __construct() {
+		$this->_available = false;
+	}
+
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		return false;
+	}
+
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		return false;
+	}
+
+	function user_unassociate($user_id = 0) {
+		return false;
+	}
+
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return '';
+	}
+
+	function check_auth() {
+		return false;
+	}
+
+	function get_user_link($soc_user) {
+		return '';
+	}
+}
+
+class Soc_Fotka extends SocialSystem {
+
+	function __construct() {
+		$this->_available = false;
+	}
+
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		return false;
+	}
+
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		return false;
+	}
+
+	function user_unassociate($user_id = 0) {
+		return false;
+	}
+
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return '';
+	}
+
+	function check_auth() {
+		return false;
+	}
+
+	function get_user_link($soc_user) {
+		return '';
+	}
+}
+
+class Soc_Skyrock extends SocialSystem {
+
+	function __construct() {
+		$this->_available = false;
+	}
+
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		return false;
+	}
+
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		return false;
+	}
+
+	function user_unassociate($user_id = 0) {
+		return false;
+	}
+
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return '';
+	}
+
+	function check_auth() {
+		return false;
+	}
+
+	function get_user_link($soc_user) {
+		return '';
+	}
+}
+
+class Soc_Tuenti extends SocialSystem {
+
+	function __construct() {
+		$this->_available = false;
+	}
+
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		return false;
+	}
+
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		return false;
+	}
+
+	function user_unassociate($user_id = 0) {
+		return false;
+	}
+
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return '';
+	}
+
+	function check_auth() {
+		return false;
+	}
+
+	function get_user_link($soc_user) {
+		return '';
+	}
+}
+
+class Soc_FriendFeed extends SocialSystem {
+
+	function __construct() {
+		$this->_available = false;
+	}
+
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		return false;
+	}
+
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		return false;
+	}
+
+	function user_unassociate($user_id = 0) {
+		return false;
+	}
+
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return '';
+	}
+
+	function check_auth() {
+		return false;
+	}
+
+	function get_user_link($soc_user) {
+		return '';
+	}
+}
+
+class Soc_Orkut extends SocialSystem {
+
+	function __construct() {
+		$this->_available = false;
+	}
+
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		return false;
+	}
+
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		return false;
+	}
+
+	function user_unassociate($user_id = 0) {
+		return false;
+	}
+
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return '';
+	}
+
+	function check_auth() {
+		return false;
+	}
+
+	function get_user_link($soc_user) {
+		return '';
+	}
+}
+
+class Soc_Hi5 extends SocialSystem {
+
+	function __construct() {
+		$this->_available = false;
+	}
+
+	function get_user_friends($soc_user_id = 0) {
+		return false;
+	}
+
+	function get_user_info($soc_user_ids = array()) {
+		return false;
+	}
+
+	function user_associate($user_id = 0, $soc_user_id = 0) {
+		return false;
+	}
+
+	function user_unassociate($user_id = 0) {
+		return false;
+	}
+
+	function widget_post($soc_user_id, $text) {
+		return false;
+	}
+
+	function get_permission($soc_user_id, $permission) {
+		return false;
+	}
+
+	function get_cookie_name() {
+		return '';
+	}
+
+	function check_auth() {
+		return false;
+	}
+
+	function get_user_link($soc_user) {
+		return '';
+	}
+}
+
+function get_current_soc_system()  {
+	global $soc_systems;
+	if (isset($_COOKIE[COOKIE_SOCIAL_SYSTEM_TYPE]) && isset($soc_systems[$_COOKIE[COOKIE_SOCIAL_SYSTEM_TYPE]])) {
+		return $_COOKIE[COOKIE_SOCIAL_SYSTEM_TYPE];
+	} else return false;
+}
+
+function get_current_soc_user( $social_system_id = 0 ){
+	global $soc_systems;
+	if (!$social_system_id) {
+		$social_system_id = get_current_soc_system();
+		if (!$social_system_id)
+			return false;
+	}
+	if (!isset($soc_systems[$social_system_id]))
+		return false;	
+	$social_system = SocialSystem::getSystem($soc_systems[$social_system_id]['class_name']);
+	if (!$social_system) return false;	
+	$soc_id = $social_system->check_auth();
+	$soc_user = $soc_id ? soc_user_get(array('soc_user_id'=>$soc_id, 'soc_system_id'=>$social_system_id)) : false;	
+	return $soc_user;
+}
+
+function register_soc_user($social_system_id) {
+	global $soc_systems;
+
+	if (!isset($soc_systems[$social_system_id]))
+		return false;
+
+	$social_system = SocialSystem::getSystem($soc_systems[$social_system_id]['class_name']);
+	if (!$social_system)
+		return false;
+
+	
+	$soc_auth = $social_system->check_auth();
+	if (!$soc_auth)
+		return false;
+
+	$_COOKIE[COOKIE_SOCIAL_SYSTEM_TYPE] = $social_system_id;
+	common_resetcookie(COOKIE_SOCIAL_SYSTEM_TYPE, $social_system_id, 0, '/');
+
+	$soc_user = soc_user_get(array('soc_system_id' => $social_system_id, 'soc_user_id' => $soc_auth));
+	if (empty($soc_user) || empty($soc_user['email'])) {
+		$result = $social_system->user_associate(0, $soc_auth);
+		if ($result) {
+			$soc_user = soc_user_get(array('soc_system_id' => $social_system_id, 'soc_user_id' => $soc_auth));
+			return !empty($soc_user) ? $soc_user : false;
+		}
+	} else {
+		if ($soc_user['uid'] == 0) {
+			$ep_id = get_souz_ep_id($social_system_id);
+			if (!$ep_id) return $soc_user;
+			// для моего мира нужно отсылать емайл, а не ид
+			if ($ep_id == MM_SOUZ_EP) {
+				$login = $soc_user['email'];
+			} else {
+				$login = $soc_user['soc_user_id'];
+			}
+			$uinfo = souz_ep_userinfo($login, $ep_id);
+			if ($uinfo['pers_id']) {
+				$result = $social_system->user_associate($uinfo['pers_id'], $soc_auth);
+				if ($result) {
+					$soc_user = soc_user_get(array('soc_system_id' => $social_system_id, 'soc_user_id' => $soc_auth));
+					return !empty($soc_user) ? $soc_user : false;
+				}
+			}
+		}
+		return $soc_user;
+	}
+}
+
+function odnoklassniki_code_trick($code, $do_assoc = 0) {
+	global $soc_systems;
+	$add = $do_assoc ? '&do_assoc=1' : '';
+	$param = array(
+		'client_id' => ODKL_API_APP_ID,
+		'redirect_uri' => ODKL_API_AUTH_RET_URL.$add,
+		'grant_type' => 'authorization_code',
+		'client_secret' => ODKL_API_PRIVATE_KEY,
+		'code' => $code
+	);
+
+	$context  = stream_context_create(array('http' => array(
+		'method'  => 'POST',
+		'header'  => 'Content-type: application/x-www-form-urlencoded',
+		'content' => common_build_request($param),
+		'timeout' => 5,
+	)));
+    // запрашиваем токен
+	$str = file_get_contents(ODKL_API_TOKEN_URL, null, $context);
+
+	$data = json_decode($str, true);
+	if ($data['access_token']) {
+		$token = strval($data['access_token']);
+		$Odnoklassniki = SocialSystem::getSystem($soc_systems[SOC_SYSTEM_OK]['class_name']);
+		$Odnoklassniki->create_odkl_cookie($token);
+	}
+}

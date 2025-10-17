@@ -1,0 +1,580 @@
+<?
+
+define('TABLE_CASE_BOX', 'case_box');
+define('TABLE_CASE_BOX_STACK', 'case_box_stack');
+define('TABLE_CASE_BOX_ITEM', 'case_box_item');
+define('TABLE_CASE_BOX_STAT', 'case_box_stat');
+define('TABLE_CASE_BOX_STACK_STAT', 'case_box_stack_stat');
+
+define('CASE_BOX_FLAG_MSGALL', 0x0000001);
+
+$case_box_stack_type_hash = array(
+    'ARTIFACT' => translate('Артефакт'),
+    'MONEY' => translate('Деньги'),
+    'BONUS' => translate('Бонус'),
+    'PET_CREATE' => translate('Выдать питомца'),
+    'SMILE' => translate('Добавить смайл'),
+    'ADD_WORK' =>  translate('Изменить энергию'),
+    'AVATAR' => translate('Образ'),
+    'FON' => translate('Фон'),
+    'CLOAK' => translate('Плащ'),
+    'BOT_SKIN' => 'Скин бота',
+);
+
+define('CASE_BOX_GLOW_DEFAULT', 0);
+define('CASE_BOX_GLOW_GRAY', 1);
+define('CASE_BOX_GLOW_GREEN', 2);
+define('CASE_BOX_GLOW_BLUE', 3);
+define('CASE_BOX_GLOW_VIOLET', 4);
+define('CASE_BOX_GLOW_RED', 5);
+define('CASE_BOX_GLOW_ORANGE', 6);
+
+$case_box_glow_hash = array(
+    CASE_BOX_GLOW_GRAY => 'Серое',
+    CASE_BOX_GLOW_GREEN => 'Зеленое',
+    CASE_BOX_GLOW_BLUE => 'Синее',
+    CASE_BOX_GLOW_VIOLET => 'Фиолетовое',
+    CASE_BOX_GLOW_RED => 'Красное',
+    CASE_BOX_GLOW_ORANGE => 'Оранжевое',
+);
+
+$case_box_glow_info = array(
+    CASE_BOX_GLOW_GRAY => array('title' => 'Серый', 'color' => '#D3D3D3', 'color_chat' => '#a29292'),
+    CASE_BOX_GLOW_GREEN => array('title' => 'Зеленый', 'color' => '#7FFF00', 'color_chat' => '#408001'),
+    CASE_BOX_GLOW_BLUE => array('title' => 'Синий', 'color' => '#00BFFF', 'color_chat' => '#0064ff'),
+    CASE_BOX_GLOW_VIOLET => array('title' => 'Фиолетовый', 'color' => '#EE82EE', 'color_chat' => '#d435d4'),
+    CASE_BOX_GLOW_RED => array('title' => 'Красный', 'color' => '#DC143C', 'color_chat' => '#DC143C'),
+    CASE_BOX_GLOW_ORANGE => array('title' => 'Оранжевый', 'color' => '#FF8C00', 'color_chat' => '#ff8300'),
+);
+
+//Зависимости
+require_once("lib/restriction.lib");
+
+function case_box_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CASE_BOX,$ref,$add);
+}
+
+function case_box_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_CASE_BOX,$ref,$add);
+}
+
+function case_box_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_CASE_BOX, $ref, $add);
+}
+
+function case_box_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CASE_BOX,$param);
+}
+
+function case_box_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_CASE_BOX,$ref,$add);
+    case_box_stack_delete(array('case_box_id' => $ref));
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+function case_box_stack_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CASE_BOX_STACK,$ref,$add);
+}
+
+function case_box_stack_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_CASE_BOX_STACK,$ref,$add);
+}
+
+function case_box_stack_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_CASE_BOX_STACK, $ref, $add);
+}
+
+function case_box_stack_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CASE_BOX_STACK,$param);
+}
+
+function case_box_stack_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_CASE_BOX_STACK,$ref,$add);
+    case_box_item_delete(array('case_box_stack_id' => (is_array($ref) ? $ref['id'] : $ref)));
+    case_box_stack_stat_delete(array('item_id' => (is_array($ref) ? $ref['id'] : $ref)));
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+function case_box_item_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CASE_BOX_ITEM,$ref,$add);
+}
+
+function case_box_item_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_CASE_BOX_ITEM,$ref,$add);
+}
+
+function case_box_item_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_CASE_BOX_ITEM, $ref, $add);
+}
+
+function case_box_item_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CASE_BOX_ITEM,$param);
+}
+
+function case_box_item_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_CASE_BOX_ITEM,$ref,$add);
+    case_box_stat_delete(array('item_id' => (is_array($ref) ? $ref['id'] : $ref)));
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+function case_box_stat_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CASE_BOX_STAT,$ref,$add);
+}
+
+function case_box_stat_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_CASE_BOX_STAT,$ref,$add);
+}
+
+function case_box_stat_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_CASE_BOX_STAT, $ref, $add);
+}
+
+function case_box_stat_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CASE_BOX_STAT,$param);
+}
+
+function case_box_stat_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_CASE_BOX_STAT,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+function case_box_stack_stat_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CASE_BOX_STACK_STAT,$ref,$add);
+}
+
+function case_box_stack_stat_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_CASE_BOX_STACK_STAT,$ref,$add);
+}
+
+function case_box_stack_stat_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_CASE_BOX_STACK_STAT, $ref, $add);
+}
+
+function case_box_stack_stat_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CASE_BOX_STACK_STAT,$param);
+}
+
+function case_box_stack_stat_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_CASE_BOX_STACK_STAT,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+function case_box_copy($param) {
+    require_once("lib/restriction.lib");
+    $old_id = $param['id'];
+    unset($param['id']);
+    $new_id = case_box_save($param);
+    if (!$new_id) return false;
+
+    $case_box_stacks = case_box_stack_list(array('case_box_id' => $old_id),' ORDER BY id');
+    foreach($case_box_stacks as $case_box_stack) {
+        case_box_stack_copy($case_box_stack, $new_id);
+    }
+
+    return $new_id;
+}
+
+function case_box_stack_copy($param, $id) {
+    require_once("lib/restriction.lib");
+    $old_id = $param['id'];
+    $param['case_box_id'] = $id;
+    unset($param['id']);
+    $new_id = case_box_stack_save($param);
+    if (!$new_id) return false;
+
+    $case_box_items = case_box_item_list(array('case_box_stack_id' => $old_id),' ORDER BY id');
+    foreach($case_box_items as $case_box_item) {
+        case_box_item_copy($case_box_item, $new_id);
+    }
+
+    return $new_id;
+}
+
+function case_box_item_copy($param, $id) {
+    $param['case_box_stack_id'] = $id;
+    $old_id = $param['id'];
+    unset($param['id']);
+    $new_id = case_box_item_save($param);
+    if (!$new_id) return false;
+
+    $restrictions = restriction_list(OBJECT_CLASS_CASE_BOX_ITEM, $old_id);
+    foreach($restrictions as $restriction) {
+        restriction_copy($restriction, $new_id);
+    }
+
+    return $new_id;
+}
+
+
+///////////////////////////////////////////
+
+function case_box_item_get_description(&$item) {
+    global $class_info, $kind_info;
+    global $bot_skin_type_hash;
+
+    $descr_str = '';
+    switch ($item['type']) {
+        default:
+            $descr_str = sprintf(translate('неизвестный тип элемента кейса "%s"'),$item['type']);
+            break;
+        case 'ARTIFACT':
+            $artikul = artifact_artikul_get(intval($item['field']));
+            $slot = $item['value2'] ? slot_get($item['value2']) : false;
+            $t = array($item['value1'] >= 0 ? translate('выдать') : translate('изъять'));
+            if ($item['flags'] & BONUS_ITF_NOGIVE) $t[] = translate('без передачи');
+            if ($item['flags'] & BONUS_ITF_NOSELL) $t[] = translate('нельзя сдать в скупку');
+            if ($item['flags'] & BONUS_ITF_BOE) $t[] = translate('непередаваем после надевания');
+            if ($item['flags'] & BONUS_ITF_DURAB30) $t[] = translate('30% прочности');
+            if ($item['flags'] & BONUS_ITF_TIME_VALIDITY) $t[] = translate('применить время жизни').' "'.($item['value3'] == 0 ? 'безгранично' : html_period_str($item['value3'])).'"';
+            $tpl = translate('артефакт <a class="imp bonus_item_artifact" href="index.php?clear_filter=1&amp;mod=artifact_artikul&amp;filter[id]=%d">%s {%1$d}</a>, %d шт (%s)');
+            $descr_str = sprintf($tpl,$artikul['id'],_artifact_artikul_title($artikul),intval($item['value1']),implode(', ',$t));
+            if ($slot) $descr_str .= ' '.sprintf(translate('(слот "%s")'),$slot['title']);
+            break;
+        case 'MONEY':
+            $descr_str = sprintf(translate('деньги, %s %s'),html_money_str(intval($item['field']),$item['value1']),($item['value1'] >= 0 ? translate('выдать') : translate('изьять')));
+            break;
+        case 'BONUS':
+            $bonus = bonus_get(intval($item['field']));
+            $descr_str = sprintf(translate('выдать бонус <a class="imp bonus_item_bonus" href="index.php?clear_filter=1&amp;mod=bonus&amp;filter[id]=%d">%s {%1$d}</a> тому же объекту'), $bonus['id'], $bonus['title']);
+            break;
+        case 'PET_CREATE':
+            $pet_id = intval($item['field']);
+            $cnt = intval($item['value1']);
+            require_once("lib/pet.lib");
+            $pet = pet_artikul_get($pet_id);
+            $descr_str = sprintf(translate('Выдать Питомца <a class="imp bonus_item_pet" href="index.php?clear_filter=1&amp;mod=pet_artikul&amp;filter[id]=%d">%s {%1$d}</a> %dшт.'),$pet['id'],$pet['title'],$cnt);
+            break;
+        case 'SMILE':
+            $smail_tag = strval($item['field']);
+            $smile = smile_get(array('tag'=>$smail_tag));
+            if ($smile) {
+                $descr_str = sprintf(translate('Добавить смайл: %s'), rtag($smile));
+            } else $descr_str  = translate('Неизвестный смайл');
+            break;
+        case 'ADD_WORK':
+            $descr_str = sprintf(translate('Изменить энергию на %s'), $item['value1']);
+            break;
+        case 'AVATAR':
+            $avatar_artikul = user_avatar_artikul_get($item['field']);
+            $descr_str = sprintf(($item['value1'] ? translate('Изъять образ: %s') : translate('Выдать образ: %s')), $avatar_artikul['title']);
+            if ($item['value2'] && !$item['value1']) $descr_str .= sprintf(translate(' на срок в %s секунд'), $item['value2']);
+            break;
+        case 'FON':
+            $fon_artikul = user_fon_artikul_get($item['field']);
+            $descr_str = sprintf(($item['value1'] ? translate('Изъять фон: %s') : translate('Выдать фон: %s')), $fon_artikul['title']);
+            if ($item['value2'] && !$item['value1']) $descr_str .= sprintf(translate(' на срок в %s секунд'), $item['value2']);
+            break;
+        case 'CLOAK':
+            $cloak_artikul = user_cloak_artikul_get($item['field']);
+            $descr_str = sprintf(($item['value1'] ? translate('Изъять плащ: %s') : translate('Выдать плащ: %s')), $cloak_artikul['title']);
+            if ($item['value2'] && !$item['value1']) $descr_str .= sprintf(translate(' на срок в %s секунд'), $item['value2']);
+            break;
+        case 'BOT_SKIN':
+            $descr_str = sprintf(($item['value1'] ? translate('Изъять скин бота: %s') : translate('Выдать скин бота: %s')), $bot_skin_type_hash[$item['field']]);
+            break;
+    }
+    return $descr_str;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+define('CASE_BOX_STATUS_OK', 100);
+define('CASE_BOX_STATUS_ERROR', 1);
+
+function case_box_apply(&$cur_object, $case_box, $in=false) {
+    global $artikul_hash, $quality_info, $case_box_glow_info, $money_type_info;
+    $out = array();
+
+    $out['status'] = CASE_BOX_STATUS_ERROR;
+    if(!$case_box) return $out;
+    if($cur_object['object_class'] == OBJECT_CLASS_USER){
+        NODE_SWITCH(false, $cur_object['id']);
+    }
+
+    $stack_list = case_box_stack_list(array('case_box_id' => $case_box['id']));
+
+    if(artifact_amount($case_box['artikul_id'], $cur_object['id']) <= 0) return $out;
+    if(!artifact_remove($case_box['artikul_id'], 1, $cur_object['id'])) return $out;
+
+    $out['status'] = CASE_BOX_STATUS_OK;
+    $given = false;
+
+    $check_object_list = array();
+    restriction_get_dependent($cur_object,$check_object_list);
+
+    while (!$given) {
+        $stack_item = case_box_stack_item($stack_list, $cur_object);
+        if(!$stack_item) break;
+        if (!case_box_stack_item_stat_check($stack_item)) continue;
+        $item_list = case_box_item_list(array('case_box_stack_id' => $stack_item['id']));
+        if(!$item_list) break;
+
+        do {
+            $item = case_box_item($item_list, $cur_object);
+            if(!$item) break;
+            if (!case_box_item_stat_check($item)) break;
+
+            $item['object_class'] = OBJECT_CLASS_CASE_BOX_ITEM;
+            $out_restriction = restriction_check_bonus(array($item),$check_object_list);
+            if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) break;
+
+            $chat_out = '';
+
+            switch ($item['type']) {
+                case 'ARTIFACT':
+                    $artikul = artifact_artikul_get($item['field']);
+                    if(!$artikul) break;
+                    $out['artifact_id'] = 1;
+                    $out['artikul'] = get_params($artikul, 'id,title,description,type_id,kind_id,picture,price,gender,level_min,level_max,durability,durability_max');
+
+                    $ahtml = '';
+                    ob_start();
+                    tpl_artifact_print($artikul, array('object_class' => OBJECT_CLASS_ARTIFACT_ARTIKUL, 'np' => array('cnt' => $item['value1'],), 'add_table' => ' onclick="showArtifactInfo(false, '.$artikul['id'].');" ', 'style' => 'style="pointer;width:60px;display:inline-block;"'));
+                    $ahtml .= ob_get_clean();
+                    $out['ahtml'] = '<div class="case_box_dt">'.$ahtml.'<p style="background:'.$case_box_glow_info[$item['glow']]['color'].';">'.$artikul['title'].'</p></div>';
+                    $out['preloader'][] = PATH_IMAGE_ARTIFACTS.$artikul['picture'];
+
+                    if(artifact_add($artikul['id'], max(1, $item['value1']), $cur_object['id'])) {
+                        $chat_out = tpl_artikul_info($artikul, $item['value1'], array('small_img' => true));
+                    }
+                    $given = true;
+                    break;
+                case 'MONEY':
+                    if(!($item['field'] && $item['value1'] > 0)) break;
+                    $out['money'] = $item['value1'];
+                    $out['money_type'] = $item['field'];
+                    $out['ahtml'] = '<div class="case_box_dt">'.html_money_str($out['money_type'], $out['money']).'<p style="background:'.$case_box_glow_info[$item['glow']]['color'].';">'.$money_type_info[$out['money_type']]['title'].'</p></div>';
+                    if(user_make_payment($out['money_type'], $cur_object['id'], $out['money'])){
+                        $chat_out = html_money_str($out['money_type'], $out['money']);
+                    }
+                    $given = true;
+                    break;
+                case 'BONUS':
+                    if(!$cur_object['object_class']) $cur_object['object_class'] = OBJECT_CLASS_USER;
+                    $bonus_aplly = bonus_apply($cur_object, $item['field']);
+                    $out['status_bonus'] = $bonus_aplly;
+                    if($bonus_aplly['status'] == BONUS_STATUS_OK){
+                        $given = true;
+                        $artikul_ids = array();
+                        foreach ($bonus_aplly['artikuls_received'] as $artikul_id=>$cnt){
+                            if(count($artikul_ids) >= 4) break;
+                            $artikul_ids[$artikul_id] = $artikul_id;
+                        }
+                        $artikul_hash = make_hash(artifact_artikul_list(array('id' => $artikul_ids)));
+                        $artikul_html = '';
+                        $artikul_msg = array();
+                        foreach ($artikul_hash as $artikul) {
+                            ob_start();
+                            tpl_artifact_print($artikul, array('object_class' => OBJECT_CLASS_ARTIFACT_ARTIKUL, 'np' => array('cnt' => $bonus_aplly['artikuls_received'][$artikul['id']],), 'add_table' => ' onclick="showArtifactInfo(false, '.$artikul['id'].');" ', 'style' => 'style="cursor:pointer;width:60px;display:inline-block;"',));
+                            $artikul_html .= ob_get_clean();
+                            $artikul_msg[] = tpl_artikul_info($artikul, $bonus_aplly['artikuls_received'][$artikul['id']], array('small_img' => true));
+                            $out['preloader'][] = PATH_IMAGE_ARTIFACTS.$artikul['picture'];
+                        }
+                        $chat_out = implode(', ', $artikul_msg);
+                        $out['ahtml'] = '<div class="case_box_dt">'.$artikul_html.'<p style="background:'.$case_box_glow_info[$item['glow']]['color'].';">'.$item['value1'].'</p></div>';
+                    }
+                    break;
+                case 'BOT_SKIN':
+                    switch ($item['field']) {
+                        default:
+                            $bot_skin_artikul_count = bot_skin_artikul_count(array('type' => $item['field']), sql_pholder(' AND !(flags & ?#BOT_SKIN_FLAG_DISABLED)'));
+                            $bot_skin_count = bot_skin_count(array('user_id' => $cur_object['id'], 'type' => $item['field']), sql_pholder(' AND !(flags & ?#BOT_SKIN_FLAG_DISABLED)'));
+                            if($bot_skin_artikul_count > $bot_skin_count) { //Выдаем
+                                //Выбор рандомного скина... так так так
+                                $bot_skin_ids = get_hash(bot_skin_list(array('user_id' => $cur_object['id'], 'type' => $item['field']), sql_pholder(' AND !(flags & ?#BOT_SKIN_FLAG_DISABLED)'), 'bot_skin_id'), 'bot_skin_id', 'bot_skin_id');
+
+                                $query_add = '';
+                                if($bot_skin_ids) $query_add .= sql_pholder(' AND id NOT IN(?@)', $bot_skin_ids);
+                                $bot_skin_artikul_list = bot_skin_artikul_list(false, $query_add.sql_pholder(' AND type = ?', $item['field']));
+
+                                if($bot_skin_artikul_list) $bot_skin_artikul = $bot_skin_artikul_list[array_rand($bot_skin_artikul_list)];
+
+                                if($bot_skin_artikul) {
+                                    $bot_skin_save_id = bot_skin_save(array(
+                                        'type' => $item['field'],
+                                        'user_id' => $cur_object['id'],
+                                        'bot_skin_id' => $bot_skin_artikul['id'],
+                                        'atime' => 0,
+                                        'dtime' => 0,
+                                        'bot_sk' => $bot_skin_artikul['bot_sk'],
+                                        'flags' => $bot_skin_artikul['flags'],
+                                    ));
+                                    if($bot_skin_save_id) {
+                                        $given = true;
+                                        $out['bot_skin_id'] = $bot_skin_save_id;
+                                        $out['bot_skin_artikul'] = $bot_skin_artikul;
+                                        $chat_out = 'Скин "'.bot_skin_title($bot_skin_artikul).'"';
+                                    }
+                                    $out['ahtml'] = '<div class="case_box_dt"><img src="'.PATH_IMAGE_BOT_SKIN.$bot_skin_artikul['picture'].'"><p style="background:'.$case_box_glow_info[$item['glow']]['color'].';">'.bot_skin_title($bot_skin_artikul).'</p></div>';
+                                    $out['preloader'][] = PATH_IMAGE_BOT_SKIN.$bot_skin_artikul['picture'];
+                                }
+                            }
+                            break;
+                        case BOT_SKIN_TYPE_DEFAULT:
+                            //NOTHINK!
+                            break;
+                    }
+                    break;
+            }
+
+            if($given) {
+                $out['case'] = get_params($item, 'id,glow');
+                if($chat_out) chat_msg_send_system('<b class="redd">Открыв <b class="brown">«'.$case_box['title'].'»</b> Вы получили: </b><b style="'.($case_box_glow_info[$item['glow']]['color_chat'] ? 'color:'.$case_box_glow_info[$item['glow']]['color_chat'].';' : '').'">'.$chat_out.'</b>', CHAT_CHF_USER, $cur_object['id']);
+            }
+
+        }while(0);
+
+        if($given) break; //Временно оставить :)
+    }
+
+    if(!$given) $out['status'] = CASE_BOX_STATUS_ERROR;
+    return $out;
+}
+
+function case_box_stack_item(&$stack_list, $cur_object) {
+    $stack_keys = array();
+    $drop_keys = array();
+    $weight_sum = 0;
+    foreach ($stack_list as $k=>$item) {
+        if (($item['gender'] && ($item['gender'] != $cur_object['gender'])) || ($item['kind'] && ($item['kind'] != $cur_object['kind']))) continue;
+        if ($item['drop_weight'] <= 0) {
+            $stack_keys[] = $k;
+            continue;
+        }
+        $drop_keys[] = $k;
+        $weight_sum += $item['drop_weight'];
+    }
+    for ($i=0; $i<1; $i++) {
+        $r = rand(1,$weight_sum);
+        $w = 0;
+        foreach ($drop_keys as $k) {
+            $w += $stack_list[$k]['drop_weight'];
+            if ($r > $w) continue;
+            $stack_keys[] = $k;
+            break;
+        }
+    }
+    foreach ($stack_keys as $k) {
+        $stack_item = $stack_list[$k];
+        unset($stack_list[$k]);
+        return $stack_item;
+    }
+    return false;
+}
+
+function case_box_item(&$item_list, $cur_object) {
+    $item_keys = array();
+    $drop_keys = array();
+    $weight_sum = 0;
+
+    foreach ($item_list as $k=>$item) {
+        if (($item['gender'] && ($item['gender'] != $cur_object['gender'])) || ($item['kind'] && ($item['kind'] != $cur_object['kind']))) continue;
+        if ($item['drop_weight'] <= 0) {
+            $item_keys[] = $k;
+            continue;
+        }
+        $drop_keys[] = $k;
+        $weight_sum += $item['drop_weight'];
+    }
+
+    for ($i=0; $i<1; $i++) {
+        $r = rand(1,$weight_sum);
+        $w = 0;
+        foreach ($drop_keys as $k) {
+            $w += $item_list[$k]['drop_weight'];
+            if ($r > $w) continue;
+            $item_keys[] = $k;
+            break;
+        }
+    }
+    foreach ($item_keys as $k) {
+        $item = $item_list[$k];
+        unset($item_list[$k]);
+        return $item;
+    }
+    return false;
+}
+
+function case_box_stack_item_stat_check(&$item) {
+    if (!$item) return false;
+    $bkey_info = date_bkey($item['per_unit']);
+    $bkey = $bkey_info[0];
+    if (!$bkey) return true;
+    $stat = case_box_stack_stat_get(array('item_id' => $item['id'], 'bkey' => $bkey));
+    if (!$stat) {
+        case_box_stack_stat_save(array(
+            '_noerr' => true,
+            'item_id' => $item['id'],
+            'bkey' => $bkey,
+            'dtime' => $bkey_info[1] ? time_current() + 86400 + $bkey_info[1] : 0,
+        ));
+    }
+    return case_box_stack_stat_save(array(
+        '_cnt' => true,
+        '_set' => "cnt=cnt+1",
+        '_add' => sql_pholder(" AND item_id=? AND bkey=? AND cnt<?",$item['id'],$bkey,$item['per_value']),
+    ));
+}
+
+function case_box_item_stat_check(&$item) {
+    if (!$item) return false;
+    $bkey_info = date_bkey($item['per_unit']);
+    $bkey = $bkey_info[0];
+    if (!$bkey) return true;
+    $stat = case_box_stat_get(array('item_id' => $item['id'], 'bkey' => $bkey));
+    if (!$stat) {
+        case_box_stat_save(array(
+            '_noerr' => true,
+            'item_id' => $item['id'],
+            'bkey' => $bkey,
+            'dtime' => $bkey_info[1] ? time_current() + 86400 + $bkey_info[1] : 0,
+        ));
+    }
+    return case_box_stat_save(array(
+        '_cnt' => true,
+        '_set' => "cnt=cnt+1",
+        '_add' => sql_pholder(" AND item_id=? AND bkey=? AND cnt<?",$item['id'],$bkey,$item['per_value']),
+    ));
+}
+
+function case_box_open($user = array()){
+    if(((defined('CASE_BOX_GLOBAL_OPEN_ADMIN') && CASE_BOX_GLOBAL_OPEN_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('CASE_BOX_GLOBAL_OPEN') && CASE_BOX_GLOBAL_OPEN)) {
+        return true;
+    }
+    return false;
+}

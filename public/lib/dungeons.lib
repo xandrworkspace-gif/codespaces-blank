@@ -1,0 +1,958 @@
+<?
+
+//define('TABLE_DUNGEON_ARTIKUL', 'dungeon_artikul');
+#Будут браться обычные инстансы :) давай делать проще
+define('TABLE_DUNGEON_QUEUE', 'dungeon_queue');
+define('TABLE_DUNGEON_USER', 'dungeon_user');
+define('TABLE_DUNGEON_USER_INSTANCE', 'dungeon_user_instance');
+
+$dungeon_count_award_list = array(
+    1 => array('artikul_id' => 7761, 'cnt' => 5),
+    2 => array('artikul_id' => 7761, 'cnt' => 7),
+    3 => array('artikul_id' => 7761, 'cnt' => 10),
+    4 => array('artikul_id' => 7761, 'cnt' => 12),
+    5 => array('artikul_id' => 7761, 'cnt' => 15),
+);
+
+define('DUNGEONS_LOBBY_AREA_ID', 691);
+
+define('DUNGEON_QUEUE_STATUS_WAITING',          0);
+define('DUNGEON_QUEUE_STATUS_PENDING',          1);
+define('DUNGEON_QUEUE_STATUS_LOCKED',           2);
+
+define('DUNGEON_QUEUS_MSTATUS_PRE', 0);
+define('DUNGEON_QUEUS_MSTATUS_ACCEPT', 1);
+define('DUNGEON_QUEUS_MSTATUS_DECINE', 2);
+
+define('DUNGEON_EXIT_TIME', 180); //За 3 минут до конца
+
+define('DUNGEON_PENALTY_TIME',     84600); //
+define('DUNGEON_LOCK_ORDER',     3600); // время штрафа за неподтверждённую заявку
+define('DUNGEON_PENDING_TTL',     300); // время ожидания подтверждения заявки
+
+define('DUNGEON_ATIME_TTL', 600); //Время проверки акитвности заявки на подземелье
+define('DUNGEON_ACTION_ATIME_TTL', 180); //Время на принятие решения участвовать или нет.
+
+define('DUNGEON_ALONE_MONEY_TYPE', MONEY_TYPE_GAME);
+define('DUNGEON_ALONE_MONEY', 25);
+
+$random_dungeoun_award_list = array(
+    1 => array(
+        'artikuls' => array(
+            array('artikul_id' => 7761, 'cnt' => 15),
+            array('artikul_id' => 11264, 'cnt' => 1),
+        ),
+        /*
+        'money' => array(
+            'money_type' => MONEY_TYPE_GAME,
+            'money' => 50,
+        ),
+        */
+        'user_stat' => array(
+            USER_STAT_TYPE_SKILL => array(
+                USER_STAT_SKILL_REP_TOMB_RIDER => 10,
+            ),
+        ),
+    ),
+);
+
+//Зависимости
+require_once("/home/admin/web/dwar.fun/public_html/lib/party.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/activity.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/lite_pass.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/dungeon_queue.lib");
+
+function rand_award_dun_give($rand_award, $user_id, $cht_start = '') {
+    global $dun_art_hash;
+    if(!$rand_award || !$user_id) return false;
+    $cht_msg = '';
+    foreach ($rand_award as $aw_type=>$_val){
+        switch ($aw_type){
+            case 'artikuls':
+                foreach ($_val as $art_info) {
+                    artifact_add($art_info['artikul_id'], max(1, $art_info['cnt']), $user_id);
+                    $art = cache_fetch($dun_art_hash, $art_info['artikul_id'], 'artifact_artikul_get');
+                    $cht_msg .= ' '.tpl_artikul_info($art, $art_info['cnt']);
+                }
+                break;
+            case 'money':
+                user_make_payment($_val['money_type'], $user_id, $_val['money']);
+                $cht_msg .= ' '.html_money_str($_val['money_type'], $_val['money']);
+                break;
+            case 'user_stat':
+                foreach ($_val as $stat_type=>$user_stats){
+                    foreach ($user_stats as $object_id=>$val){
+                        user_stat_update($user_id, $stat_type, $object_id, $val); //Just Relative Forever!
+                    }
+                }
+                break;
+        }
+    }
+    if($cht_msg) chat_msg_send_system($cht_start.$cht_msg, CHAT_CHF_USER, $user_id);
+    return true;
+}
+
+function dungeon_queue_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_DUNGEON_QUEUE,$ref,$add);
+}
+
+function dungeon_queue_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_DUNGEON_QUEUE,$ref,$add,$field_list);
+}
+
+function dungeon_queue_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_DUNGEON_QUEUE, $ref, $add);
+}
+
+function dungeon_queue_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_DUNGEON_QUEUE,$param);
+}
+
+function dungeon_queue_delete($ref, $add='') {
+    global $db_2;
+    if (!$ref && !$add) return false;
+    common_delete($db_2,TABLE_DUNGEON_QUEUE,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+function dungeon_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_DUNGEON_USER,$ref,$add);
+}
+
+function dungeon_user_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_DUNGEON_USER,$ref,$add,$field_list);
+}
+
+function dungeon_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_DUNGEON_USER, $ref, $add);
+}
+
+function dungeon_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_DUNGEON_USER,$param);
+}
+
+function dungeon_user_delete($ref) {
+    global $db_2;
+    if (!$ref) return false;
+    common_delete($db_2,TABLE_DUNGEON_USER,$ref);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+function dungeon_user_instance_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_DUNGEON_USER_INSTANCE,$ref,$add);
+}
+
+function dungeon_user_instance_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_DUNGEON_USER_INSTANCE,$ref,$add,$field_list);
+}
+
+function dungeon_user_instance_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_DUNGEON_USER_INSTANCE, $ref, $add);
+}
+
+function dungeon_user_instance_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_DUNGEON_USER_INSTANCE,$param);
+}
+
+function dungeon_user_instance_delete($ref) {
+    global $db_2;
+    if (!$ref) return false;
+    common_delete($db_2,TABLE_DUNGEON_USER_INSTANCE,$ref);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+function ______dungeon_queue_control() {
+    global $NODE_NUMS;
+    global $random_dungeoun_award_list;
+
+    $stime1 = time(); //ГЛОБ ВРЕМЯ!
+
+    dungeon_user_instance_restore(); //Да поебать вообще!
+
+    // Берем всех, кто не подтвердил и логируем их, после этого даем пенальти одним запросом.
+
+    //Блок обработки подземелий, Если кто-то не подтвердил, то весь текущий подбор будет сброшен!
+    do{
+        //Урправление зомбаками
+        $dungeon_queue_zombie_lists = dungeon_queue_list(false, sql_pholder(' AND atime > 0 AND atime < ? AND invite = 0 AND ainvite = 0 AND status = ?', time_current() - DUNGEON_ATIME_TTL, DUNGEON_QUEUE_STATUS_WAITING));
+        foreach ($dungeon_queue_zombie_lists as $dun_user) {
+            dungeon_queue_save(array('id' => $dun_user['id'], '_set' => sql_pholder(' atime = ?, ainvite = 1', time_current() + DUNGEON_ACTION_ATIME_TTL)));
+            chat_msg_send_system('<b>Вы находитесь в очереди на Подземелье более '.html_period_str(DUNGEON_ATIME_TTL).' минут! <b class="redd">Вы хотите продолжить участие в Подземелье? <a class="grnn" href="javascript: confirm_dungeon_anv(1);">[ ДА ]</a> / <a class="redd" href="javascript: confirm_dungeon_anv(0);">[ НЕТ ]</a></b>. Принятие решение не позднее '.date('H:i:s', time_current() + DUNGEON_ACTION_ATIME_TTL).'</b>', CHAT_CHF_USER, $dun_user['user_id']);
+        }
+        $dungeon_queue_zombie_delete_lists = dungeon_queue_list(false, sql_pholder(' AND atime > 0 AND atime < ? AND invite=0 AND ainvite = 1 AND status=?', time_current(), DUNGEON_QUEUE_STATUS_WAITING));
+        foreach ($dungeon_queue_zombie_delete_lists as $dun_user) {
+            dungeon_queue_delete($dun_user['id']);
+            chat_msg_send_system('<b>Вы были удалены из очереди на Подземелье из-за неактивности!</b>', CHAT_CHF_USER, $dun_user['user_id']);
+        }
+
+        //Убираем тех кого пригласили и не подтвердили.. также сбросим всех игроков в подобранных подземельях.
+        $dungeon_queue_lists = dungeon_queue_list(false, sql_pholder(' AND invite=1  AND status=? AND dtime > 0 AND dtime < ?', DUNGEON_QUEUE_STATUS_WAITING, $stime1));
+        foreach ($dungeon_queue_lists as $dun_user) {
+            // лог-сервис -----------------------
+            logserv_log_note(array(
+                'note' => translate('Не подтвердил участие в рейде/подземелье'),
+                'comment' => sprintf('dungeon_id=%d', $dun_user['instance_ids']),
+            ),$dun_user['user_id']);
+            // ----------------------------------
+            dungeon_queue_save(array(
+                'id' => $dun_user['id'],
+                '_set' => sql_pholder('instance_id = 0, dtime = ?, status = ?', $stime1+DUNGEON_LOCK_ORDER, DUNGEON_QUEUE_STATUS_LOCKED),
+            ));
+            chat_msg_send_system(sprintf(translate('Время, отведенное на принятие заявки в подземелье, истекло. Вы не сможете повторно подать заявку до %s.'), date('H:i', time()+DUNGEON_LOCK_ORDER)), CHAT_CHF_USER, $dun_user['user_id'], true);
+            if($dun_user['vinfo']) {
+                $dungeon_queue_lists = make_hash(dungeon_queue_list(array('vinfo' => $dun_user['vinfo']), false, 'id, user_id'));
+                if($dungeon_queue_lists) {
+                    $user_ids = get_hash($dungeon_queue_lists, 'user_id', 'user_id');
+                    $msg_user_ids = $user_ids;
+                    unset($msg_user_ids[$dun_user['user_id']]);
+                    if ($msg_user_ids) chat_msg_send_system("Не все участники подтвердили участие в Подземелье, вы снова находитесь в очереди на Подземелье!", CHAT_CHF_USER, $msg_user_ids);
+                    dungeon_queue_save(array('_add' => sql_pholder(' AND vinfo = ?', $dun_user['vinfo']), '_set' => sql_pholder(' instance_ids = instance_save_ids, vinfo = \'\', invite = 0, dtime = 0, status = ?', DUNGEON_QUEUE_STATUS_WAITING),));
+                }
+            }
+        }
+    }while(0);
+
+    //Работа с текущими инстансами. (А может это в низ, типо сначала формирует, а потом работает с огрызками)
+    do{
+        $add = ' and !(flags & '.INST_FLAG_PREPARED.')';
+        $instance_hash = make_hash(instance_list(array('parent_id' => 0, 'dun_active' => 1), $add));
+        if (!$instance_hash) break;
+
+        $instance_artikul_ids = array();
+        foreach ($instance_hash as $instance) $instance_artikul_ids[] = $instance['artikul_id'];
+        $instance_artikul_hash = make_hash(instance_artikul_list(array('id' => $instance_artikul_ids)));
+
+        $instance_users = make_hash(instance_user_list(array('instance_id' => array_keys($instance_hash))),'user_id');
+        if (!$instance_users) break;
+        $sessions = array();
+        foreach($NODE_NUMS as $nn) {
+            if ($nn == FRIDGE_NN) continue;
+            NODE_PUSH($nn);
+            $tmp_sessions = session_list(null,null,true,sql_pholder(' AND uid IN (?@)',array_keys($instance_users)),'uid',true);
+            foreach($tmp_sessions as $tmp_session) {
+                $sessions[] = $tmp_session;
+            }
+            NODE_POP($nn);
+        }
+        $session_hash = get_hash($sessions,'uid','uid');
+        $instance_party_member_hash = get_hash(party_member_list(null, PM_STATUS_ACTIVE, sql_pholder(' AND user_id IN (?@)', array_keys($instance_users))), 'user_id', 'party_id');
+        $auth_hash = make_hash(auth_list(false, array('uid' => array_keys($instance_users))),'uid');
+
+        // Отключение пользователей
+        $party_sync_ids = array();
+        foreach ($instance_users as $k=>$instance_user) {
+            $user_id = $instance_user['user_id'];
+            if (!$session_hash[$user_id]) $user = user_get($user_id);
+            if ($session_hash[$user_id] || $user['fight_id']) { // не отключаем тех, кто пока в бою
+                continue;
+            }
+            $instance_artikul = $instance_artikul_hash[$instance_user['instance_artikul_id']];
+
+            instance_user_delete($instance_user['id']);
+            user_resurrect($user_id);
+
+            if($user['party_id']) {
+                party_member_delete(array('party_id' => $user['party_id'], 'user_id' => $user['id'])); //Удаляем участие в группе.
+                $party_sync_ids[$user['party_id']] = $user['party_id'];
+            }
+
+            if ($auth_hash[$user_id]['server_id'] && ($auth_hash[$user_id]['server_id'] != SERVER_ID)) {
+                crossserver_user_return($user_id);
+            } else {
+                $user_current = user_get($user_id);
+                $user_param = array(
+                    'id' => $user_id,
+                    'instance_id' => 0,
+                    'area_id' => $user_current['area_id_transfer'] ? $user_current['area_id_transfer'] : $user_current['area_id'],
+                    'area_id_transfer' => 0,
+                    'raid_id' => 0,
+                    'area_ftime' => 0,
+                    'party_id' => 0, //Убираем группу!
+                );
+                user_save($user_param);
+            }
+            //Отключаем глушилку хаотических
+            user_save(array(
+                'id' => $user_id,
+                '_set' => sql_pholder('flags2 = flags2 & ~?',USER_FLAG2_DEAF),
+            ));
+
+            $instance_root = instance_get_root($instance_user['instance_id']);
+            dungeon_user_exit($user_id, $instance_root, (time_current() + DUNGEON_EXIT_TIME + 60 > $instance_root['dtime'] ? false : true)); //Нечего было выходить из игры...
+            unset($instance_users[$k]);
+        }
+        foreach ($party_sync_ids as $party_sync_id) {
+            party_member_sync($party_sync_id);
+        }
+
+        foreach ($instance_hash as $instance) {
+            if (!instance_lock($instance['id'])) continue;
+            $instance_artikul = $instance_artikul_hash[$instance['artikul_id']];
+            $dtime = $instance['dtime'];
+            $user_ids = array();
+            foreach ($instance_users as $instance_user) {
+                if ($instance_user['instance_id'] == $instance['id']) {
+                    $user_ids[] = $instance_user['user_id'];
+                }
+            }
+
+            // Проверяем условие окончания
+            $time_left = $dtime - time_current();
+            if (($time_left > 0) && ($time_left <= INSTANCE_WARNING_TIME)) {
+                do{
+                    no_translate_push(1);
+                    if(MNGR_DUNGEONS_INTERVAL <= 60 && (60 - MNGR_DUNGEONS_INTERVAL) > date('s', time_current())) break;
+                    chat_msg_send_system(translate('До принудительного окончания '.($instance['dun_raid'] ? 'рейда' : 'подземелья').' "{0}" осталось {1}.'),CHAT_CHF_USER,$user_ids,true,array(
+                        'do_translate' => true,
+                        'translate_params' => array($instance_artikul['title'],$time_left),
+                        'translate_params_apply_func' => array(0 => 'translate', 1 => 'html_period_str')
+                    ));
+                    no_translate_pop();
+                }while(0);
+            }
+
+            //Условие окончания INSTANCE
+            $cond_skill = false;
+            if($instance_artikul['in_skill_id'] && $instance_artikul['in_value']) {
+                NODE_SWITCH(1);
+                $skills = get_hash(skill_object_list(OBJECT_CLASS_INSTANCE,$instance,sql_pholder(" AND skill_id = ?", $instance_artikul['in_skill_id'])),'skill_id','value');
+                $cond_skill = ($instance_artikul['in_value'] <= intval($skills[$instance_artikul['in_skill_id']]));
+            }
+            $cond_time = ($time_left <= 0);	// закончилось время
+            if($cond_skill && !$cond_time && ($time_left > DUNGEON_EXIT_TIME)) {
+                //Установим время окончания и скажем что рейд завершен.
+                chat_msg_send_system(($instance['dun_raid'] ? 'Рейд будет завершен' : 'Подземелье будет завершено')." через ".html_period_str(DUNGEON_EXIT_TIME).'!',CHAT_CHF_USER,$user_ids);
+                instance_save(array(
+                    'id' => $instance['id'],
+                    'dtime' => time_current() + DUNGEON_EXIT_TIME, // Добавляем время, сколько должна храниться статистика
+                ));
+            }
+            if ($cond_time) {	// условие окончания БГ
+                no_translate_push(1);
+                $msg_text = translate(($instance['dun_raid'] ? 'Рейд' : 'Подземелье').' "{0}" '.($instance['dun_raid'] ? 'окончен' : 'окончено').($cond_time ? ' по времени' : '').'!<a target="_blank" href="/instance_stat.php?outside=1&instance_id={1}&server_id={2}">Посмотреть результаты</a>.');
+                $msg_params = array(
+                    $instance_artikul['title'],
+                    $instance['id'],
+                    SERVER_ID
+                );
+
+                no_translate_pop();
+
+                $party_disband = array();
+                foreach ($instance_users as $k => $instance_user) {
+                    if (($instance_user['instance_id'] != $instance['id']) || !session_lock($instance_user['user_id'])) continue;
+
+                    if(isset($instance_party_member_hash[$instance_user['user_id']])){
+                        $party_disband[$instance_party_member_hash[$instance_user['user_id']]] = $instance_party_member_hash[$instance_user['user_id']];
+                    }
+
+                    $user = user_get($instance_user['user_id']);
+                    if (!$user) {
+                        session_unlock($instance_user['user_id']);
+                        continue;
+                    }
+                    NODE_PUSH(null, $instance_user['user_id']);
+                    user_resurrect($instance_user['user_id']);
+                    unset($instance_users[$k]);
+
+                    // отменяем бои
+                    $fight_id = $user['fight_id'];
+                    if ($fight_id && fight_lock($fight_id)) {
+                        fight_abort($fight_id);
+                        fight_unlock($fight_id);
+                    }
+                    $auth = array();
+                    if ($instance['flags'] & INST_FLAG_CROSSSERVER) {
+                        $auth = auth_get($user['id']);
+                    }
+                    if ($auth['server_id'] && ($auth['server_id'] != SERVER_ID)) {
+                        crossserver_user_return($user['id']);
+                        $msg = array(
+                            'type' => CHAT_MSG_TYPE_SYSTEM,
+                            'msg_text' => $msg_text,
+                            'param' => array('do_translate' => true, 'translate_params' => $msg_params, 'translate_params_apply_func' => array(0 => 'translate'))
+                        );
+                        crossserver_chat_send($auth['server_id'],$msg,CHAT_CHF_USER,array($auth['original_user_id']));
+                    } else {
+                        $user_current = user_get($instance_user['user_id']);
+                        $user_param = array(
+                            'id' => $instance_user['user_id'],
+                            'instance_id' => 0,
+                            'area_id' => $user_current['area_id_transfer'] ? $user_current['area_id_transfer'] : $user_current['area_id'],
+                            'area_id_transfer' => 0,
+                            'raid_id' => 0,
+                            'area_ftime' => 0,
+                        );
+                        user_save($user_param);
+                    }
+
+                    //Выдаем награду если дамага есть...
+                    do{
+                        //if($instance_user['dmg'] <= 0) break;
+                        if($instance_user['rand_dungeon']) {
+                            $rand_award = $random_dungeoun_award_list[$instance_user['rand_dungeon']];
+                            rand_award_dun_give($rand_award, $instance_user['user_id'], '<b>Благодаря тому, что вы воспользовались поиском случайного подземелья вы получаете: 10 <span style=color:darkred>Репутации Расхитителей Подземелий</span></b>, '); //Выдача наград, если рандомное подземелье
+                        }
+                        //Бонусы
+                        if($instance_artikul['in_bonus_id']) bonus_apply($user, $instance_artikul['in_bonus_id']);
+                    }while(0);
+
+                    user_glory_add($instance_user['user_id'], USER_GLORY_TYPE_DUNGEON, $instance_user['dmg']);
+
+                    dungeon_user_instance_plus($instance_user['user_id']); //Статистика игр для бонусов!
+
+                    //Отключаем глушилку хаотических
+                    if($user['id']) {
+                        user_save(array(
+                            'id' => $user['id'],
+                            '_set' => sql_pholder('flags2 = flags2 & ~?', USER_FLAG2_DEAF),
+                        ));
+                    }
+                    NODE_POP();
+                    session_unlock($user['id']);
+                }
+
+                instance_save(array(
+                    'id' => $instance['id'],
+                    'dun_active' => 0,
+                    'dtime' => time_current() + INSTANCE_LEAVE_TIME, // Добавляем время, сколько должна храниться статистика
+                ));
+                // Удаляем данные инста, которые не нужны после его окончания, останется только то, что нужно в отображении статистики
+                instance_pre_delete($instance);
+                chat_msg_send_system($msg_text,CHAT_CHF_USER,$user_ids,true,array(
+                    'do_translate' => true,
+                    'translate_params' => $msg_params,
+                    'translate_params_apply_func' => array(0 => 'translate'),
+                ));
+                chat_msg_send_special(CODE_REDIRECT,CHAT_CHF_USER,$user_ids,array('url' => 'instance_stat.php?instance_id='.$instance['id'].'&finish=1'));
+
+                foreach ($party_disband as $party_id) {
+                    party_delete($party_id);
+                }
+
+            }
+            instance_unlock($instance['id']);
+        }
+    }while(0);
+
+    // Блок отправка запроса в текущие инсты
+    do {
+        if(MNGR_DUNGEONS_INTERVAL <= 60 && (60 - MNGR_DUNGEONS_INTERVAL) > date('s', time_current())) break;
+        $queue_hash = make_hash(dungeon_queue_list(array('status' => array(DUNGEON_QUEUE_STATUS_WAITING), 'mstatus' => array(DUNGEON_QUEUS_MSTATUS_PRE), 'minvite' => 0, 'ainvite' => 0,), sql_pholder(' ORDER BY ctime ASC')), 'user_id');
+        // Исключение из списка просроченных сессий
+        dungeon_queue_unset_inactive($queue_hash);
+        dungeon_queue_calc($queue_hash, $queue_instance_info, $queue_user_info);
+        if(!$queue_instance_info) break;
+
+        dungeon_queue_unset_users($queue_hash);
+
+        $add = ' and !(flags & '.INST_FLAG_PREPARED.')';
+        $instance_hash = make_hash(instance_list(array('parent_id' => 0, 'dun_active' => 1), $add));
+        if (!$instance_hash) break;
+        shuffle($instance_hash); //Для того чтобы быть более случайным при подборе случайных инстансов.
+        $instance_users = make_hash(instance_user_list(array('instance_id' => array_keys($instance_hash), 'quit' => 0)),'user_id');
+        if (!$instance_users) break;
+        $sizes = array();
+        foreach ($instance_users as $k=>$instance_user) {
+            $sizes[$instance_user['instance_id']]++;
+        }
+
+        $queue_msend_hash = make_hash(dungeon_queue_list(array('status' => array(DUNGEON_QUEUE_STATUS_WAITING), 'mstatus' => array(DUNGEON_QUEUS_MSTATUS_PRE, DUNGEON_QUEUS_MSTATUS_ACCEPT), 'minvite' => 1)), 'minstance_id', true);
+        //Смотрим отправленные запросы
+        foreach ($queue_msend_hash as $instance_id=>$_queue_msend_list){
+            $sizes[$instance_user['instance_id']] += count($_queue_msend_list); //Избегаем переполнение очереди в текущие инстансы.
+        }
+
+        foreach ($instance_hash as $instance) {
+            $instance_artikul = $instance_artikul_hash[$instance['artikul_id']];
+            $avail = $instance_artikul['member_cnt_max'] - $sizes[$instance['id']]; //Нужны ли люди еще в этот инст? (НЕ СЧИТАЕМ МАКС КОЛ-ВО)
+            if ($avail <= 0) continue;
+            $inst_party_id = intval($instance['party_id']);
+            $pcnt = $sizes[$instance['id']]; //ГЫ
+            foreach ($queue_user_info[$instance_artikul['id']] as $k=>$user_id) {
+                if($instance_artikul['member_cnt_max'] && $pcnt >= $instance_artikul['member_cnt_max']) break; //Приплыли бля!
+                dungeon_queue_send_invite_created($user_id, $instance, $instance_artikul, time_current() + DUNGEON_PENDING_TTL);
+            }
+        }
+    } while (0);
+
+    // Блок добивания в текущие инсты
+    do {
+        $queue_remove_ids = array();
+        $queue_hash = make_hash(dungeon_queue_list(array('status' => array(DUNGEON_QUEUE_STATUS_WAITING), 'mstatus' => array(DUNGEON_QUEUS_MSTATUS_ACCEPT)), sql_pholder(' AND minstance_id > 0')), 'user_id');
+        // Исключение из списка просроченных сессий
+        //dungeon_queue_unset_inactive($queue_hash);
+        dungeon_queue_calc($queue_hash, $queue_instance_info, $queue_user_info);
+        if(!$queue_instance_info) break;
+
+        //dungeon_queue_unset_users($queue_hash);
+
+        $add = ' and !(flags & '.INST_FLAG_PREPARED.')';
+        $instance_hash = make_hash(instance_list(array('parent_id' => 0, 'dun_active' => 1), $add));
+        if (!$instance_hash) break;
+        $instance_users = make_hash(instance_user_list(array('instance_id' => array_keys($instance_hash), 'quit' => 0,)),'user_id');
+        if (!$instance_users) break;
+        $sizes = array();
+        foreach ($instance_users as $k=>$instance_user) {
+            $sizes[$instance_user['instance_id']]++;
+        }
+
+        if($queue_hash) $user_hash = make_hash(user_list(array('id' => array_keys($queue_hash))));
+
+
+        foreach ($queue_hash as $user_id=>$queue) {
+            $instance = $instance_hash[$queue['minstance_id']];
+            if(!$instance) continue;
+
+            if (!instance_lock($instance['id'])) continue;
+            //Всегда вносим игрока!
+            $instance_artikul = $instance_artikul_hash[$instance['artikul_id']];
+
+            $avail = $instance_artikul['member_cnt_max'] - $sizes[$instance['id']]; //Нужны ли люди еще в этот инст? (НЕ СЧИТАЕМ МАКС КОЛ-ВО)
+            if ($avail <= 0) continue;
+            $inst_party_id = intval($instance['party_id']);
+
+            // соберём всех желающих и цепляем
+            $orders = array();
+
+            $pcnt = &$sizes[$instance['id']]; //ГЫ TODO:ТУт была ошибка Чекни позже?)
+
+            foreach ($queue_user_info[$instance_artikul['id']] as $k=>$user_id) {
+                if($instance_artikul['member_cnt_max'] && $pcnt >= $instance_artikul['member_cnt_max']) break; //Приплыли бля!
+
+                if($inst_party_id) { //Добавляем в группу!
+                    party_member_save(array(
+                        'user_id' => $user_id,
+                        'party_id' => $inst_party_id,
+                        'stime' => time_current(),
+                        'status' => PM_STATUS_ACTIVE,
+                    ));
+                }
+
+                instance_user_save(array(
+                    '_mode' => CSMODE_REPLACE,
+                    'instance_artikul_id' => $instance_artikul['id'],
+                    'instance_id' => $instance['id'],
+                    'user_id' => $user_id,
+                    'area_link_id' => 0,
+                    'dtime' => $instance['dtime'] + $instance_artikul['cooldown_time'],
+                    'rand_dungeon' => intval($queue_hash[$user_id]['rand']), //Потом выдадим награду.
+                ));
+                user_save(array(
+                    'id' => $user_id,
+                    'instance_id' => $instance['id'],
+                    'invisibility_time' => 0,
+                    'party_id' => $inst_party_id,
+                    'area_ftime' => 0,
+                )); //Кидаем человека в инстанс.
+                $pcnt++;
+                $queue_instance_info[$instance_artikul['id']]--;
+
+                $queue_remove_ids[] = $queue_hash[$user_id]['id'];
+
+                chat_msg_send_special(CODE_REDIRECT,CHAT_CHF_USER,$user_id,array('url' => 'instance.php'));
+
+                if($user_hash[$user_id]) {
+                    if($queue_hash[$user_id]['rand']) activity_user_check(ACTIVITY_STAT_DUNGEON,-1, $user_hash[$user_id],false);
+                    activity_user_check(ACTIVITY_STAT_DUNGEON,($queue_hash[$user_id]['type_id'] == INSTANCE_TYPE_DUNGEON ? -2 : -3), $user_hash[$user_id],false);
+                }
+
+                unset($queue_user_info[$instance_artikul['id']][$k]); //Убираем игрока
+                unset($queue_hash[$user_id]);
+
+            }
+            if($inst_party_id) party_member_sync($inst_party_id);
+            instance_unlock($instance['id']);
+
+        }
+    } while (0);
+    if($queue_remove_ids) dungeon_queue_delete(array('id' => $queue_remove_ids));
+
+    //Рассылка сюдах подготовка игроков к инстансам
+    do{
+        //minstance_id указывает на то что игроков не приглашало в уже существующие инстансы.
+        $queue_hash = make_hash(dungeon_queue_list(array('status' => array(DUNGEON_QUEUE_STATUS_WAITING), 'mstatus' => array(DUNGEON_QUEUS_MSTATUS_PRE, DUNGEON_QUEUS_MSTATUS_DECINE), 'minstance_id' => 0, 'invite' => 0, 'ainvite' => 0), sql_pholder(' ORDER BY ctime ASC')), 'user_id');
+        // Исключение из списка просроченных сессий
+        dungeon_queue_unset_inactive($queue_hash);
+        dungeon_queue_unset_users($queue_hash);
+
+        //Отправим приглашения
+        if(count($queue_hash) <= 0) break;
+
+        $instance_ids = array();
+        foreach ($queue_hash as $queue) {
+            $instances = explode(',',$queue['instance_ids']);
+            foreach ($instances as $instance_id){
+                $instance_ids[$instance_id] = $instance_id;
+            }
+        }
+        $instance_artikul_hash = make_hash(instance_artikul_list(array('id' => $instance_ids)));
+
+        //Формирование новых инстансов.
+        do{ //Для начала сделаем перерасчет...
+            $queue_user_info = array();
+            $queue_instance_info = array();
+            dungeon_queue_calc($queue_hash, $queue_instance_info, $queue_user_info);
+            if(!$queue_instance_info) break;
+            //Тут в функцие всегда будет набираться пати в какую нибудь битву! Поэтому что-то мудрить думаю не стоит.
+            foreach ($queue_instance_info as $inst_art_id=>&$queue_cnt) {
+                $instance_artikul = $instance_artikul_hash[$inst_art_id];
+                if($queue_cnt >= $instance_artikul['member_cnt_min']) {
+                    //Если соблюдены условия отправляем приглосы!
+                    $instance_uniq = array();
+                    $_stack = 0;
+                    $_i=0;
+                    foreach ($queue_user_info[$instance_artikul['id']] as $k=>$user_id) {
+                        $instance_uniq[$_stack][$user_id] = $user_id;
+                        unset($queue_user_info[$instance_artikul['id']][$k]);
+                        unset($queue_hash[$user_id]);
+                        $queue_instance_info[$instance_artikul['id']]--;
+                        $queue_cnt--;
+                        if(++$_i==$instance_artikul['member_cnt_min']){ $_i=0; $_stack++; }
+                    }
+
+                    logfile(NODE_FILE_LOG,print_r($instance_uniq));
+
+                    foreach ($instance_uniq as $_stack=>$current_queue_list) {
+                        if(count($current_queue_list) < $instance_artikul['member_cnt_min']) {
+                            continue; //Не пускать!
+                        }
+                        $vinfo_str = implode(',', $current_queue_list);
+                        $vinfo_md5 = md5($vinfo_str);
+                        foreach ($current_queue_list as $user_id) {
+                            dungeon_queue_send_invite($user_id, $instance_artikul, time_current() + DUNGEON_PENDING_TTL, $vinfo_md5);
+                        }
+                    }
+                    //Если запустили инстанс, нужно обновить данные
+                    continue 2; //Обновит данные... с выходом в основной цикл
+                }
+            }
+            break; //Функция отработала примерно вот тут.
+        }while(true); #TRUE не забывай!
+    } while(0);
+
+    //Формирование новых инстансов
+    do{
+        //Считаем PENDING и LOCKED похуй!
+        $queue_hash = make_hash(dungeon_queue_list(array('status' => array(DUNGEON_QUEUE_STATUS_PENDING)), sql_pholder(' AND vinfo != \'\' AND instance_ids != \'\'')), 'user_id');
+        //dungeon_queue_unset_inactive($queue_hash);
+        //dungeon_queue_unset_users($queue_hash);
+
+        $queue_remove_ids = array();
+        if(count($queue_hash) <= 0) break;
+
+        $instance_ids = array();
+        foreach ($queue_hash as $queue) {
+            $instances = explode(',',$queue['instance_ids']);
+            foreach ($instances as $instance_id){
+                $instance_ids[$instance_id] = $instance_id;
+            }
+        }
+        $instance_artikul_hash = make_hash(instance_artikul_list(array('id' => $instance_ids)));
+
+        if($queue_hash) $user_hash = make_hash(user_list(array('id' => array_keys($queue_hash))));
+
+        $queue_remove_ids = array();
+        //Формирование новых инстансов.
+        do{ //Для начала сделаем перерасчет...
+            $queue_user_info = array();
+            $queue_user_info_enter = array();
+            $queue_instance_info = array();
+            dungeon_queue_calc($queue_hash, $queue_instance_info, $queue_user_info, $queue_user_info_enter);
+            if(!$queue_instance_info) break;
+
+
+            foreach ($queue_user_info_enter as $inst_art_id=>$queue_user_info_list){
+                $instance_artikul = $instance_artikul_hash[$inst_art_id];
+                foreach ($queue_user_info_list as $vinfo=>$queue_enter_list) {
+                    $queue_enter_count = 0;
+                    $pcnt = 0;
+                    foreach ($queue_enter_list as $qu){
+                        if($qu['status'] == DUNGEON_QUEUE_STATUS_PENDING || $qu['status'] == DUNGEON_QUEUE_STATUS_LOCKED){
+                            $queue_enter_count++;
+                        }
+                    }
+                    if($queue_enter_count < $instance_artikul['member_cnt_min']) continue;
+
+                    $party = false;
+                    $party_id = false;
+                    $instance_id = instance_create($instance_artikul['id'], array('dun_active' => 1,));
+                    if(!$instance_id) continue; //Не запустили.
+                    $instance = instance_get($instance_id);
+                    if(!$instance) continue; //WHY?
+
+                    logfile(NODE_FILE_LOG,print_r($queue_user_info_enter, true));
+
+                    foreach ($queue_enter_list as $k=>$queue_enter) {
+                        $user_id = $queue_enter['user_id'];
+                        if($instance_artikul['member_cnt_min'] && $pcnt > $instance_artikul['member_cnt_min']) break; //Приплыли бля!
+                        do{
+                            if($queue_enter['status'] != DUNGEON_QUEUE_STATUS_PENDING) break; //Не закидываем тех кто не подтвердил!
+                            if(!$party && !$party_id) {
+                                //Создаем группу подземелья
+                                $party_id = party_save(array(
+                                    'leader_id' => $user_id,
+                                    'loot_rules_id' => LOOP_TYPE_RAND,
+                                    'kind' => 0,
+                                    'stime' => time_current(),
+                                    'flags' => PARTY_FLAG_ROLLING | PARTY_FLAG_DUNGEON,
+                                ));
+                                if ($party_id) $party = party_get($party_id);
+                            }
+                            if($party && $party_id) {
+                                party_member_save(array(
+                                    'user_id' => $user_id,
+                                    'party_id' => $party_id,
+                                    'stime' => time_current(),
+                                    'status' => PM_STATUS_ACTIVE,
+                                ));
+                            }
+                            instance_user_save(array(
+                                '_mode' => CSMODE_REPLACE,
+                                'instance_artikul_id' => $instance_artikul['id'],
+                                'instance_id' => $instance_id,
+                                'user_id' => $user_id,
+                                'area_link_id' => 0,
+                                'dtime' => $instance['dtime'] + $instance_artikul['cooldown_time'],
+                                'rand_dungeon' => intval($queue_hash[$user_id]['rand']), //Потом выдадим награду.
+                            ));
+                            user_save(array(
+                                'id' => $user_id,
+                                'instance_id' => $instance_id,
+                                'invisibility_time' => 0,
+                                'area_ftime' => 0,
+                            )); //Кидаем человека в инстанс.
+                            $pcnt++;
+                            $queue_instance_info[$instance_artikul['id']]--;
+                            $queue_remove_ids[] = $queue_hash[$user_id]['id'];
+
+                            chat_msg_send_special(CODE_REDIRECT,CHAT_CHF_USER,$user_id,array('url' => 'instance.php'));
+
+                            if($user_hash[$user_id]) {
+                                if($queue_hash[$user_id]['rand']) activity_user_check(ACTIVITY_STAT_DUNGEON,-1, $user_hash[$user_id],false);
+                                activity_user_check(ACTIVITY_STAT_DUNGEON,($queue_hash[$user_id]['type_id'] == INSTANCE_TYPE_DUNGEON ? -2 : -3), $user_hash[$user_id],false);
+                            }
+                        }while(0);
+
+                        unset($queue_user_info[$instance_artikul['id']][$k]); //Убираем игрока
+                        unset($queue_hash[$user_id]);
+                    }
+
+                    if($party_id && $party) {
+                        party_member_sync($party);
+                        instance_save(array('id' => $instance_id, 'party_id' => $party_id));
+                    }
+                }
+            }
+            break; //Функция отработала примерно вот тут.
+        }while(0); #TRUE не забывай!
+    }while(0);
+    if($queue_remove_ids) dungeon_queue_delete(array('id' => $queue_remove_ids));
+
+    //Меняем статус обратно...
+    /*
+    if($queue_hash) {
+        $queue_hash = make_hash($queue_hash);
+        dungeon_queue_save(array('_add' => sql_pholder(' AND id IN(?@)', array_keys($queue_hash)), '_set' => sql_pholder(' status = 0 '))); //Теперь могут удалять...
+    }*/
+
+    //Удаляем просроченные заявки
+    dungeon_queue_delete(false, sql_pholder(' AND vinfo = \'\' AND status = ? AND dtime < ?', DUNGEON_QUEUE_STATUS_LOCKED, time_current()));
+}
+
+function dungeon_queue_unset_users(&$dungeon_queue_list){
+    $user_ids = array();
+    foreach ($dungeon_queue_list as $dungeon_queue) $user_ids[$dungeon_queue['user_id']] = $dungeon_queue['user_id'];
+    if($user_ids) $user_hash = make_hash(user_list(array('id' => $user_ids)));
+    $disband_parties = array();
+    foreach ($dungeon_queue_list as $k => $dungeon_queue) {
+        if($dungeon_queue['status'] == DUNGEON_QUEUE_STATUS_LOCKED) continue;
+        if($user_hash[$dungeon_queue['user_id']]['party_id'] && !$disband_parties[$user_hash[$dungeon_queue['user_id']]['party_id']]) {
+            $party = party_get($user_hash[$dungeon_queue['user_id']]['party_id']);
+            if($party){
+                $user = user_get($party['leader_id']);
+                $err = '';
+                party_disband($user, $err);
+            }
+            $disband_parties[$user_hash[$dungeon_queue['user_id']]['party_id']] = true;
+        }
+        if($user_hash[$dungeon_queue['user_id']]['instance_id']
+        || !user_is_online($dungeon_queue['user_id'], true, true)){
+            unset($dungeon_queue_list[$k]);
+            $delete_ids[$dungeon_queue['id']] = $dungeon_queue['id'];
+        }
+    }
+    if($delete_ids) dungeon_queue_delete(array('id' => $delete_ids));
+}
+
+function dungeon_queue_unset_inactive(&$dungeon_queue_list) {
+    global $NODE_NUMS;
+    $user_ids = get_hash($dungeon_queue_list, 'user_id', 'user_id');
+    $session_hash = array();
+    if ($user_ids) {
+        foreach ($NODE_NUMS as $nn) {
+            if (($nn == FRIDGE_NN) || !NODE_SWITCH($nn)) continue;
+            $session_hash = array_merge($session_hash, session_list(null,null,true,sql_pholder(' AND uid IN (?@)',$user_ids),'uid',true, true));
+        }
+    }
+    $session_hash = get_hash($session_hash, 'uid', 'uid');
+    $delete_user_ids = array();
+    $delete_user_ids_without_penalty = array();
+    foreach ($dungeon_queue_list as $k => $user) {
+        if($user['status'] == DUNGEON_QUEUE_STATUS_LOCKED) continue;
+        if (!$session_hash[$user['user_id']] || $session_hash[$user['user_id']]['stime'] > (time_current() - 60)) {
+            $delete_user_ids_without_penalty[] = $user['user_id'];
+            unset($dungeon_queue_list[$k]);
+            unset($user_ids[$user['user_id']]);
+        }
+    }
+    /*if ($delete_user_ids) dungeon_queue_save(array(
+        '_add' => sql_pholder(' AND user_id IN (?@)', $delete_user_ids),
+        '_set' => sql_pholder('dtime = ?, status = ?', time_current()+DUNGEON_LOCK_ORDER, DUNGEON_QUEUE_STATUS_LOCKED),
+    ));*/
+    if ($delete_user_ids_without_penalty) dungeon_queue_delete(array('user_id' => $delete_user_ids_without_penalty));
+
+    $party_member_hash = $user_ids ? get_hash(party_member_list(null,PM_STATUS_ACTIVE,sql_pholder(' AND user_id IN (?@)',$user_ids)),'user_id','party_id') : array();
+    foreach($dungeon_queue_list as $k => $user) {
+        if (isset($party_member_hash[$user['user_id']])) {
+            $dungeon_queue_list[$k]['party_id'] = $party_member_hash[$user['user_id']];
+        }
+    }
+    return true;
+}
+
+function dungeon_queue_send_invite_created($user_id, $instance, $instance_artikul, $pending_time) {
+    if(!$instance || !$instance['id']) return false;
+    $dungeon_user = dungeon_queue_get(array('user_id' => $user_id));
+    if ($dungeon_user['status'] == DUNGEON_QUEUE_STATUS_PENDING) return false; //Уже в нормальной хуйне числится...
+    if ($dungeon_user['instance_id']) return false;
+    if ($dungeon_user['mstatus'] != DUNGEON_QUEUS_MSTATUS_PRE) return false;
+    dungeon_queue_save(array(
+        '_add' => sql_pholder(' AND user_id=? ', $user_id),
+        '_set' => sql_pholder('dtime = ?, minstance_id = ?, atime = ?, minvite = 0, ainvite = 0, minvite = 1, invite = 0', $pending_time, $instance['id'], time_current()),
+    ));
+    chat_msg_send_system(sprintf(translate('<b class="redd">Для вас '.($instance_artikul['type_id'] == INSTANCE_TYPE_DUNGEON ? 'было подобрано текущее активное Подземелье' : 'был подобран текущий активный Рейд').' <a class="brown" href="#" onclick="showInstanceInfo('.$instance['id'].'); return false;">"'.$instance_artikul['title'].'"</a>. </b> <b>Вы можете <a href="javascript: confirm_dungeon_act(%s, true);">[ПРИНЯТЬ УЧАСТИЕ]</a></b> или <b><a href="javascript: confirm_dungeon_act(%s, false);">[ОТКАЗАТЬСЯ]</a></b><b> от него не позднее %s.</b>'),$dungeon_user['id'],$dungeon_user['id'], date('H:i:s', $pending_time)), CHAT_CHF_USER, $user_id);
+    return true;
+}
+
+function dungeon_queue_send_invite($user_id, $instance_artikul, $pending_time, $vinfo = '') {
+    if(!$instance_artikul) return false;
+    $instance_artikul_id = intval($instance_artikul['id']);
+    if(!$instance_artikul_id) return false;
+    $dungeon_user = dungeon_queue_get(array('user_id' => $user_id));
+    if ($dungeon_user['invite']) return false;
+    if ($dungeon_user['instance_id']) return false;
+    if ($dungeon_user['status'] != DUNGEON_QUEUE_STATUS_WAITING) return false;
+    dungeon_queue_save(array(
+        '_add' => sql_pholder(' AND user_id=? ', $user_id),
+        '_set' => sql_pholder('dtime = ?, instance_ids = ?, vinfo = ?, atime = ?, minvite = 0, ainvite = 0, invite = 1', $pending_time, $instance_artikul_id, $vinfo, 0),
+    ));
+    chat_msg_send_system(sprintf(translate('<b class="redd">Для того, чтобы подтвердить свое участие в '.($instance_artikul['type_id'] == INSTANCE_TYPE_DUNGEON ? 'Подземелье' : 'Рейде').', нажмите</b> <b><a href="javascript: confirm_dungeon(%s)">СЮДА</a></b><b> не позднее %s.</b>'),$dungeon_user['id'], date('H:i:s', $pending_time)), CHAT_CHF_USER, $user_id);
+    chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user_id, array('func' => "_top().sFrMe('dungeons');"));
+    return true;
+}
+
+function dungeon_queue_calc($queue_hash, &$queue_instance_info, &$queue_user_info, &$queue_user_info_enter = array()){
+    foreach ($queue_hash as &$queue){
+        $instance_ids = explode(',', $queue['instance_ids']);
+        foreach ($instance_ids as $instance_id){
+            $queue_instance_info[$instance_id]++;
+            $queue_user_info_enter[$instance_id][$queue['vinfo']][$queue['user_id']] = $queue;
+            $queue_user_info[$instance_id][$queue['user_id']] = $queue['user_id'];
+        }
+    }
+    arsort($queue_instance_info);
+}
+
+function dungeon_queue_calc_remove($user_id, &$queue_user_info = array(), &$queue_user_info_enter = array()) {
+    if(!$user_id || $user_id < 0) return false;
+    if(is_array($queue_user_info) && count($queue_user_info) > 0) {
+        foreach ($queue_user_info as $instance_id => $queue_user_list) {
+            unset($queue_user_info[$instance_id][$user_id]);
+        }
+    }
+    if(is_array($queue_user_info_enter) && count($queue_user_info_enter) > 0) {
+        foreach ($queue_user_info_enter as $instnace_id => $queue_vinfo_list) {
+            foreach ($queue_vinfo_list as $vinfo => $queus_user_list) {
+                unset($queue_user_info_enter[$instance_id][$vinfo][$user_id]);
+            }
+        }
+    }
+}
+
+function dungeon_user_instance_restore() {
+    dungeon_user_save(array(
+        '_add' => sql_pholder(' AND instance_dtime > 0 AND instance_dtime < ?', time_current()),
+        '_set' => sql_pholder(' instance_cnt = 0, instance_cnt_bns = 0, instance_dtime = ?', mktime(23, 59, 59) + 1),
+    ));
+}
+
+function dungeon_user_instance_plus($user_id) {
+    $dungeon_user = dungeon_user_get(array('user_id' => $user_id));
+    if($dungeon_user) {
+        dungeon_user_save(array(
+            '_add' => sql_pholder(' AND id = ? AND (instance_dtime = ? OR instance_dtime = 0)', $dungeon_user['id'], mktime(23, 59, 59) + 1),
+            '_set' => sql_pholder(' instance_cnt = instance_cnt + 1, instance_dtime = ?', mktime(23,59,59) + 1),
+        ));
+    }else{
+        dungeon_user_save(array(
+            'user_id' => $user_id,
+            'instance_cnt' => 1,
+            'instance_dtime' => mktime(23, 59, 59) + 1,
+        ));
+    }
+}
+
+function dungeon_user_exit($user_id, $instance_root, $penalty = true) {
+    $user = user_get($user_id);
+    if(!$user) return false;
+    if($user['party_id']) {
+        party_member_delete(array('user_id' => $user_id));
+        user_save(array('id' => $user_id, 'party_id' => 0));
+    }
+    $instance_user = instance_user_get(array('user_id' => $user_id, 'instance_id' => $instance_root['id']));
+    if($instance_user && $penalty){ instance_user_save(array('id' => $instance_user['id'], 'quit' => 1)); }
+    if($penalty) dungeon_user_penalty($user_id, $instance_root['artikul_id']);
+}
+
+function dungeon_user_penalty($user_id, $instance_id) {
+    $dungeon_user = dungeon_queue_get(array('user_id' => $user_id, 'instance_id' => $instance_id));
+    if($dungeon_user) {
+        dungeon_user_instance_save(array(
+            'id' => $dungeon_user['id'],
+            'instance_id' => $instance_id,
+            'penalty_time' => time_current() + DUNGEON_PENALTY_TIME,
+        ));
+    }else{
+        dungeon_user_instance_save(array(
+            'user_id' => $user_id,
+            'instance_id' => $instance_id,
+            'penalty_time' => time_current() + DUNGEON_PENALTY_TIME,
+        ));
+    }
+}
+
+function dungeon_pp_open($user = array()){
+    if(((defined('DUNGEON_PP_GLOBAL_OPEN_ADMIN') && DUNGEON_PP_GLOBAL_OPEN_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('DUNGEON_PP_GLOBAL_OPEN') && DUNGEON_PP_GLOBAL_OPEN)) {
+        return true;
+    }
+    return false;
+}

@@ -1,0 +1,59 @@
+<? # $Id: INVISIBLE_ON.action,v 1.6 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "включить невидимость"
+// Параметры:
+//	$action['param1'] - продолжительность невидимости
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+
+$cannot_execute_action_str = translate('В настоящий момент это действие выполнить нельзя!');
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['trade_sess_id'] || $subject['instance_id']) {
+	$out['error'] = $cannot_execute_action_str;
+	return;
+}
+
+$area = area_get($subject['area_id']);
+if (!$area) {
+	$out['error'] = $cannot_execute_action_str;
+	return;
+}
+
+if ((($area['flags'] & AREA_FLAG_NO_INVISIBLE_MAGMAR) && ($subject['kind'] == KIND_MAGMAR)) ||
+ (($area['flags'] & AREA_FLAG_NO_INVISIBLE_HUMAN) && ($subject['kind'] == KIND_HUMAN))) {
+	$out['error'] = $cannot_execute_action_str;
+	return;
+}
+
+if($area['flags2'] & AREA_FLAG2_CHAOT_LOCATION){
+    $out['error'] = $cannot_execute_action_str;
+    return;
+}
+
+$duration = intval($action['param1']);
+if ($duration <= 0) {
+	$out['error'] = translate('Неверная продолжительность!');
+	return;
+}
+
+// продлеваем текущую невидимость или устанавливаем новую
+$start_time = max(time_current(), $subject['invisibility_time']);
+$invisibility_time = $start_time + $duration;
+
+// "покидаем" игру, в случае если ранее были видимы
+if (!user_is_invisible($subject)) {
+	user_leaving($subject);
+	$mode_url = '?nick='.$subject['nick'];
+	$cache_file_prefix = 'USER_INFO_';
+	$mode_cache = new Cache($cache_file_prefix.md5($mode_url));
+	$mode_cache->remove();
+}
+
+user_save(array(
+	'id' => $subject['id'],
+	'invisibility_time' => $invisibility_time,
+));
+
+$out['status'] = ACTION_STATUS_OK;
+
+?>

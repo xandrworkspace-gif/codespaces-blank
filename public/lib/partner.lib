@@ -1,0 +1,164 @@
+<? //# $Id: partner.lib,v 1.27 2010-02-05 12:36:35 n.alekseev Exp $
+
+define('TABLE_PARTNER_EVENT_BUFFER','partner_event_buffer');
+define('FIELD_PARTNER_EVENT_BUFFER','');
+define('TABLE_PARTNER_EVENT_ERROR_LOG','partner_event_error_log');
+define('FIELD_PARTNER_EVENT_ERROR_LOG','');
+
+define('PARTNER_TYPE', 100);		 // Обычная партнерка
+
+define('PARTNER_EVENT_REG', 2);    // регистрация пользователя в проекте
+define('PARTNER_EVENT_PAYMENT', 3);    // перевод денег пользователем в проект
+define('PARTNER_EVENT_EFREG', 4);    // оповещение об "эффективной регистрации"
+define('PARTNER_EVENT_LEVEL', 5);    // Получение левела
+define('PARTNER_EVENT_PVP', 6);    // Пвп ранг
+define('PARTNER_EVENT_LOGIN', 7);    // Заход в игру
+
+function partner_markUser($site_id) {
+	common_resetcookie('partner_id', $site_id, time() + 2*365*24*3600, '/', session_cookie_domain());
+	$_COOKIE['partner_id'] = $site_id;
+	$partner_counter = $_POST['partner_counter'] ? intval($_POST['partner_counter']) : ($_GET['partner_counter'] ? intval($_GET['partner_counter']) : false);
+	if ($partner_counter)
+		common_resetcookie('partner_counter', $partner_counter, time() + 2*365*24*3600, '/', session_cookie_domain());
+}
+
+function partner_regEvent($event_id, $user_id, $value = 0, $pid = 0) {
+	global $site_id;
+	
+	$sid = $site_id;
+	$site_id = $_COOKIE['partner_id'];
+	if (!$site_id && $sid) $site_id = $sid;
+	if (!intval($event_id) || !intval($user_id)) return;
+	if ($event_id == 1) return false;
+	if (($event_id == PARTNER_EVENT_REG) && (!strval($site_id))) return false;
+
+	if (!$pid) $pid = PARTNER_PID;
+	$param = array(
+		"pid" => $pid,
+		"site_id" => strval($site_id),
+		"event_id" => intval($event_id), 
+		"user_id" => intval($user_id),
+		"val" => $value,
+	);
+	
+	$data = serialize($param);
+	partner_event_buffer_save(array(
+		'type' => PARTNER_TYPE,
+		'ctime' => time_current(),
+		'data' => $data,
+	));
+	
+	if ($event_id == PARTNER_EVENT_REG) partner_markUser('');
+}
+
+function partner_writeEvent($ref, $buffer = false) {
+	if (!$ref && !$buffer) return false;
+	if (!$buffer) $buffer = partner_event_buffer_get($ref);
+	$ar = unserialize($buffer['data']);
+	if (!$ar) return false;
+	$event_id = $ar['event_id'];
+	if (is_numeric($buffer['ctime']) && $buffer['ctime'] > 0) {
+		$ar['time'] = date('Y-m-d', $buffer['ctime']);
+	} 
+	if($event_id != 1) {
+		$hash_out = partner_hash_params($ar, $partner_secret);
+		$request = 'http://'.PARTNER_HOST2.':'.PARTNER_PORT.'/pub/action.php?'.$hash_out;
+		$code = partner_do_request($request);
+		if($code != 'OK') {
+			partner_event_error_log_save(array(
+				'ctime' => time_current(),
+				'request' => $request,
+				'code' => $code,
+				'secret' => $partner_secret
+			));
+		}
+
+		logfile(SERVER_ROOT.PATH_LOGS.'partner.log',"GET http://".PARTNER_HOST2."/pub/action.php?".$hash_out);
+	}
+}
+
+function partner_sendEvent() {
+	$list = partner_event_buffer_list(sql_pholder(' AND type >= ? ORDER BY id LIMIT 0,3000',PARTNER_TYPE));
+	if (!$list) return false;
+	foreach ($list as $item) {
+		partner_writeEvent($item['id'], $item);	
+		partner_event_buffer_delete($item['id']);
+	}
+}
+
+function partner_event_buffer_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_PARTNER_EVENT_BUFFER,$ref,$add);
+}
+
+function partner_event_buffer_list($add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_PARTNER_EVENT_BUFFER,false,$add);
+}
+
+function partner_event_buffer_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_PARTNER_EVENT_BUFFER,$param,FIELD_PARTNER_EVENT_BUFFER);
+}
+
+function partner_event_buffer_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_PARTNER_EVENT_BUFFER,$ref,$add);
+}
+
+function partner_event_error_log_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_PARTNER_EVENT_ERROR_LOG,$ref,$add);
+}
+
+function partner_event_error_log_list($add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_PARTNER_EVENT_ERROR_LOG,false,$add);
+}
+
+function partner_event_error_log_count($add='') {
+	global $db_diff;
+	return common_count($db_diff,TABLE_PARTNER_EVENT_ERROR_LOG,false,$add);
+}
+
+function partner_event_error_log_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_PARTNER_EVENT_ERROR_LOG,$param,FIELD_PARTNER_EVENT_ERROR_LOG);
+}
+
+function partner_event_error_log_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_PARTNER_EVENT_ERROR_LOG,$ref,$add);
+}
+
+
+function partner_hash_params(&$params, &$partner_secret='') {
+	unset($params['hash']);
+	ksort($params);
+
+	$hash_c = '';
+	foreach($params as $key => $value) $hash_c .= "$key=$value&";
+
+	$partner_secret = PARTNER_SECRET;
+	global $PARTNERS_CFG;
+	if (isset($PARTNERS_CFG)) foreach ($PARTNERS_CFG as $id => $cfg) {
+		if ($cfg['partner_secret'] && ($cfg['partner_pid'] == $params['pid'])) {
+			$partner_secret = $cfg['partner_secret'];
+			break;
+		}
+	}
+	$params['hash'] = md5($hash_c.$partner_secret);
+	return "${hash_c}hash=${params[hash]}";
+}
+
+function partner_do_request($request) {
+	$context  = stream_context_create(array('http' => array(
+		'method'  => 'GET',
+		'header'  => 'Content-type: application/x-www-form-urlencoded',
+		'timeout' => PARTNER_TIMEOUT,
+	)));
+	if (!$context) return false;
+	$answer = file_get_contents($request, false, $context);
+	$code = end(explode("\n", trim($answer)));
+	return $code;
+}

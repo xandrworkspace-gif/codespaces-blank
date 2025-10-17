@@ -1,0 +1,172 @@
+<?
+
+require_once("lib/user_stat.lib");
+require_once("lib/money_stat.lib");
+
+//define('LOG_STAT_UNIFORM_ENABLED', 1);// add this in config to enable log stat
+/**
+ * #112491 - Сбор статистики для единой статистической системы
+ * http://task.corp.mail.ru/task/edit/id112491/
+ */
+class log_stat_uniform {
+	static private function _checks() {
+		if (!defined('LOG_STAT_UNIFORM_ENABLED') || !LOG_STAT_UNIFORM_ENABLED)
+			return false;
+		return true;
+	}
+
+	static private function _dir() {
+		return SERVER_ROOT.PATH_LOGS.'stats/';
+	}
+
+	static private function _name($name) {
+		return $name.date('_Ym').'.csv';
+	}
+
+	static private function _log($name, $str) {
+		static $checkdir = null;
+		$dir = self::_dir();
+		if ($checkdir === null) {
+			$checkdir = true;
+			if (!is_dir($dir))
+				$checkdir = mkdir($dir, 0775);
+		}
+		if (!$checkdir)
+			return false;
+		$file = self::_name($name);
+		logfile($dir.$file, $str, false);
+		return true;
+	}
+
+	static private function _datetime() {
+		return time_current();
+	}
+
+	static private function _date($str = null) {
+		if ($str === null)
+			$str = 'today';
+		return strtotime($str);
+	}
+
+	static private function _format($columns) {
+		$str = '';
+		$i = 0;
+		foreach ($columns as $val) {
+			if ($i)
+				$str .= ',';
+			++$i;
+			if (is_numeric($val))
+				$str .= $val;
+			else
+				$str .= '"'.addslashes($val).'"';
+		}
+		return $str;
+	}
+
+	static function login($user) {
+		if (!self::_checks()) return false;
+		$xp = (int)reset(user_stat_skill_get($user['id'], USER_STAT_SKILL_EXP));
+		$str = self::_format(array(
+				self::_datetime(),
+				$user['id'],
+				$user['level'],
+				$xp,
+				$user['money'],
+				$user['money_silver'],
+				$user['money_gold'],
+				));
+		self::_log(__FUNCTION__, $str);
+	}
+
+	static function register($user_id, $partner_id) {
+		if (!self::_checks()) return false;
+		$str = self::_format(array(
+				self::_datetime(),
+				$user_id,
+				$partner_id,
+				));
+		self::_log(__FUNCTION__, $str);
+	}
+
+	static function income($user_id, $sum) {
+		if (!self::_checks()) return false;
+		$str = self::_format(array(
+				self::_datetime(),
+				$user_id,
+				$sum,
+				));
+		self::_log(__FUNCTION__, $str);
+	}
+
+	static function store($user_id, $artikul_id, $cost, $count, $title) {
+		if (!self::_checks()) return false;
+		$str = self::_format(array(
+				self::_datetime(),
+				$user_id,
+				$artikul_id,
+				$cost,
+				$count,
+				$title,
+				));
+		self::_log(__FUNCTION__, $str);
+	}
+
+	static function cashflow_add($user_id, $amount) {
+		if (!self::_checks()) return false;
+		balance_history_save(array(
+				'user_id' => $user_id,
+				'stime' => self::_date(),
+				'earn' => $amount > 0 ? $amount : 0,
+				'spend' => $amount < 0 ? -$amount : 0,
+				'_delayed' => true,
+				'_on_duplicate' => ' earn = earn + VALUES(earn), spend = spend + VALUES(spend) ',
+				));
+	}
+
+	static function cashflow() {
+		if (!self::_checks()) return false;
+		$dir = self::_dir();
+		$file = self::_name(__FUNCTION__);
+		$fn = $dir.$file;
+		$have_file = @file_exists($fn);
+		$file = @fopen($fn, 'a');
+		if (!$file)
+			return false;
+		$stime = self::_date('yesterday');
+		$last_uid = 0;
+		do {
+			$add = sql_pholder(' AND stime = ? AND user_id > ? AND (earn <> 0 OR spend <> 0) ORDER BY user_id LIMIT 1000',
+					$stime, $last_uid);
+			$list = balance_history_list(false, $add, 'user_id, earn, spend');
+			if (empty($list))
+				break;
+			foreach ($list as $item) {
+				$last_uid = max($last_uid, $item['user_id']);
+				$str = self::_format(array(
+						$stime,
+						$item['user_id'],
+						$item['earn'],
+						$item['spend'],
+						))."\n";
+				fwrite($file, $str);
+			}
+		} while (true);
+		fclose($file);
+		if (!$have_file) @chmod($fn, 0664);
+	}
+
+	static function quests($user_id, $quest_id, $point_id, $quest_status, $quest_just_started) {
+		if (!self::_checks()) return false;
+		if ($quest_just_started)
+			$quest_status = 0;
+		$str = self::_format(array(
+				self::_datetime(),
+				$user_id,
+				$quest_id,
+				$point_id,
+				$quest_status,
+				));
+		self::_log(__FUNCTION__, $str);
+	}
+}
+

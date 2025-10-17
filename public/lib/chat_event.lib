@@ -1,0 +1,237 @@
+<?
+
+/*
+ * Суть:
+ * Есть крон проверка, события ежедневные например или через определенный период
+ * Например событие в 21:00
+ * В чат сообщение которое будет указано
+ * Ссылка на переход
+ * В зависимости от условий куда именно переход будет
+ * Переход действует в течении 10 минут или в зависимости от условий
+ */
+
+define('CHAT_EVENT_STATUS_WAITING', 0);
+define('CHAT_EVENT_STATUS_STARTING', 1);
+define('CHAT_EVENT_STATUS_FINISH', 2);
+
+define('TABLE_CHAT_EVENT_ARTIKUL', 'chat_event_artikul');
+
+define('CHAT_EVENT_TYPE_GREAT_BATTLE', 1);
+
+define('CHAT_EVENT_ARTIKUL_FLAG_ACTIVE', 0x0000001);
+define('CHAT_EVENT_ARTIKUL_FLAG_NEXT_TIME', 0x0000002);
+
+$chat_event_artikul_flags_hash = array(
+    CHAT_EVENT_ARTIKUL_FLAG_ACTIVE => 'Событие активно',
+    CHAT_EVENT_ARTIKUL_FLAG_NEXT_TIME => 'Время след. старта (текущее + время запуска)',
+);
+
+$chat_event_type_hash = array(
+    CHAT_EVENT_TYPE_GREAT_BATTLE => 'Великая битва на плато',
+);
+
+function chat_event_artikul_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CHAT_EVENT_ARTIKUL,$ref,$add);
+}
+
+function chat_event_artikul_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_CHAT_EVENT_ARTIKUL,$ref,$add);
+}
+
+function chat_event_artikul_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_CHAT_EVENT_ARTIKUL, $ref, $add);
+}
+
+function chat_event_artikul_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CHAT_EVENT_ARTIKUL,$param);
+}
+
+function chat_event_artikul_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_CHAT_EVENT_ARTIKUL,$ref,$add);
+    return true;
+}
+
+
+function chat_event_cron(){
+    //Работа с не начатами событиями
+    $chat_event_artikul_list = chat_event_artikul_list(false, sql_pholder(' AND status = ? AND flags & ?#CHAT_EVENT_ARTIKUL_FLAG_ACTIVE', CHAT_EVENT_STATUS_WAITING));
+    foreach ($chat_event_artikul_list as $chat_event_artikul){
+        do{
+            if(time_current() < $chat_event_artikul['ctime']) break; //Я сказала стартуем!
+
+            $chat_msg = $chat_event_artikul['chat_msg'];
+            chat_event_msg_reg($chat_msg, $chat_event_artikul['id']);
+
+            chat_msg_send_system($chat_msg, CHAT_CHF_AREA); //Отправим всем.
+
+            chat_event_artikul_save(array(
+                'id' => $chat_event_artikul['id'],
+                'status' => CHAT_EVENT_STATUS_STARTING,
+            ));
+        }while(0);
+    }
+    //Работа с начатами событиями
+    $chat_event_artikul_list = chat_event_artikul_list(false, sql_pholder(' AND status = ? AND flags & ?#CHAT_EVENT_ARTIKUL_FLAG_ACTIVE', CHAT_EVENT_STATUS_STARTING));
+    foreach ($chat_event_artikul_list as $chat_event_artikul){
+        do{
+            if($chat_event_artikul['ctime'] + $chat_event_artikul['time_active'] > time_current()) break;
+
+            $chat_msg2 = $chat_event_artikul['chat_msg2'];
+            if($chat_msg2) {
+                chat_event_msg_reg($chat_msg2, $chat_event_artikul['id']);
+                chat_msg_send_system($chat_msg2, CHAT_CHF_AREA); //Отправим всем.
+            }
+            chat_event_artikul_save(array(
+                'id' => $chat_event_artikul['id'],
+                'ctime' => ($chat_event_artikul['flags'] & CHAT_EVENT_ARTIKUL_FLAG_NEXT_TIME ? time_current() + $chat_event_artikul['ptime'] : (mktime(0,0,0) + 86400) + $chat_event_artikul['ptime']),
+                'status' => CHAT_EVENT_STATUS_WAITING,
+            ));
+        }while(0);
+    }
+}
+
+function chat_event_msg_reg(&$chat_msg, $chat_event_id){
+    preg_match("/#[^#<>]+#/",$chat_msg,$matches);
+    if($matches[0]){
+        preg_match("/#(\w+)(\[(.+)\])?#/",$matches[0],$_matches);
+        switch ($_matches[1]){
+            case 'MACRO_BUTTON':
+                $butt_title = $_matches[3];
+                $butt = html_button($butt_title, 'butt1', 'button', false, array('add' => ' onclick="top.frames[\'main_frame\'].frames[\'main_hidden\'].location.href = \'chat_event.php?event_id='.$chat_event_id.'\'; return false;" ',));
+                $chat_msg = str_replace($matches[0], $butt, $chat_msg);
+                break;
+        }
+    }
+}
+
+function fight_start_chat_event($fight, $pers_data, $param=false, $user_hash = array()) {
+    global $fscl;
+
+    if (!$fight || !$pers_data) return false;
+
+    $fight_id = fight_generate_fight_id();
+
+    $fight_id = intval($fight_id);
+    if (!$fight_id) return false;
+
+    // creating fight
+    $fight['title'] = translate('Событие Великой битвы');
+    $fight['flags'] = intval($fight['flags']) | intval($param['fight_flags']);
+    $flags = FIGHT_FLAG_PRIVATE | FIGHT_FLAG_NO_BREAK;
+    fight_save(array(
+        '_mode' => CSMODE_INSERT,
+        'id' => $fight_id,
+        'area_id' => $fight['area_id'],
+        'instance_id' => 0,
+        'title' => $fight['title'],
+        'type' => FIGHT_TYPE_GROUP,
+        'status' => FIGHT_STATUS_PENDING,
+        'timeout' => 12,
+        'level_min' => intval($fight['level_min']),
+        'level_max' => intval($fight['level_max']),
+        'team_max' => intval($fight['team_max']),
+        'flags' => $flags,
+        'ctime' => time_current(),
+    ));
+
+    $fight = fight_get($fight_id);
+
+    if (!$fight_id) {
+        error_log("[fight_start]: Can't create a new fight in DB!");
+        return false;
+    }
+    $answer = null;
+    $fscl->sendCommand(FS_SCCT_CREATE_FIGHT,$fight_id);
+    if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+        error_log(sprintf("[fight_start]: FS STATUS=%d: Can't create fight! (fight_id=%d)",$status,$fight_id));
+        return false;
+    }
+    $fscl->sendCommand(FS_SCCT_SET_FIGHT_PARAMS,$fight_id,intval($fight['timeout']),0);
+    if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+        error_log(sprintf("[fight_start]: FS STATUS=%d: Can't set fight params! (fight_id=%d)",$status,$fight_id));
+        return false;
+    }
+
+    if(is_array($param) && isset($param['lua_params'])){
+        $lua_params = fight_lua_params($param['lua_params']);
+        $fscl->sendCommand(FS_SCCT_SET_PARAMS_LUA, $fight_id, 'Fight', $lua_params);
+        if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+            error_log(sprintf("[fight_start]: FS STATUS=%d: Can't set lua params! (fight_id=%d)",$status,$fight_id));
+            return false;
+        }
+    }
+
+    // loading personages
+    $user_ids = array();
+    $bot_ids = array();
+
+    // вначале добавляем персонажей-людей
+    foreach ($pers_data as $item) {
+        if ($item['user_id']) {
+            if (!fight_bind($fight,$item['user_id'],$item['team'],$param)) {
+                error_log("[fight_start]: fight_bind() failed!");
+                return false;
+            }
+            $user_ids[] = $item['user_id'];
+        }
+    }
+
+    // starting fight
+    $fscl->sendCommand(FS_SCCT_START_FIGHT,$fight_id);
+    if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+        error_log(sprintf("[fight_start]: FS STATUS=%d: Can't start fight! (fight_id=%d)",$status,$fight_id));
+        return false;
+    }
+    $fight['id'] = $fight_id; // Чтобы fight_level_get нормально отработал
+    fight_save(array(
+        'id' => $fight_id,
+        'status' => FIGHT_STATUS_RUNNING,
+        'user_cnt' => count($user_ids) + count($bot_ids),
+        'level' => intval(fight_level_get($fight)),
+    ));
+    user_bulk_update($user_ids,'fight_id',$fight_id);
+    if ($user_ids) {
+        // Сбрасывание длительного действия
+        session_save(array(
+            '_add' => sql_pholder(' AND uid IN (?@)',$user_ids),
+            '_set' => 'action_id=0,ltime=0'
+        ));
+    }
+    bot_bulk_update($bot_ids,'fight_id',$fight_id);
+
+    if (!$param['no_chat_msg']) {
+        if (empty($user_hash)) {
+            $user_hash = $user_ids ? make_hash(user_list(array('id' => $user_ids))) : array();
+        }
+        foreach ($user_hash as $user) {
+            if ($user['language']) translate_default_language_push($user['language']);
+            chat_msg_send_system(sprintf(translate('Начался бой "<a href="#" onClick="showFightInfo(%d,%d);return false;"><b>%s</b></a>".'),$fight_id,SERVER_ID,htmlspecialchars($fight['title'])),CHAT_CHF_USER,$user['id']);
+            if ($user['language']) translate_default_language_pop();
+        }
+    }
+
+    $chat_param = array(
+        'func' => 'fightRedirect('.$fight_id.($param['fight_delay'] ? ', '.($param['fight_delay']*1000) : '').')',
+    );
+    // если Пользователь проходит плавную регистрацию установить время жизни fightRedirect
+    if ($param['soft_reg']) $chat_param['dead_time'] = time_current()+SOFT_REG_FIGHT_REDIRECT_TTL;
+    chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$user_ids,$chat_param);
+    return $fight_id;
+}
+
+function chat_event_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('CHAT_EVENT_USER_'.intval($ref),$timewait,$timelock);
+}
+
+function chat_event_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('CHAT_EVENT_USER_'.intval($ref));
+}

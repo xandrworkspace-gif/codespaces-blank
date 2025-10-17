@@ -1,0 +1,33 @@
+<?php
+// Имена и поля таблиц
+define('TABLE_STAT_USER_ONLINE', 'stat_user_online');
+define('FIELD_STAT_USER_ONLINE', '');
+
+define(STAT_USER_ONLINE_TTL, 3*86400); //3-е суток
+
+function stat_user_online_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_STAT_USER_ONLINE, $ref, $add);
+}
+
+function stat_user_online_list($ref=false, $add='', $field_list='*') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_STAT_USER_ONLINE, $ref, $add, $field_list);
+}
+
+function stat_user_online_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_STAT_USER_ONLINE, $ref, $add);
+}
+
+function stat_user_online_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_STAT_USER_ONLINE, $param, FIELD_STAT_USER_ONLINE);
+}
+
+function stat_user_online_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff, TABLE_STAT_USER_ONLINE, $ref, $add);
+}
+
+//END

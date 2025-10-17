@@ -1,0 +1,290 @@
+<?
+require_once("include/common.inc");
+require_once("include/constant.inc");
+require_once("lib/common.lib");
+require_once("lib/session.lib");
+require_once("lib/bot.lib");
+require_once("lib/bonus.lib");
+require_once("lib/html.lib");
+require_once("lib/user.lib");
+require_once("lib/area.lib");
+require_once("lib/artifact.lib");
+require_once("lib/action.lib");
+require_once("lib/farm.lib");
+require_once("lib/skill.lib");
+require_once("tpl/artifact.tpl");
+require_once("tpl/common.tpl");
+
+$server_name_url = SERVER_URL;
+$default = 1;
+
+
+function GetSkillHash($array) {
+    $temp = array();
+    foreach ($array as $arr) {
+        $temp[$arr['skill_id']] = $arr;
+    }
+    return $temp;
+}
+
+/* echo "<pre>";
+print_r(GetSkillHash($bot_artikul_skills));
+echo "</pre>"; */
+
+function pwrmin($lvl, $comp, $value, $str_value) {
+    $va = $value / 10 + get_strpwr($lvl, $str_value);
+    return $va;
+}
+
+function pwrmax($lvl, $comp, $value, $str_value) {
+    $va = $value / 10 + get_strpwr($lvl, $str_value);
+    return $va;
+}
+
+function get_strpwr($lvl, $str) {
+    if ($debug) {
+        echo "LEVEL = " . min($lvl, 10) . "<br>";
+        echo "COMP = " . _comp(min($lvl, 10), _X0) . "<br>";
+        echo "STR = " . $str . "<br>";
+    }
+    return (_comp(min($lvl, 10), _X0) * (1 - _IComp) + $str) * _Xs;
+}
+
+function get_hpmax($lvl, $vit, $art = false) {
+    return intval(round(($vit + _comp($lvl, _V0) * (1 - _IComp)) * _Vs * ($art ? 1 : _decHP)));
+}
+
+function drop(&$artifact_hash, $id, $user = 0) {
+    $item_list = bonus_item_list($id);
+    if (!$item_list) {
+        return;
+    }
+    common_fldsort($item_list);
+    $item_keys = array();
+    $drop_keys = array();
+    $weight_sum = 0;
+
+    $check_object_list = array();
+
+    if ($user != 0) {
+        $cur_object = $user;
+        restriction_get_dependent($cur_object, $check_object_list);
+    }
+
+    foreach ($item_list as $k => $item) {
+        $item_keys[] = $k;
+        $drop_keys[] = $k;
+        $weight_sum += $item['drop_weight'];
+    }
+    foreach ($item_keys as $k) {
+        $item = $item_list[$k];
+        $item['object_class'] = OBJECT_CLASS_BONUS_ITEM;
+        if ($user != 0) {
+            if (!bonus_item_stat_check($item)) continue;
+            $out_restriction = restriction_check(0, array($item), $check_object_list);
+            if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) {
+                bonus_item_stat_rollback($item);
+                continue;
+            }
+        }
+        switch ($item['type']) {
+            case 'NOTHING':
+                break;
+
+            case 'BONUS_PARTY':    // выдать бонус этому объекту
+                drop($artifact_hash, $item["field"], $user); // Рекурсия дла прохода
+                break;
+
+            case 'BONUS':    // выдать бонус этому объекту
+                drop($artifact_hash, $item["field"], $user);  // Рекурсия дла прохода
+                break;
+
+            case 'ARTIFACT':    // артефакт
+                $artifact = artifact_artikul_get($item['field']);
+                if (!$artifact_hash[$artifact['id']]) { // Исключаем уже имеющиеся в списке предметы
+                    if ($artifact['picture']) {
+                        $artifact_hash[$artifact['id']] = $artifact;
+                    }
+                }
+                break;
+        }
+    }
+}
+
+global $db_info;
+function generate_cache_bestiary() {
+    set_time_limit(0);
+    /*ini_set('error_reporting', E_ERROR);
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);*/ global $db, $db_info;
+    if (!(defined('BESTIARY_CACHE_GEN') && BESTIARY_CACHE_GEN)) {
+        return false;
+    }
+    common_truncate($db_info, 'bestiary'); //Очистка
+    common_save_settings(array('BESTIARY_CACHE_GEN' => ''));
+    $add = sql_pholder(' AND flags & ' . BOT_FLAG_BESIARY); //
+    $list = bot_artikul_list(false, $add);
+    common_fldsort($list, false, 'level');
+    foreach ($list as $bot_lib) {
+        if ($bot_lib['picture'] != "") {
+            //Если не генерим кеш
+            //Генерация кеша и вывод одновременно
+            $artifacts_hash = array();
+            ob_start();
+            $bot_artikul_skills = skill_object_list(OBJECT_CLASS_BOT_ARTIKUL, $bot_lib['id']);
+            $skills = GetSkillHash($bot_artikul_skills);
+            ?>
+            <tr>
+                <td align="center" class="brd3-r brd3-bt" style="padding: 4px;">
+                    <a onclick="showBotInfo(false,<?= $bot_lib['id'] ?>); return false;"><img
+                                src="/<?= PATH_IMAGE_BOTS . $bot_lib['picture'] ?>" title="<?= $bot_lib['nick'] ?>"
+                                alt="<?= $bot_lib['nick'] ?>" height="60" width="60"></a>
+                    <div style="min-height: 10px;">
+                        <b><?= $bot_lib['nick'] ?> [<?= $bot_lib['level'] ?>]</b> <a href="#"
+                                                                                     onclick="showBotInfo(false, <?= $bot_lib['id']; ?>);return false;"><img
+                                    src="/images/player_info.gif" border="0"
+                                    align="absmiddle"></a>
+                    </div>
+                </td>
+                <td align="center" class="brd3-bt brd3-r" rowspan="3">
+                    <br><br>
+                    Жизнь<br>
+                    <? $skills = GetSkillHash($bot_artikul_skills);
+                    echo max(get_hpmax($bot_lib['level'], $skills['VIT']['value']) + intval($skills['XHPMAX']['value']), 1);
+                    ?>
+                    <br>
+                    Урон<br>
+                    <?
+                    echo pwrmin($bot_lib['level'], true, $skills['PWRMIN']['value'], $skills['STR']['value']);
+                    echo " -.- ";
+                    echo pwrmax($bot_lib['level'], true, $skills['PWRMAX']['value'], $skills['STR']['value']);
+                    ?>
+                </td>
+                <td align="center" class="brd3-bt brd2-r bot-info-money" rowspan="3" style="padding: 8px;">
+                    От <br> <?= html_money_str(MONEY_TYPE_GAME, $bot_lib['money_min']); ?> <br>
+                    <br>
+                    До <br><?= html_money_str(MONEY_TYPE_GAME, $bot_lib['money_max']); ?>    </td>
+                <td align="center" class="brd3-bt brd2-r bot-info-money" rowspan="3" style="padding: 8px;">
+                    <?
+                    $data_loc = '';
+                    if (!$bot_lib['hunt']) {
+                        echo "<b>Монстра не найти на локациях.</b>";
+                    } else {
+                        $area_bot = make_hash(area_bot_list(false, ' AND bot_artikul_id = ' . $bot_lib['id']), 'area_id');
+                        if ($area_bot) {
+                            $area_list = make_hash(area_list(array('id' => array_keys($area_bot))), 'id');
+                            foreach ($area_bot as $area_id => $bot_ar) {
+                                if ($area_list[$area_id]['flags'] & AREA_FLAG_NO_INVISIBLE_MAGMAR) {
+                                    //Локация хумов
+                                    ?><img src="images/ico_human.gif" alt=""
+                                           align="top">&nbsp; <? echo '<a class="b" onClick="showMsg(\'navigator.php?name='.htmlspecialchars($area_list[$area_id]['title']).'\',\'Навигатор\',560,423);return false;">' . $area_list[$area_id]['title'] . '</a><br>';
+                                    $data_loc .= $area_list[$area_id]['title'] . ' ';
+                                }
+                                if ($area_list[$area_id]['flags'] & AREA_FLAG_NO_INVISIBLE_HUMAN) {
+                                    //Локация магов
+                                    ?><img src="images/ico_magmar.gif" alt=""
+                                           align="top">&nbsp; <? echo '<a class="b" onClick="showMsg(\'navigator.php?name='.htmlspecialchars($area_list[$area_id]['title']).'\',\'Навигатор\',560,423);return false;">' . $area_list[$area_id]['title'] . '</a><br>';
+                                    $data_loc .= $area_list[$area_id]['title'] . ' ';
+                                }
+                                if (!($area_list[$area_id]['flags'] & AREA_FLAG_NO_INVISIBLE_HUMAN) && !($area_list[$area_id]['flags'] & AREA_FLAG_NO_INVISIBLE_MAGMAR)) {
+                                    //Локация нейтралитета
+                                    echo '<a class="b" onClick="showMsg(\'navigator.php?name='.htmlspecialchars($area_list[$area_id]['title']).'\',\'Навигатор\',560,423);return false;">' . $area_list[$area_id]['title'] . '</a><br>';
+                                    $data_loc .= $area_list[$area_id]['title'] . ' ';
+                                }
+                            }
+                        } else {
+                            echo "<b>Монстра не найти на локациях.</b>";
+                        }
+                    }
+                    ?>
+                </td>
+            </tr>
+
+            <tr align="center">
+            <tr align="center">
+                <td class="brd2-bt brd2-r" height="48" style="padding: 8px;"><a href="#"
+                                                                                style="border-bottom: 1px dashed; text-decoration: none;"
+                                                                                onclick=" $('[data-id=bot-drop-<?= $bot_lib['id'] ?>]').toggle(); return false;">Подробнее
+                        о возможной награде</a></td>
+
+            </tr>
+            </tr>
+            <tr data-id="bot-drop-<?= $bot_lib['id'] ?>" style="display: none;">
+                <td class="brd2-bt" colspan="4" style="padding: 8px;">
+                    <summary style="z-index: 1;" id="mob<?= $bot_lib['id'] ?>">
+                        <?
+                        global $user_backpack_groups, $quality_info;
+                        $kinds = make_hash(artifact_kind_list(false), 'backpack_group_id', true);
+                        drop($artifacts_hash, $bot_lib['bonus_id']);
+                        $artifacts_hash = make_hash($artifacts_hash, 'kind_id', true);
+                        $artifacts_hash_new = array();
+                        $count = 0;
+                        $artifact_list = array();
+                        foreach ($kinds as $backpack_id => $kinds) {
+                            foreach ($kinds as $kind) {
+                                foreach ($artifacts_hash[$kind['id']] as $k => $artifact) {
+                                    $artifacts_hash[$kind['id']][$k]['backpack_group_id'] = $backpack_id;
+                                    $artifacts_hash_new[$backpack_id][$artifact['id']] = $artifact;
+                                    $artifact_list[$artifact['id']] = $artifact;
+                                    $count++;
+                                }
+                            }
+                        }
+                        $count += count($artifacts_hash_new);
+                        $cnt_razdel = intval($count / 2);
+                        $i = 0;
+
+                        tpl_artifact_alt_prepare($artifact_list);
+                        foreach ($artifact_list as $artifact) tpl_artifact_alt($artifact);
+
+                        foreach ($artifacts_hash_new
+
+                        as $backpack_id => $artifacts){
+                        if ($i == 0){
+                        ?>
+                        <div style="float: left;"><?
+                            }
+                            echo "<b>- " . (!$user_backpack_groups[$backpack_id]['title'] ? 'Прочее' : $user_backpack_groups[$backpack_id]['title']) . ' -</b><br>';
+                            foreach ($artifacts
+
+                            as $artifact) {
+                            echo "<span onmouseover='artifactAltSimple(\"" . $artifact['id'] . "\", 2, event);' onmouseout='artifactAltSimple(\"" . $artifact['id'] . "\", 0, event);' onclick='showArtifactInfo(false," . $artifact['id'] . ");' style='cursor:pointer;'><b style='color:" . $quality_info[$artifact['quality']]['color'] . ";'>" . $artifact['title'] . '</b></span><br>';
+                            $i++;
+                            if ($i == $cnt_razdel){
+                            ?></div>
+                        <div style="float: left;margin-left: 60px;"><?
+                            }
+                            }
+                            $i++;
+                            if ($i == $cnt_razdel){
+                            ?></div>
+                        <div style="float: left;margin-left: 60px;"><?
+                            }
+                            } ?>
+                        </div>
+                        <script>
+                            var loaded<?=$bot_lib['id']?> = false;
+                        </script>
+                    </summary>
+                </td>
+            </tr>
+
+
+            <?
+            $text = ob_get_contents();
+            common_save($db_info, 'bestiary', array(
+                '_mode' => CSMODE_REPLACE,
+                'level' => $bot_lib['level'],
+                'nick' => $bot_lib['nick'],
+                'data_loc' => $data_loc,
+                'id' => $bot_lib['id'],
+                'bot_info' => $text
+            ));
+            ob_end_clean(); // -- КОгда нужно вывести
+            ob_clean();
+            flush();
+        }
+    }
+}
+
+?>

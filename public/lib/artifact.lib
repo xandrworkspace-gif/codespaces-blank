@@ -1,0 +1,2019 @@
+<? # $Id: artifact.lib,v 1.133 2010-02-13 14:18:19 p.knoblokh Exp $
+
+// Имена и поля таблиц
+define('TABLE_ARTIFACT_NOTES','artifact_notes');
+define('FIELD_ARTIFACT_NOTES','');
+define('TABLE_ARTIFACT_TYPES','artifact_types');
+define('FIELD_ARTIFACT_TYPES','');
+define('TABLE_ARTIFACT_TYPES_BAFS','artifact_types_bafs');
+define('FIELD_ARTIFACT_TYPES_BAFS','');
+define('TABLE_ARTIFACT_KINDS','artifact_kinds');
+define('FIELD_ARTIFACT_KINDS','');
+define('TABLE_ARTIFACT_GROUPS','artifact_groups');
+define('FIELD_ARTIFACT_GROUPS','');
+define('TABLE_ARTIFACT_SETS','artifact_sets');
+define('FIELD_ARTIFACT_SETS','');
+define('TABLE_ARTIFACT_CD_GROUPS','artifact_cd_groups');
+define('FIELD_ARTIFACT_CD_GROUPS','');
+define('TABLE_ARTIFACT_EFFECTS','	artifact_artikul_effects');
+define('FIELD_ARTIFACT_EFFECTS','');
+
+define('TABLE_ARTIFACT_RANDOM_SKILL', 'artifact_random_skill');
+
+define('TABLE_ARTIFACT_SUBGROUP', 'artifact_subgroup');
+define('TABLE_ARTIFACT_PICGEM','artifact_picgem');
+
+define('TABLE_ARTIFACT_MEDAL_TITLE', 'artifact_medal_title');
+define('TABLE_ARTIFACT_RESTRICTIONS_TITLE', 'artifact_restrictions');
+
+define('TABLE_ARTIFACT_SELL', 'artifacts_sell');
+define('FIELD_ARTIFACT_SELL', '');
+
+define('TABLE_ARTIFACT_SELL_BASE', 'artifacts_drop');
+define('TABLE_ARTIFACT_AUTO_DROP', 'artifact_auto_drop');
+define('TABLE_ARTIFACT_AUTO_DROP_STAT', 'artifact_auto_drop_stat');
+
+define('ARTIFACT_DROP_MAX_CNT', 5);
+
+$ARTIFACT_DROP_MAX_CNT = array(
+    0 => 1,
+    1 => 10,
+    2 => 20,
+    3 => 30,
+    4 => 40,
+    5 => 50,
+);
+
+define('ARTIFACT_DROP_FLAG_DROP',           1); //Выкидывать вещь
+define('ARTIFACT_DROP_FLAG_SELL',           2); //Продавать вещь
+define('ARTIFACT_DROP_FLAG_DROP_NO_SELL',   3); //Выкинуть если невозможно продать
+define('ARTIFACT_DROP_FLAG_USE',            4); //Использовать
+define('ARTIFACT_DROP_FLAG_SELL_NO_USE',    5); //Продать если невозможно использовать
+define('ARTIFACT_DROP_FLAG_DROP_NO_USE',    6); //Выкинуть если невозможно использовать
+define('ARTIFACT_DROP_DISENCHANT',          7); //Разрушить вещь
+define('ARTIFACT_DROP_DISENCHANT2',         8); //Раздробить вещь
+
+$artifact_drop_action_hash = array(
+    ARTIFACT_DROP_FLAG_DROP => 'Выкинуть вещь',
+    ARTIFACT_DROP_FLAG_SELL => 'Продать вещь',
+    ARTIFACT_DROP_FLAG_DROP_NO_SELL => 'Продавать вещь и Выкинуть, если невозможно продать',
+    ARTIFACT_DROP_DISENCHANT => 'Разрушить вещь',
+    ARTIFACT_DROP_DISENCHANT2 => 'Раздробить вещь',
+    /*
+    ARTIFACT_DROP_FLAG_USE => 'Использовать вещь',
+    ARTIFACT_DROP_FLAG_SELL_NO_USE => 'Использовать вещь и Продать, если невозможно использовать',
+    ARTIFACT_DROP_FLAG_DROP_NO_USE => 'Использовать вещь и Выкинуть, если невозможно использовать',
+    */
+);
+
+define('ARTIFACT_CREATE_FIELDS','type_id, type_bafs_id, backgroup_id, picture_gem, subgroup_id, kind_id, durability, durability_max, cnt, flags, flags2, param1, param2');
+
+// Флаги артефактов
+define('ARTIFACT_FLAG_GIFT',        		0x000001); // Подарок
+define('ARTIFACT_FLAG_COLLAPSE',    		0x000002); // Схлопывание одинаковых
+define('ARTIFACT_FLAG_HIDDEN',      		0x000004); // Скрытый
+define('ARTIFACT_FLAG_NOWEIGHT',    		0x000008); // Невесомый
+define('ARTIFACT_FLAG_EXTERNAL',    		0x000010); // Показывать во внешнем рюкзаке
+define('ARTIFACT_FLAG_NOGIVE',      		0x000020); // Нельзя передавать
+define('ARTIFACT_FLAG_WEAPON',      		0x000040); // Оружие
+define('ARTIFACT_FLAG_LAYERPRIO',   		0x000080); // Приоритет слоя
+define('ARTIFACT_FLAG_USE',         		0x000100); // Использовать
+define('ARTIFACT_FLAG_BOE',         		0x000200); // Binds on equip
+define('ARTIFACT_FLAG_NOSELL',      		0x000400); // Нельзя сдавать в скупку
+define('ARTIFACT_FLAG_NODROP',      		0x000800); // Нельзя выкинуть
+define('ARTIFACT_FLAG_DURAB30',             0x0001000); // 30% прочности
+define('ARTIFACT_FLAG_DELONDEATH',          0x0002000); // Удалить при смерти
+define('ARTIFACT_FLAG_FIGHTONCE',           0x0004000); // Использовать 1 раз за бой
+define('ARTIFACT_FLAG_INJURE_DROP',         0x0008000); // Сбрасывать при травме
+define('ARTIFACT_FLAG_STAT',                0x0010000); // Писать статистику по этому предмету
+define('ARTIFACT_FLAG_STAT_COUNT',          0x0020000); // Вести статистику по произведенным предметам (количество в игре)
+define('ARTIFACT_FLAG_NOAUCTION',           0x0040000); // Нельзя продавать на аукционе
+define('ARTIFACT_FLAG_CHANGE',              0x0080000); // Только для обмена
+define('ARTIFACT_FLAG_WEIGHT_COLLAPSED',    0x0100000); // Вес зависит от количества
+define('ARTIFACT_FLAG_CREATED_IN_INSTANCE',	0x0200000); // Предмет создан в БГ (для снятия негативных эффектов)
+define('ARTIFACT_FLAG_CLAN_THING',      	0x0800000); // Клановая вещь: нельзя передать, но можно положить в клановую ячейку
+define('ARTIFACT_FLAG_GLOBAL_COOLDOWN',     0x1000000); // Глобальный кулдаун
+define('ARTIFACT_FLAG_DELAFTERFIGHT',       0x2000000); // Удалить после боя
+define('ARTIFACT_FLAG_ACTING_GUARD',        0x4000000); // Жетон стража
+define('ARTIFACT_FLAG_ARMOR_STYLE',         0x8000000); // Доспех стиля
+define('ARTIFACT_FLAG_CANT_BROKEN',         0x10000000); // Нельзя сломать
+define('ARTIFACT_FLAG_CANT_CRUSHED',        0x20000000); // Нельзя раздробить
+define('ARTIFACT_FLAG_CANT_FREEZE',         0x40000000); // Предмет нельзя заморозить
+
+
+define('ARTIFACT_FLAG2_EFFECT_UNLIMIT',      0x000001); // Продлевать эффект
+define('ARTIFACT_FLAG2_CAN_SMOL',            0x000002); // Предмет можно укрепить смолой
+define('ARTIFACT_FLAG2_NO_BREAK',            0x000004); // Укреплен смолой
+define('ARTIFACT_FLAG2_CUSNICA_USE',         0x000008); // Использован в кузнице
+define('ARTIFACT_FLAG2_LEGENDARY',           0x000010); // Легендарный предмет
+define('ARTIFACT_FLAG2_TITLE_ON_A',          0x000020); // Параметры с артикула (Название)
+define('ARTIFACT_FLAG2_COMPANION',           0x000040); // Вещь компаньона (Тень)
+define('ARTIFACT_FLAG2_MANY_USE',            0x000080); // Автоматическое использование предмета
+define('ARTIFACT_FLAG2_WEAPON_2H',           0x000100); // Двуручное оружие (Тень)
+define('ARTIFACT_FLAG2_SHADOW_TR',           0x000200); // Предмет может быть преобразован в теневой
+define('ARTIFACT_FLAG2_RUNIC_FRAME',         0x000400); // На предмет наложена руническая оправа
+define('ARTIFACT_FLAG2_NOTIFY_EXPIRE',       0x000800); // Игрок открыл или пометил уведомленным о пропаже
+define('ARTIFACT_FLAG2_TEMP_EFFECT_HIDE',    0x001000); // Временный эффект скрыт
+define('ARTIFACT_FLAG2_SOCKET',              0x002000); // Самоцвет
+
+//Зарезервированные 0x001000 и 0x002000
+define('ARTIFACT_FLAG2_ZTOCH_TITLE',         0x004000); // Системный флаг(не ставится только юзается в коде)
+define('ARTIFACT_FLAG2_BACKPACK_SKILL',      0x008000); //Предмет дает характеристики при нахождении в рюкзаке
+define('ARTIFACT_FLAG2_RUNEWORD',            0x010000); // Рунворд
+define('ARTIFACT_FLAG2_SET_CHAMELION',        0x020000); //Предмет Хамелион сетов (не сбивает сетовые вещи)
+define('ARTIFACT_FLAG2_MAKE_STYLE',        0x700000); //Предмет может стать стилевым
+
+
+
+// Типы записей на артефактах
+define('ARTIFACT_NOTE_TYPE_GIFT', 0);	 // Подарок или кольцо
+define('ARTIFACT_NOTE_TYPE_ENGRAVE', 1); // Гравировка
+
+define('ARTIFACT_RESTRICTIONS_FLAG_ACTION_PUTON', 0x000001); //Применять ограничения на действие одеть
+define('ARTIFACT_RESTRICTIONS_FLAG_MARKET', 0x000002); //Применять ограничения на покупку в магазине
+
+$artifact_restrictions_flags_hash = array(
+    ARTIFACT_RESTRICTIONS_FLAG_ACTION_PUTON => 'Применять ограничения на действие одеть',
+    ARTIFACT_RESTRICTIONS_FLAG_MARKET => 'Применять ограничения на покупку во всех магазинах',
+);
+
+// Маски конфигурации артефакта по частям персонажа
+define('ARTIFACT_PPT_HD1', 0x000001);
+define('ARTIFACT_PPT_HD2', 0x000002);
+define('ARTIFACT_PPT_BD1', 0x000004);
+define('ARTIFACT_PPT_BD2', 0x000008);
+define('ARTIFACT_PPT_RH1', 0x000010);
+define('ARTIFACT_PPT_RH2', 0x000020);
+define('ARTIFACT_PPT_RH3', 0x000040);
+define('ARTIFACT_PPT_LH1', 0x000080);
+define('ARTIFACT_PPT_LH2', 0x000100);
+define('ARTIFACT_PPT_LH3', 0x000200);
+define('ARTIFACT_PPT_RL1', 0x000400);
+define('ARTIFACT_PPT_RL2', 0x000800);
+define('ARTIFACT_PPT_RL3', 0x001000);
+define('ARTIFACT_PPT_LL1', 0x002000);
+define('ARTIFACT_PPT_LL2', 0x004000);
+define('ARTIFACT_PPT_LL3', 0x008000);
+define('ARTIFACT_PPT_RW',  0x010000);	// левое оружие
+define('ARTIFACT_PPT_LW',  0x020000);	// правое оружие
+define('ARTIFACT_PPT_MW',  0x040000);	// среднее оружие
+define('ARTIFACT_PPT_BN',  0x080000); // клановое знамя
+define('ARTIFACT_PPT_BOW', 0x100000); // лук
+
+// Предел проверки сета
+define('ARTIFACT_SET_MINCOUNT', 5);
+define('ARTIFACT_SET_MAXCOUNT', 9);
+
+// Длина надписи для гравировки
+
+define('ARTIFACT_ENGRAVE_LENGTH', 100);
+
+// Кол-во улучшения руны для апгрейда. Хранится в Param2
+define('ARTIFACT_RUNE_UPGRADE_AMOUNT', 10000);
+
+define('ARTIFACT_TOCH_MAX', 10);
+define('ARTIFACT_MIRAGE_ARTIKUL_ID', 382); //OLD 382
+
+define('ARTIFACT_ZTOCH_TRANSFER_ID', 386);
+define('ARTIFACT_ZTOCH_TRANSFER_CNT', 1);
+
+global $artifact_ztoch_modificator, $artifact_ztoch_cry, $artifact_ztoch_cry_cnts, $ztoch_type_skills, $ztoch_skills;
+
+$ztoch_type_skills = array(
+    'BODY' => 1,'ARMOR' => 1,'RHAND' => 2,'SHOULDER' => 1,'HEAD' => 1,'GLOVE' => 1,'LHAND' => 2,'LEG' => 1,'FOOT' => 1, 'BOW' => 2, 'RING' => 1,
+);
+$ztoch_skills = array(
+    1 => array(
+        1 => array('XHPMAX' => 2,),
+        2 => array('XHPMAX' => 4,),
+        3 => array('XHPMAX' => 6,),
+        4 => array('XHPMAX' => 8,),
+        5 => array('XHPMAX' => 10,),
+        6 => array('XHPMAX' => 12,),
+        7 => array('XHPMAX' => 14,),
+        8 => array('XHPMAX' => 16,),
+        9 => array('XHPMAX' => 18,),
+        10 => array('XHPMAX' => 20,),
+        11 => array('XHPMAX' => 22,),
+        12 => array('XHPMAX' => 24,),
+    ),
+    2 => array(
+        1 => array('STR' => 1,),
+        2 => array('STR' => 2,),
+        3 => array('STR' => 3,),
+        4 => array('STR' => 4,),
+        5 => array('STR' => 5,),
+        6 => array('STR' => 6,),
+        7 => array('STR' => 7,),
+        8 => array('STR' => 8,),
+        9 => array('STR' => 9,),
+        10 => array('STR' => 10,),
+        11 => array('STR' => 11,),
+        12 => array('STR' => 12,),
+    ),
+);
+
+function ztoch_skills($artifact = array(), $slot_id = false){
+    if(!$slot_id) return false;
+    if(!$artifact['toch']){ return false; }
+    global $ztoch_type_skills, $ztoch_skills;
+    $type_id = $ztoch_type_skills[$slot_id];
+    if(!$type_id) return false;
+    $skills = $ztoch_skills[$type_id][$artifact['toch']];
+    return ($skills ? $skills : false);
+}
+
+$artifact_ztoch_modificator = array(
+    0 => array(
+        'force_reset' => true,
+        'chance' => array(
+            0 => 5500,
+            1 => 2500,
+            2 => 1000,
+            3 => 400,
+            4 => 166,
+            5 => 76,
+            6 => 50,
+            7 => 20,
+            8 => 5,
+            9 => 1,
+        ),
+    ),
+    383 => array( //Зеленый
+        'force_reset' => false,
+        'chance' => array(
+            0 => 10000,
+            1 => 4000,
+            2 => 3500,
+            3 => 3500,
+            4 => 3000,
+            5 => 2600,
+            6 => 2300,
+            7 => 1800,
+            8 => 1500,
+            9 => 1000,
+        ),
+    ),
+    384 => array( //Синий
+        'force_reset' => true,
+        'chance' => array(
+            0 => 10000,
+            1 => 4000,
+            2 => 3500,
+            3 => 3500,
+            4 => 3000,
+            5 => 2600,
+            6 => 2300,
+            7 => 1800,
+			//7 => 10000,
+            8 => 1500,
+			//8 => 10000,
+            9 => 1000,
+        ),
+    ),
+    385 => array( //Фиолетовый
+        'force_reset' => true,
+        'chance' => array(
+            0 => 10000,
+            1 => 10000,
+            2 => 10000,
+            3 => 3500,
+            4 => 3000,
+            5 => 2600,
+            6 => 2300,
+            7 => 1800,
+            8 => 1500,
+            9 => 1000,
+        ),
+    ),
+    /*386 => array( //Красный
+        'force_reset' => true,
+        'chance' => array(
+            0 => 10000,
+            1 => 10000,
+            2 => 10000,
+            3 => 10000,
+            4 => 3000,
+            5 => 2600,
+            6 => 2300,
+            7 => 1800,
+            8 => 1500,
+            9 => 1000,
+        ),
+    ),*/
+);
+
+function ztoch_chance($chanse = -1, $prob = 10000) {
+    $rand = mt_rand(0,$prob);
+    if($rand <= $chanse){return true;}
+    return false;
+}
+
+$artifact_ztoch_cry = array(
+    383 => array('title' => 'Малый искристый кристалл', 'color' => '#339900', 'picture' => 'cr_small_green.gif'), //OLD 383
+    384 => array('title' => 'Малый блестящий кристалл', 'color' => '#3300ff', 'picture' => 'cr_small_blue.gif'), //OLD 384
+    385 => array('title' => 'Малый сияющий кристалл', 'color' => '#990099', 'picture' => 'cr_small_violet.gif'), //OLD 385
+    //386 => array('title' => 'Шар судьбы', 'color' => '#ff0000', 'picture' => 'cr_small_red.gif'), //OLD 386
+);
+
+$artifact_ztoch_cry_cnts = array(
+    'BODY' => 1,
+    'ARMOR' => 1,
+    'RHAND' => 1,
+    'SHOULDER' => 1,
+    'HEAD' => 1,
+    'GLOVE' => 1,
+    //'LHAND' => 1,
+    'LEG' => 1,
+    'FOOT' => 1,
+    //'BANNER' => 1,
+    'BOW' => 2,
+    'RING' => 1,
+);
+
+function artifact_ztoch_cry_cnts($artikul){
+    global $artifact_ztoch_cry_cnts;
+    return $artifact_ztoch_cry_cnts[$artikul['slot_id']] + ($artikul['f_cfg'] & ARTIFACT_PPT_MW ? 1 : 0);
+}
+
+// Типы хранилищ предметов
+define('ARTIFACT_STORAGE_TYPE_ALL',   -1); // везде
+define('ARTIFACT_STORAGE_TYPE_USER',   0); // в рюкзаке игрока
+define('ARTIFACT_STORAGE_TYPE_PR_BAG', 1); // в проф. рюкзаке
+
+global $artifact_storage_type_info;
+$artifact_storage_type_info = array(
+	ARTIFACT_STORAGE_TYPE_USER => array(
+		'id' => ARTIFACT_STORAGE_TYPE_USER,
+		'title' => translate('Рюкзак игрока'),
+	),
+	ARTIFACT_STORAGE_TYPE_PR_BAG => array(
+		'id' => ARTIFACT_STORAGE_TYPE_PR_BAG,
+		'title' => translate('В хранилище'),
+	),
+);
+
+// Зависимости
+require_once("/home/admin/web/dwar.fun/public_html/lib/action.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/skill.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/slot.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/artifact_energy.lib");
+
+//Функция подсчета сокетов
+function artifact_socket_get($artifact = array()) {
+    global $socket_pics, $socket_pics_req;
+    if(!$socket_pics_req) {
+        $socket_pics = get_hash(artifact_picgem_list(), 'id', 'picture');
+        $socket_pics_req = true;
+    }
+    $artifact_socket = array();
+    $cnt = $m_cnt = $a_cnt = 0;
+
+    $socket_count = ($artifact['quality'] == 0 ? 4 : 3);
+
+    for($i = 1; $i <= $socket_count; $i++) {
+        if($artifact['rune'.$i.'_id']){
+            $cnt++;
+        }
+        $socket = explode('_', $artifact['rune'.$i.'_id']);
+        if(isset($socket[0]) && $socket[0] != ''){
+            if(count($socket) >= 3) { //Самоцвет
+                $artifact_socket['socket'][$i] = $socket;
+                $artifact_socket['socket_pic'][$i] = $socket_pics[$socket[1]];
+            }else{
+                $artifact_socket['socket'][$i] = $socket;
+                $artifact_socket['socket_pic'][$i] = $socket[0].'_'.$socket[1].'.png';
+            }
+            if($socket[0] >= 1){
+                $m_cnt++; //Сокет занят xD
+            }
+        }
+    }
+    $artifact_socket['cnt'] = $cnt;
+    $artifact_socket['socket_cnt'] = $a_cnt;
+    $artifact_socket['free_cnt'] = $cnt - $m_cnt;
+    return $artifact_socket;
+}
+
+function artifact_socket_pic_embed_one(&$artifact = array()){
+    if(!$artifact) return false;
+    $sock_artikul_ids = array();
+    if(!($artifact['flags2'] & ARTIFACT_FLAG2_SOCKET)) return false;
+    if($artifact['artikul_id']) $sock_artikul = artifact_artikul_get(array('id' => $artifact['artikul_id']), ' AND picture_gem != \'\'');
+    $artifact['socket_pic'] = $sock_artikul['picture_gem'];
+}
+
+function artifact_socket_pic_embed(&$artifact_list = array()){
+    if(!$artifact_list) return false;
+    $sock_artikul_ids = array();
+    foreach($artifact_list as $k=>$v){
+        if($v['flags2'] & ARTIFACT_FLAG2_SOCKET){ $sock_artikul_ids[$v['artikul_id']] = $v['artikul_id']; }
+    }
+    if($sock_artikul_ids) $sock_artikul_list = get_hash(artifact_artikul_list(array('id' => $sock_artikul_ids), ' AND picture_gem != \'\'', 'id, picture_gem'));
+    foreach ($artifact_list as $k=>$v){
+        if(!$sock_artikul_list[$v['artikul_id']]) continue;
+        $artifact_list[$k]['socket_pic'] = $sock_artikul_list[$v['artikul_id']];
+    }
+}
+
+//Возвращает артикулы с сокетов
+function artifact_socket_artikuls($artifact = array()){
+    $artifact_socket = artifact_socket_get($artifact);
+    $artikuls_hash = array();
+    foreach ($artifact_socket['socket'] as $k=>$v) {
+        if(count($v) == 3){
+            $artikuls_hash[$k] = artifact_artikul_get(false, sql_pholder(' AND type_id = ?#ARTIFACT_TYPE_ID_SAMOCVET AND id = ?', $v[0]));
+        }else{
+            if ($v[0] >= 1) {
+                $artikuls_hash[$k] = artifact_artikul_get(false, sql_pholder(' AND type_id = ?#ARTIFACT_TYPE_ID_SAMOCVET AND param1 = ? AND quality = ?', $v[0], $v[1]));
+            }
+        }
+    }
+    return $artikuls_hash;
+}
+
+//Рандомное количество создаваемых сокетов, с учетом точильных камней через $param и $quality_prob_socket
+function artifact_socket_create($artifact = array(), $param = array()){
+    global $socket_prob,$quality_prob_socket;
+    if(!$artifact) return false;
+    $cnt = 0;
+    $add_probs = $param['add_probs'];
+    //$addcx = array(); //DEBUG
+    foreach($socket_prob as $socket_id=>$prob){
+        $add_prob_value = 0;
+        foreach ($add_probs as $add_prob){
+            $add_prob_value += $quality_prob_socket[$add_prob['quality']][$socket_id];
+        }
+        $variant = $prob + (intval($add_prob_value) ? intval($add_prob_value) : 0);
+        //$addcx[$socket_id]['cur'] = $prob; //DEBUG
+        //$addcx[$socket_id]['add_prob'] = $add_prob_value; //DEBUG
+        //$addcx[$socket_id]['latest'] = $variant; //DEBUG
+        if(mt_rand(1,100) <= $variant){
+            $cnt++;
+        }else{
+            break;
+        }
+    }
+    //return array('cnt' => $cnt, 'add_prob' => $add_prob, 'ls' => $addcx); //DEBUG
+    return $cnt;
+}
+
+// Вспомогательная функция производит заполнение title и picture для одного артефакта или списка артефактов
+// Для задачи #23279
+function artifact_artikul_get_title(&$artifact_or_list, $artikul_hash =false) {
+	if (!$artifact_or_list) {
+		return false;
+	}
+	
+	if (!isset($artifact_or_list['artikul_id'])) {
+		// имеем дело со списком артефактов
+		$artifact_list = &$artifact_or_list;
+	} else {
+		// имеем дело с единичным артефактом
+		$artifact_list = array(&$artifact_or_list);
+	}
+	
+	if (!$artikul_hash) {
+		$artikul_ids = get_hash($artifact_list, 'artikul_id', 'artikul_id');
+		$artikul_hash = make_hash(artifact_artikul_list(array('id' => $artikul_ids), '', 'id,title,picture,flags2'));
+	}
+	
+	foreach ($artifact_list as $key => &$artifact) {
+		if (!isset($artikul_hash[$artifact['artikul_id']])) {
+            continue; //Заебали сообщения!
+            $debug_info = debug_backtrace();
+            $code_error = md5(time_current().'_error');
+            for ($i = count($debug_info)-1; $i >= 0; $i--) $f = $debug_info[$i]['function'].'()->';
+            $error_text = $f.'  '.$debug_info[0]['file'].':'.$debug_info[0]['line'].': '.$debug_info[1]['function'].'()';
+
+            error_log(sprintf($error_text.' artifact_artikul_get_title: Unable to find Artikul [%d] for Artifact [%d].', $artifact['artikul_id'], $artifact['id']));
+			continue;
+		}
+		
+		$artikul = $artikul_hash[$artifact['artikul_id']];
+        if(!($artifact['flags2'] & ARTIFACT_FLAG2_RUNEWORD || $artifact['flags2'] & ARTIFACT_FLAG2_TITLE_ON_A)) {
+            $artifact['title'] = $artikul['title'];
+        }
+		if (($artifact['type_id'] == ARTIFACT_TYPE_ID_TICKET) && intval($artifact['param2'])) {
+			$artifact['title'] = sprintf(translate('%s № %03d'), $artikul['title'], intval($artifact['param2']));
+		}
+        if($artifact['toch']) {
+            $artifact['title'] .= ' +'.$artifact['toch'];
+            $artifact['flags2'] |= ARTIFACT_FLAG2_ZTOCH_TITLE;
+        }
+		if(!($artifact['flags2'] & ARTIFACT_FLAG2_RUNEWORD)) {
+            $artifact['picture'] = $artikul['picture'];
+        }
+	}
+	
+	return true;
+}
+
+function _artifact_artikul_title(&$artikul) {
+	global $quality_info;
+	return $artikul['title'].' ['.$artikul['level_min'].($artikul['level_max'] >= $artikul['level_min'] ? '-'.$artikul['level_max']: '').']'.($artikul['quality'] ? ' ('.$quality_info[$artikul['quality']]['title'].')': '');
+}
+
+// ===========================================================================================================================
+
+function artifact_get($ref=false, $add='', $storage=false) {
+	global $db;
+	if ($storage !== false && in_array($storage, array(ARTIFACT_STORAGE_TYPE_USER, ARTIFACT_STORAGE_TYPE_PR_BAG))) $query_add .= sql_pholder(" AND storage_type= ? ", $storage);
+	$artifact = common_get($db,TABLE_ARTIFACTS,$ref,$query_add.$add);
+	if ($artifact) $artifact['object_class'] = OBJECT_CLASS_ARTIFACT;
+	return $artifact;
+}
+
+function artifact_list($artikul_id=false, $user_id=null, $slot_id=null, $skip_expired=false, $skip_by_flag=false, $add='', $storage=false, $field_list='*') {
+	global $db;
+	if (!$artikul_id && !isset($user_id) && !isset($slot_id) && !$add) return false;
+	$query_add = '';
+	if (is_array($artikul_id) && $artikul_id) $query_add .= sql_pholder(" AND artikul_id IN (?@)", $artikul_id);
+	elseif ($artikul_id) $query_add .= sql_pholder(" AND artikul_id = ?", $artikul_id);
+	if (isset($user_id)) $query_add .= sql_pholder(" AND user_id=?",$user_id);
+	if (isset($slot_id)) $query_add .= ($slot_id == '*' ? " AND slot_id<>''": (is_array($slot_id) ? sql_pholder(" AND slot_id IN(?@)",$slot_id) : sql_pholder(" AND slot_id=?",$slot_id)));
+	if ($skip_expired) $query_add .= sql_pholder(" AND (time_expire=0 OR time_expire>?)",time_current());
+	if ($skip_by_flag) $query_add .= sql_pholder(" AND !(flags & ?)",$skip_by_flag);
+	if ($storage !== false && in_array($storage, array(ARTIFACT_STORAGE_TYPE_USER, ARTIFACT_STORAGE_TYPE_PR_BAG))) $query_add .= sql_pholder(" AND storage_type= ? ", $storage);
+	return common_list($db,TABLE_ARTIFACTS,false,$query_add.$add, $field_list);
+}
+
+function artifact_list_ref($ref=false, $user_id=null, $add='') {
+    global $db;
+    if (!$artikul_id && !isset($user_id) && !isset($slot_id) && !$add) return false;
+    $query_add = '';
+    if (isset($user_id)) $query_add .= sql_pholder(" AND user_id=?",$user_id);
+    return common_list($db,TABLE_ARTIFACTS,$ref,$query_add.$add);
+}
+
+function artifact_count($artikul_id=false, $user_id=null, $slot_id=null, $skip_expired=false, $skip_by_flag=false, $add='', $storage=false) {
+	global $db;
+	if (!$artikul_id && !isset($user_id) && !isset($slot_id) && !$add) return false;
+	$query_add = '';
+	if ($artikul_id) $query_add .= sql_pholder(" AND artikul_id=?",$artikul_id);
+	if (isset($user_id)) $query_add .= sql_pholder(" AND user_id=?",$user_id);
+	if (isset($slot_id)) $query_add .= ($slot_id == '*' ? " AND slot_id<>''": sql_pholder(" AND slot_id=?",$slot_id));
+	if ($skip_expired) $query_add .= sql_pholder(" AND (time_expire=0 OR time_expire>?)",time_current());
+	if ($skip_by_flag) $query_add .= sql_pholder(" AND !(flags & ?)",$skip_by_flag);
+	if ($storage !== false && in_array($storage, array(ARTIFACT_STORAGE_TYPE_USER, ARTIFACT_STORAGE_TYPE_PR_BAG))) $query_add .= sql_pholder(" AND storage_type= ? ", $storage);
+	$result = common_list($db,TABLE_ARTIFACTS,false,$query_add.$add,
+		 sql_pholder(' SUM(IF(flags & ?,if(cnt>0,cnt,1),1)) AS amount ', ARTIFACT_FLAG_WEIGHT_COLLAPSED));
+	if(is_array($result) && isset($result[0]['amount'])){
+		$result = intval($result[0]['amount']);
+	} else {
+		$result = 0;
+	}
+	return $result;
+//	return common_count($db,TABLE_ARTIFACTS,false,$query_add.$add);
+}
+
+function artifact_count_advanced($artikul_id=false, $user_id=null, $slot_id=null, $skip_expired=false, $skip_by_flag=false, $add='', $storage=false) {
+    global $db;
+    if (!$artikul_id && !isset($user_id) && !isset($slot_id) && !$add) return false;
+    $query_add = '';
+    if ($artikul_id) $query_add .= sql_pholder(" AND artikul_id=?",$artikul_id);
+    if (isset($user_id)) $query_add .= sql_pholder(" AND user_id=?",$user_id);
+    if (isset($slot_id)) $query_add .= ($slot_id == '*' ? " AND slot_id<>''": (is_array($slot_id) ? sql_pholder(" AND slot_id IN(?@)",$slot_id) : sql_pholder(" AND slot_id=?",$slot_id)));
+    if ($skip_expired) $query_add .= sql_pholder(" AND (time_expire=0 OR time_expire>?)",time_current());
+    if ($skip_by_flag) $query_add .= sql_pholder(" AND !(flags & ?)",$skip_by_flag);
+    if ($storage !== false && in_array($storage, array(ARTIFACT_STORAGE_TYPE_USER, ARTIFACT_STORAGE_TYPE_PR_BAG))) $query_add .= sql_pholder(" AND storage_type= ? ", $storage);
+    $result = common_list($db,TABLE_ARTIFACTS,false,$query_add.$add,
+        sql_pholder(' SUM(IF(flags & ?,if(cnt>0,cnt,1),1)) AS amount ', ARTIFACT_FLAG_WEIGHT_COLLAPSED));
+    if(is_array($result) && isset($result[0]['amount'])){
+        $result = intval($result[0]['amount']);
+    } else {
+        $result = 0;
+    }
+    return $result;
+//	return common_count($db,TABLE_ARTIFACTS,false,$query_add.$add);
+}
+
+function artifact_save($param) {
+	global $db;
+
+	/*if($param['cnt'] >= 9999){
+        $bt = debug_backtrace();
+        $tr = $bt[1] ? $bt[1]: $bt[0];
+        $key = $bt[1] ? ($tr['class'] ? $tr['class'].'::': '').$tr['function'] : basename($tr['file']);
+        logfile(DEBUG_FILE_LOG_DEV, 'ART: '.print_r($param,true). $key);
+    }*/
+
+	return common_save($db,TABLE_ARTIFACTS,$param,FIELD_ARTIFACTS);
+}
+
+function artifact_delete($object) {
+	global $db;
+	if (!is_array($object)) $object = common_object_get(OBJECT_CLASS_ARTIFACT,$object);
+	common_delete($db,TABLE_ARTIFACTS,$object['id']);
+	artifact_note_delete(false,$object['id']);
+	skill_object_delete(OBJECT_CLASS_ARTIFACT,$object);
+	action_object_delete(OBJECT_CLASS_ARTIFACT,$object);
+	return true;
+}
+
+function artifact_change_cnt($ref, $cnt=0, $add='', $in=array(), $storage = false) {
+	global $db;
+	if (!$ref && !$add) return false;
+	$cnt = intval($cnt);
+	
+	$set_time_expire = '';
+	if (isset($in['time_expire'])) {
+		if ($in['time_expire'] == 0) {
+			$set_time_expire = ', time_expire=0';
+		} else {
+			$set_time_expire = ', time_expire = IF(time_expire > '.$in['time_expire'].', time_expire, IF(time_expire = 0, 0, '.$in['time_expire'].'))';
+		}
+	}
+	
+	if ($storage !== false) {
+		$add .= sql_pholder(' AND storage_type = ? ', $storage);
+	}
+	$param = array(
+		'_cnt' => true,
+		'_set' => "cnt=cnt+(".$cnt.")" 
+			.$set_time_expire,
+		'_add' => " AND (cnt+(".$cnt."))>=0".$add." LIMIT 1",
+	);
+	if ($ref) $param['id'] = $ref;
+	return artifact_save($param);
+}
+
+function artifact_note_get($ref=false, $artifact_id=false, $add='') {
+	global $db;
+	$query_add = '';
+	if ($artifact_id) {
+		$query_add .= sql_pholder(' AND artifact_id=?', $artifact_id);
+	}
+	return common_get($db,TABLE_ARTIFACT_NOTES,$ref,$query_add.$add);
+}
+
+function artifact_note_list($artifact_id, $add='') {
+	global $db;
+	if (!$artifact_id) return false;
+	return common_list($db,TABLE_ARTIFACT_NOTES,array('artifact_id' => $artifact_id),$add);
+}
+
+function artifact_note_save($param) {
+	global $db;
+	if (!$param['id'] && !$param['artifact_id']) return false;
+	return common_save($db,TABLE_ARTIFACT_NOTES,$param,FIELD_ARTIFACT_NOTES);
+}
+
+function artifact_note_delete($ref=false, $artifact_id=false, $add='') {
+	global $db;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($artifact_id) $ref['artifact_id'] = $artifact_id;
+	return common_delete($db,TABLE_ARTIFACT_NOTES,$ref,$add);
+}
+
+function artifact_note_is_valid($text) {
+	if (preg_match(common_get_regexp('artifact_valid_note_symbols'), $text)) return false;
+	return true;
+}
+
+function artifact_type_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_ARTIFACT_TYPES,$ref,$add);
+}
+
+function artifact_type_list($add='') {
+	global $db;
+	return common_list($db,TABLE_ARTIFACT_TYPES,false,$add);
+}
+
+function artifact_type_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_ARTIFACT_TYPES, $ref, $add);
+}
+
+function artifact_type_save($param) {
+	global $db;
+	return common_save($db,TABLE_ARTIFACT_TYPES,$param,FIELD_ARTIFACT_TYPES);
+}
+
+function artifact_type_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_ARTIFACT_TYPES,$ref,$add);
+}
+
+function artifact_type_bafs_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,TABLE_ARTIFACT_TYPES_BAFS,$ref,$add);
+}
+
+function artifact_type_bafs_list($add='') {
+    global $db;
+    return common_list($db,TABLE_ARTIFACT_TYPES_BAFS,false,$add);
+}
+
+function artifact_type_bafs_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, TABLE_ARTIFACT_TYPES_BAFS, $ref, $add);
+}
+
+function artifact_type_bafs_save($param) {
+    global $db;
+    return common_save($db,TABLE_ARTIFACT_TYPES_BAFS,$param,FIELD_ARTIFACT_TYPES_BAFS);
+}
+
+function artifact_type_bafs_delete($ref=false, $add='') {
+    global $db;
+    return common_delete($db,TABLE_ARTIFACT_TYPES_BAFS,$ref,$add);
+}
+
+function artifact_group_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_ARTIFACT_GROUPS,$ref,$add);
+}
+
+function artifact_group_list($add='') {
+	global $db;
+	return common_list($db,TABLE_ARTIFACT_GROUPS,false,$add);
+}
+
+
+function artifact_group_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_ARTIFACT_GROUPS, $ref, $add);
+}
+
+function artifact_group_save($param) {
+	global $db;
+	return common_save($db,TABLE_ARTIFACT_GROUPS,$param,FIELD_ARTIFACT_GROUPS);
+}
+
+function artifact_group_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_ARTIFACT_GROUPS,$ref,$add);
+}
+
+function artifact_set_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_ARTIFACT_SETS,$ref,$add);
+}
+
+function artifact_set_list($ref=false,$add='') {
+	global $db;
+	return common_list($db,TABLE_ARTIFACT_SETS,$ref,$add);
+}
+
+function artifact_set_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_ARTIFACT_SETS, $ref, $add);
+}
+
+function artifact_set_save($param) {
+	global $db;
+	return common_save($db,TABLE_ARTIFACT_SETS,$param,FIELD_ARTIFACT_SETS);
+}
+
+function artifact_set_delete($ref=false) {
+	global $db;
+	common_delete($db,TABLE_ARTIFACT_SETS,$ref);
+	artifact_artikul_save(array(
+		'set_id' => 0,
+		'_add' => sql_pholder(" AND set_id=?",$ref),
+	));
+	return true;
+}
+
+function artifact_effect_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,TABLE_ARTIFACT_EFFECTS,$ref,$add);
+}
+
+function artifact_effect_list($ref=false,$add='') {
+    global $db;
+    return common_list($db,TABLE_ARTIFACT_EFFECTS,$ref,$add);
+}
+
+
+function artifact_effect_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, TABLE_ARTIFACT_EFFECTS, $ref, $add);
+}
+
+function artifact_effect_save($param) {
+    global $db;
+    return common_save($db,TABLE_ARTIFACT_EFFECTS,$param,FIELD_ARTIFACT_EFFECTS);
+}
+
+function artifact_effect_delete($ref=false) {
+    global $db;
+    return common_delete($db,TABLE_ARTIFACT_EFFECTS,$ref);
+}
+
+
+function artifact_cd_group_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_ARTIFACT_CD_GROUPS,$ref,$add);
+}
+
+function artifact_cd_group_list($ref=false,$add='') {
+	global $db;
+	return common_list($db,TABLE_ARTIFACT_CD_GROUPS,$ref,$add);
+}
+
+
+function artifact_cd_group_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_ARTIFACT_CD_GROUPS, $ref, $add);
+}
+
+function artifact_cd_group_save($param) {
+	global $db;
+	return common_save($db,TABLE_ARTIFACT_CD_GROUPS,$param,FIELD_ARTIFACT_CD_GROUPS);
+}
+
+function artifact_cd_group_delete($ref=false) {
+	global $db;
+	return common_delete($db,TABLE_ARTIFACT_CD_GROUPS,$ref);
+}
+
+function artifact_kind_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_ARTIFACT_KINDS,$ref,$add);
+}
+
+function artifact_kind_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_ARTIFACT_KINDS,$ref,$add);
+}
+
+
+function artifact_kind_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_ARTIFACT_KINDS, $ref, $add);
+}
+
+function artifact_kind_save($param) {
+	global $db;
+	return common_save($db,TABLE_ARTIFACT_KINDS,$param,FIELD_ARTIFACT_KINDS);
+}
+
+function artifact_kind_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_ARTIFACT_KINDS,$ref,$add);
+}
+
+// ========== работа с артикулами ================
+
+function artifact_artikul_get($ref=false, $add='') {
+	global $db;
+	$artikul = common_get($db,TABLE_ARTIFACT_ARTIKULS,$ref,$add);
+	if ($artikul) $artikul['object_class'] = OBJECT_CLASS_ARTIFACT_ARTIKUL;
+	return $artikul;
+}
+
+function artifact_artikul_list($ref=false, $add='',$field_list='*') {
+	global $db;
+	return common_list($db,TABLE_ARTIFACT_ARTIKULS,$ref,$add,$field_list);
+}
+
+function artifact_artikul_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_ARTIFACT_ARTIKULS, $ref, $add);
+}
+
+function artifact_artikul_save($param) {
+	global $db;
+	return common_save($db,TABLE_ARTIFACT_ARTIKULS,$param,FIELD_ARTIFACT_ARTIKULS);
+}
+
+function artifact_artikul_delete($ref) {
+	global $db;
+	common_delete($db,TABLE_ARTIFACT_ARTIKULS,$ref);
+	skill_object_delete(OBJECT_CLASS_ARTIFACT_ARTIKUL,$ref);
+	action_object_delete(OBJECT_CLASS_ARTIFACT_ARTIKUL,$ref);
+	bot_artikul_effect_delete(array('artifact_artikul_id' => $ref));
+	return true;
+}
+
+function artifact_artikul_sync($artikul_id, $param=false, $flags=0, $flags_mask=0, $flags2=0, $flags2_mask=0) {
+	if (!$artikul_id) return false;
+	$cnt = 0;
+	$param = get_params($param,ARTIFACT_CREATE_FIELDS,true);
+	if ($param) {
+		unset($param['flags']);
+        unset($param['flags2']);
+		$param['_cnt'] = true;
+		$param['_add'] = sql_pholder(" AND artikul_id=?",$artikul_id);
+		$cnt += artifact_save($param);
+	}
+	$set_flag = $flags & $flags_mask;
+	$unset_flag = ~$flags & $flags_mask;
+    $set_flag2 = $flags2 & $flags2_mask;
+    $unset_flag2 = ~$flags2 & $flags2_mask;
+	if ($set_flag || $unset_flag) {
+		$cnt += artifact_save(array(
+			'_cnt' => true,
+			'_set' => "flags = (flags | ".$set_flag.") &~ ".$unset_flag,
+			'_add' => sql_pholder(" AND artikul_id=?",$artikul_id),
+		));
+	}
+    if ($set_flag2 || $unset_flag2) {
+        $cnt += artifact_save(array(
+            '_cnt' => true,
+            '_set' => "flags2 = (flags2 | ".$set_flag2.") &~ ".$unset_flag2,
+            '_add' => sql_pholder(" AND artikul_id=?",$artikul_id),
+        ));
+    }
+	return $cnt;
+}
+
+function artifact_artikul_copy($param) {
+	$old_id = $param['id'];
+	unset($param['id']);
+	$new_id = artifact_artikul_save($param);
+	if (!$new_id) return false;
+
+	$artifact_artikul_skills = skill_object_list(OBJECT_CLASS_ARTIFACT_ARTIKUL, $old_id);
+	foreach($artifact_artikul_skills as $artifact_artikul_skill) {
+		$artifact_artikul_skill['object_class'] = OBJECT_CLASS_ARTIFACT_ARTIKUL;
+		$artifact_artikul_skill['object_id'] = $new_id;
+		skill_object_copy($artifact_artikul_skill, $new_id);
+	}
+
+	$artifact_artikul_actions = action_object_list(OBJECT_CLASS_ARTIFACT_ARTIKUL, $old_id);
+	foreach($artifact_artikul_actions as $artifact_artikul_action) {
+		$artifact_artikul_skill['object_class'] = OBJECT_CLASS_ARTIFACT_ARTIKUL;
+		$artifact_artikul_skill['object_id'] = $new_id;
+		action_object_copy($artifact_artikul_action, $new_id);
+	}
+
+	return $new_id;
+}
+
+function artifact_create($artikul_id, $n=1, $user_id=false, $area_id=false, $slot_id=false, $clan_id = false, $force_param=array(), $storage=ARTIFACT_STORAGE_TYPE_USER, $need_stack = true) {
+	if ($n <= 0) return false;
+	$artikul = artifact_artikul_get($artikul_id);
+	if (!$artikul) return false;
+	$artifact = get_params($artikul,ARTIFACT_CREATE_FIELDS);
+	$artifact['artikul_id'] = $artikul['id'];
+	if ($artikul['validity']) $artifact['time_expire'] = time_current() + $artikul['validity'];
+	$artifact['ctime'] = time_current();
+	if ($user_id) $artifact['user_id'] = $user_id;
+	if ($slot_id) $artifact['slot_id'] = $slot_id;
+	$artifact['storage_type'] = $storage;
+	if ($area_id) {
+		$artifact['area_id'] = $area_id;
+		$artifact['owner_id'] = $user_id;
+		$artifact['clan_id'] = $clan_id;
+		$artifact['user_id'] = 0;
+		$artifact['slot_id'] = '';
+		$artifact['storage_type'] = 0;
+	}
+	if ($force_param) {
+		$force_param['flags'] = intval($force_param['flags']) | intval($artifact['flags']);
+        if(isset($force_param['flags2'])) $force_param['flags2'] = intval($force_param['flags2']) | intval($artifact['flags2']);
+		foreach ($force_param as $k=>$v) $artifact[$k] = $v;
+	}
+	if ($artifact['flags'] & ARTIFACT_FLAG_DURAB30) {	// 30% прочности
+		$artifact['durability_max'] = intval($artifact['durability_max'] * 0.30);
+		$artifact['durability'] = $artifact['durability_max'];
+		$artifact['flags'] &= ~ARTIFACT_FLAG_DURAB30;
+	}
+	$artifact['artikul_skills'] = 1;
+	$artifact['artikul_actions'] = 1;
+	$ids = array();
+	$in = array('time_expire' => intval($artifact['time_expire']));
+	do {
+		if ($artifact['cnt'] > 0 && $need_stack) {
+			if ($area_id) {
+				$sql_appendix = sql_pholder(" AND artikul_id=? AND area_id=? AND owner_id=? AND clan_id=? AND (time_expire=0 OR time_expire>?)", $artikul_id, $area_id, intval($user_id), intval($clan_id), time_current());
+			} elseif ($user_id) {
+				$sql_appendix = sql_pholder(" AND artikul_id=? AND user_id=? AND slot_id=? AND (time_expire=0 OR time_expire>?) AND storage_type = ?",$artikul_id,$user_id,strval($slot_id), time_current(), $storage);
+				if (isset($force_param['slot_num']))
+					$sql_appendix .= sql_pholder(' AND slot_num = ? ', intval($force_param['slot_num']));
+			}
+			if (is_numeric($need_stack))
+				$sql_appendix .= sql_pholder(' AND id = ? ', $need_stack);
+				
+			if ($sql_appendix && artifact_change_cnt(false,$n,$sql_appendix,$in)) {
+				$updated_artifact = artifact_get(false,$sql_appendix);
+				if ($updated_artifact) {
+					$ids[] = $updated_artifact['id'];
+				}
+				break;
+			}
+		}
+		if ($artifact['cnt'] > 0) {
+			$artifact['cnt'] = $n;
+			$n = 1;
+		}
+		for ($i=0; $i<$n; $i++) {
+			$artifact_id = artifact_save($artifact);
+			if (!$artifact_id) return false;
+			$ids[] = $artifact_id;
+		}
+	} while (0);
+	return count($ids)>1 ? $ids: $ids[0];
+}
+
+
+// ============================
+
+// функция транспорта артефакта
+function artifact_transfer($artifact_id, $user_id, $area_id=false, $clan_id=false, $storage=ARTIFACT_STORAGE_TYPE_USER, $return_bool = true) {
+	require_once("include/node_transfer.inc");
+	if (!$artifact_id || (!$user_id && !$area_id)) return false;
+	if ($area_id) {
+		$area = area_get($area_id);
+		$src = NODE_GET_BY_REF(TABLE_ARTIFACTS,$artifact_id);
+		$dst = $area['node_num'];
+		if (!$src || !$dst) return false;
+		if ($src != $dst) {
+			if (!NODE_TRANSFER_ARTIFACT($src,$dst,$artifact_id)) return false;
+		}
+		NODE_PUSH($dst);
+		artifact_save(array(
+			'id' => $artifact_id,
+			'user_id' => 0,
+			'area_id' => $area_id,
+			'owner_id' => $user_id,
+			'clan_id' => $clan_id,
+			'slot_id' => '',
+			'storage_type' => 0,
+		));
+		NODE_POP();
+	} else {
+		$src = NODE_GET_BY_REF(TABLE_ARTIFACTS,$artifact_id);
+		$dst = NODE_GET($user_id);
+		if (!$src || !$dst) return false;
+		if ($src != $dst) {
+			if (!NODE_TRANSFER_ARTIFACT($src,$dst,$artifact_id)) return false;
+		}
+		NODE_PUSH($dst);
+		artifact_save(array(
+			'id' => $artifact_id,
+			'user_id' => $user_id,
+			'area_id' => 0,
+			'owner_id' => 0,
+			'clan_id' => 0,
+			'slot_id' => '',
+			'storage_type' => $storage,
+		));
+		NODE_POP();
+	}
+	return $return_bool ? true : $artifact_id;
+}
+
+// ============================
+// функции работающие с учетом стековых вещей и их количеством
+
+// возвращает артефакт, предварительно переключая узел
+function artifact_get_safe($artifact_id, $storage=false) {
+	if (!$artifact_id) return false;
+	$src = NODE_GET_BY_REF(TABLE_ARTIFACTS,$artifact_id);
+	if (!$src) return false;
+	NODE_PUSH($src);
+	$artifact = artifact_get($artifact_id, '', $storage);
+	NODE_POP();
+	return $artifact;
+}
+
+// сохраняет артефакт, предварительно переключая узел
+function artifact_save_safe($param) {
+	if (!$param) return false;
+	if ($param['id']) {
+		$src = NODE_GET_BY_REF(TABLE_ARTIFACTS,$param['id']);
+		if (!$src) return false;
+		NODE_PUSH($src);
+		$status = artifact_save($param);
+		NODE_POP();
+	} else {
+		$status = artifact_save($param);
+	}
+	return $status;
+}
+
+// удаляет артефакт, предварительно переключая узел
+function artifact_delete_safe($artifact_id) {
+	if (!$artifact_id) return false;
+	$src = NODE_GET_BY_REF(TABLE_ARTIFACTS,$artifact_id);
+	if (!$src) return false;
+	NODE_PUSH($src);
+	$success = artifact_delete($artifact_id);
+	NODE_POP();
+	return $success;
+}
+
+function artifact_add($artikul_id, $n=1, $user_id=false, $area_id=false, $slot_id=false, $force_param=array(),$storage=ARTIFACT_STORAGE_TYPE_USER) {
+	if ((!$user_id && !$area_id) || ($n <= 0)) return false;
+	if ($area_id) {
+		$area = area_get($area_id);
+		if (!$area['node_num']) return false;
+		NODE_PUSH($area['node_num']);
+	} else {
+		NODE_PUSH(null,$user_id);
+	}
+	$status = artifact_create($artikul_id, $n, $user_id, $area_id, $slot_id, false, $force_param, $storage);
+	NODE_POP();
+	return $status;
+}
+
+function artifact_remove($artikul_id, $n=1, $user_id=false, $area_id=false, $slot_id='', $param=false, $storage=false) {
+	if ((!$user_id && !$area_id) || ($n <= 0) || !$artikul_id) return 0;
+	if ($area_id) {
+		$area = area_get($area_id);
+		if (!$area['node_num']) return 0;
+		NODE_PUSH($area['node_num']);
+		$artifact_list = artifact_list($artikul_id,false,'',true, false, sql_pholder(' AND area_id=? AND owner_id=?', $area_id, intval($user_id)));
+	} else {
+		NODE_PUSH(null,$user_id);
+		$artifact_list = artifact_list($artikul_id,$user_id,$slot_id,true,false,'',$storage);
+	}
+	$total_deleted = 0;
+	// Если есть опция "только для вещей полученных в инстансе", то изымаем только их, остальные отбрасываем
+	if ($param && $param['for_created_in_instance_only'] && $artifact_list) {
+		foreach($artifact_list as $key => $artifact) {
+			if (!($artifact['flags'] & ARTIFACT_FLAG_CREATED_IN_INSTANCE)) {
+				unset($artifact_list[$key]);
+			}
+		}
+	}
+	if ($artifact_list) {
+		$artifact_ids = array();
+		foreach($artifact_list as $artifact) {
+			if ($total_deleted >= $n) break;
+			if ($artifact['cnt'] > 0) { // стековая вещь
+				if ($artifact['cnt'] <= ($n - $total_deleted)) {
+					artifact_delete($artifact);
+					$total_deleted += $artifact['cnt'];
+				} else {
+					artifact_change_cnt($artifact['id'], -($n - $total_deleted));
+					$total_deleted += $n - $total_deleted;
+				}
+			} else { // обычная вещь
+				artifact_delete($artifact);
+				$total_deleted ++;
+			}
+			$artifact_ids[] = $artifact['id'];
+		}
+		artifact_bag_send_diff($user_id, $artifact_ids);
+	}
+	NODE_POP();
+	return $total_deleted;
+}
+
+function artifact_amount($artikul_id=false, $user_id=null, $area_id=null, $slot_id=null, $skip_expired=true, $skip_by_flag=false, $add='', $storage=false) {
+	if (!$user_id && !$area_id) return false;
+	if ($area_id) {
+		$area = area_get($area_id);
+		if (!$area['node_num']) return false;
+		NODE_PUSH($area['node_num']);
+		$add = sql_pholder(' AND area_id=? AND owner_id=?', $area_id, intval($user_id));
+		$artifact_num = artifact_count($artikul_id, false,'', $skip_expired, $skip_by_flag, ' AND cnt=0'.$add); // не стековые экземпляры
+		$artifact_list = artifact_list($artikul_id, false,'', $skip_expired, $skip_by_flag, ' AND cnt>0'.$add); // стековые экземпляры
+	} else {
+		NODE_PUSH(null,$user_id);
+		$artifact_num = artifact_count($artikul_id, $user_id, $slot_id, $skip_expired, $skip_by_flag, ' AND cnt=0'.$add, $storage); // не стековые экземпляры
+		$artifact_list = artifact_list($artikul_id, $user_id, $slot_id, $skip_expired, $skip_by_flag, ' AND cnt>0'.$add, $storage); // стековые экземпляры
+	}
+	if ($artifact_list) {
+		foreach($artifact_list as $artifact) {
+			$artifact_num += $artifact['cnt'];
+		}
+	}
+	NODE_POP();
+	return $artifact_num;
+}
+
+// $params_to_save - определяет имена полей, значения которых надо сохранить при пермеещении артефакта
+function artifact_move($artifact_id, $n=1, $to_user_id=false, $to_area_id=false, $clan_id = false, $params_to_save = array(), $storage=false, $return_bool = true, $area_node = true, $need_stack = true) {
+	if ((!$to_user_id && !$to_area_id) || ($n <= 0)) return false;
+	$artifact = artifact_get_safe($artifact_id);
+	if (!$artifact || ($artifact['cnt'] < 0)) return false;
+	if ($artifact['cnt'] == 0) return artifact_transfer($artifact_id, $to_user_id, $to_area_id, $clan_id, $storage, $return_bool);
+	if ($artifact['cnt'] < $n) return false;
+	$src = NODE_GET_BY_REF(TABLE_ARTIFACTS,$artifact_id);
+	if (!$src) return false;
+	NODE_PUSH($src);
+	$success = ($artifact['cnt'] > $n) ? artifact_change_cnt($artifact_id, -$n) : artifact_delete($artifact);
+	NODE_POP();
+	if (!$success) return false;
+	if ($to_area_id && $area_node) {
+		$area = area_get($to_area_id);
+		if (!$area['node_num']) return false;
+		NODE_PUSH($area['node_num']);
+	} else {
+		NODE_PUSH(null,$to_user_id);
+	}
+	// 30116 Грязный хак, чтобы вернуть баг-фичную функциональность с восстановлением срока жизни артефактов черех банковскую ячейку
+	$param = array();
+	if (!$params_to_save) $params_to_save = array('time_expire', 'flags');
+	foreach ($params_to_save as $param_name) {
+		if (isset($artifact[$param_name])) $param[$param_name] = $artifact[$param_name];
+	}
+	$status = artifact_create($artifact['artikul_id'], +$n, $to_user_id, $to_area_id, false, $clan_id, $param, $storage, $need_stack);
+	if ($return_bool) $status = ($status !== false);
+	NODE_POP();
+	return $status;
+}
+
+// возвращает количество слотов, которое займет/освободит выданный/изъятый артефакт в рюкзаке персонажа:
+// WARNING: аккуратнее с force_params['flags'] в artifact_add... в этой функции учитываются только флаги с артикула!
+//   false - ошибка
+//   0 - схлопнется или невесомый
+//   1..n - кол-во новых занятых слотов
+//   m..-1 - кол-во освобождающихся слотов
+function artifact_check_capacity($artikul_id, $n=1, $user_id=false, $area_id=false, $slot_id='', $clan_id=false, $is_weighty=false, $storage=ARTIFACT_STORAGE_TYPE_USER) {
+	if ((!$user_id && !$area_id) || $n==0) {
+		return false;
+	}
+	$artikul = is_array($artikul_id) ? $artikul_id : artifact_artikul_get($artikul_id);
+	if (!$artikul || (!$is_weighty AND ($artikul['flags'] & ARTIFACT_FLAG_NOWEIGHT))) return 0;
+	
+	// Если весит в свернутом состоянии, то займет в любом случае $n слотов.
+	if($artikul['flags'] & ARTIFACT_FLAG_WEIGHT_COLLAPSED){
+		return $n;
+	}
+	if ($area_id) {
+		$area = area_get($area_id);
+		if (!$area['node_num']) return false;
+		NODE_PUSH($area['node_num']);
+		$query_add = sql_pholder(' AND area_id=? AND owner_id=? AND clan_id=?', $area_id, intval($user_id), intval($clan_id));
+	} else {
+		NODE_PUSH(null,$user_id);
+	}
+	$total_slots = $n;
+	if ($n > 0) { // в планах - добавить артефакты
+		if ($artikul['cnt'] > 0) {
+			if ($area_id) $artifact_list = artifact_list($artikul['id'], false, '', true,false, $query_add.' AND cnt>0 LIMIT 1'); // стековые экземпляры
+			else $artifact_list = artifact_list($artikul['id'], $user_id, $slot_id, true, false, ' AND cnt>0 LIMIT 1', $storage);
+			$total_slots = ($artifact_list) ? 0 : 1;
+		}
+	} else { // в планах - изъять артефакты
+		if ($area_id) $artifact_list = artifact_list($artikul['id'], false, '', true, false, $query_add);
+		else $artifact_list = artifact_list($artikul['id'], $user_id, $slot_id, true, false, '', $storage);
+		$total_deleted = 0;
+		$total_slots = 0;
+		$n = abs($n);
+		if ($artifact_list) {
+			foreach($artifact_list as $artifact) {
+				if ($total_deleted >= $n) break;
+				if ($artifact['cnt'] > 0) { // стековая вещь
+					if ($artifact['cnt'] <= $n) {
+						$total_deleted += $artifact['cnt'];
+						$total_slots --;
+					} else {
+						$total_deleted += $n;
+					}
+				} else { // обычная вещь
+					$total_slots --;
+					$total_deleted ++;
+				}
+			}
+		}
+	}
+	NODE_POP();
+	return $total_slots;
+}
+
+function artifact_enchant_compatible($artifact, $enchant) {
+	if ($artifact['artikul_id']) { // передан экземпляр
+		$artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+		$artifact['level_min'] = $artifact_artikul['level_min'];
+	}
+	if ($enchant['artikul_id']) { // передан экземпляр
+		$enchant_artikul = artifact_artikul_get($enchant['artikul_id']);
+		$enchant['level_min'] = $enchant_artikul['level_min'];
+		$enchant['level_max'] = $enchant_artikul['level_max'];
+	}
+	$en_lvl_min = $enchant['level_min'];
+	$en_lvl_max = ($enchant['level_max'] == -1) ? 0x7fffffff : $enchant['level_max'];
+	return ($en_lvl_min <= $artifact['level_min']) && ($en_lvl_max >= $artifact['level_min']);
+}
+
+// function is cross-node safe
+function &artifact_get_wedding_ring($user_id, $spouse_id=false) {
+	$ref = array(
+		'user_id' => intval($user_id),
+		'type_id' => ARTIFACT_TYPE_ID_MARRIAGE,
+	);
+	if ($spouse_id) $ref['param1'] = intval($spouse_id);
+	NODE_PUSH(null,$user_id);
+	$ring = artifact_get($ref);
+	NODE_POP();
+	return $ring;
+}
+
+function is_user_effected(&$artifacts)
+{
+	if (!is_array($artifacts['TEMP_EFFECT']) OR count($artifacts['TEMP_EFFECT']) < 1)
+		return false;
+		
+	foreach ($artifacts['TEMP_EFFECT'] as $effect) {
+		if (!($effect['flags'] & ARTIFACT_FLAG_HIDDEN)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+
+function artifact_get_arrows_hash($reload = false) {
+	$cache = new Cache('ARTIFACT_BOW_ARROWS_HASH_G');
+	if ($reload || !$cache->isValid()) {
+		$list = artifact_artikul_list(array('type_id' => ARTIFACT_TYPE_ID_BOW_ARROWS));
+		$res = array();
+		foreach ($list as $arrows) {
+			$res[$arrows['level_min']][$arrows['id']] = $arrows;
+		}
+		
+		$cache->update(serialize($res), 86400);
+	} else {
+		$res = unserialize($cache->get());
+	}
+	
+	return $res;
+}
+
+function artifact_bag_send_diff($user_id, $changed_artifacts, $params = array()) {
+	global $money_type_info;
+
+	if (!$user_id) {
+		return false;
+	}
+
+	$diff = array(
+		'changed' => array(),
+		'deleted' => array(),
+		'money' => array(),
+		'info' => array(),
+	);
+
+	NODE_PUSH(null, $user_id);
+
+	if ($changed_artifacts) {
+
+		$diff['info']['amount'] = user_get_artifact_amount($user_id);
+		$diff['info']['amount_max'] = user_get_artifact_amount_max($user_id);
+
+		$changed_artifacts = is_array($changed_artifacts) ? array_unique($changed_artifacts) : array(intval($changed_artifacts));
+		$changed_artifacts = array_filter($changed_artifacts, 'intval');
+		$artifact_list = user_get_artifact_list($user_id, '', sql_pholder(' AND id in (?@)', $changed_artifacts), ARTIFACT_STORAGE_TYPE_USER);
+
+		tpl_artifact_alt_prepare($artifact_list, OBJECT_CLASS_ARTIFACT);
+		$artifact_list = make_hash($artifact_list);
+
+		foreach ($changed_artifacts as $changed) {
+			if ($artifact_list[$changed]) {
+				$diff['changed'][$changed] = tpl_artifact_alt($artifact_list[$changed], array('mode' => 'raw'));
+			} else {
+				$diff['deleted'][] = $changed;
+			}
+		}
+	}
+
+	$user = user_get($user_id);
+	foreach ($money_type_info as $m) {
+		$diff['money'][$m['id']] = html_money_str($m['id'], $user[$m['field']]);
+	}
+
+	NODE_POP();
+
+	//chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user_id, array('func' => 'backpack_diff('.str_replace(array('\"', '\r', '\n'), array('&quot;', '', ''), json_encode($diff)).');'));
+
+	return true;
+}
+
+
+/////////////////////////////////////////////////
+
+
+function artifact_sell_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ARTIFACT_SELL,$ref,$add);
+}
+
+function artifact_sell_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_ARTIFACT_SELL,$ref,$add,$field_list);
+}
+
+function artifact_sell_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ARTIFACT_SELL, $ref, $add);
+}
+
+function artifact_sell_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ARTIFACT_SELL,$param,FIELD_ARTIFACT_SELL);
+}
+
+function artifact_sell_delete($ref, $add = '') {
+    global $db_path;
+    common_delete($db_path,TABLE_ARTIFACT_SELL,$ref,$add);
+    return true;
+}
+
+
+////////////////////////////////////////////////////
+
+function artifact_sell_base_get($ref=false, $add='') {
+    global $db_art;
+    return common_get($db_art,TABLE_ARTIFACT_SELL_BASE,$ref,$add);
+}
+
+function artifact_sell_base_list($ref=false, $add='', $field_list='*') {
+    global $db_art;
+    return common_list($db_art,TABLE_ARTIFACT_SELL_BASE,$ref,$add,$field_list);
+}
+
+function artifact_sell_base_count($ref=false, $add='') {
+    global $db_art;
+    return common_count($db_art, TABLE_ARTIFACT_SELL_BASE, $ref, $add);
+}
+
+function artifact_sell_base_save($param) {
+    global $db_art;
+    return common_save($db_art,TABLE_ARTIFACT_SELL_BASE,$param);
+}
+
+function artifact_sell_base_delete($ref, $add = '') {
+    global $db_art;
+    common_delete($db_art,TABLE_ARTIFACT_SELL_BASE,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////////////////
+
+function artifact_auto_drop_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_ARTIFACT_AUTO_DROP,$ref,$add);
+}
+
+function artifact_auto_drop_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_ARTIFACT_AUTO_DROP,$ref,$add,$field_list);
+}
+
+function artifact_auto_drop_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_ARTIFACT_AUTO_DROP, $ref, $add);
+}
+
+function artifact_auto_drop_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_ARTIFACT_AUTO_DROP,$param);
+}
+
+function artifact_auto_drop_delete($ref, $add = '') {
+    global $db_2;
+    common_delete($db_2,TABLE_ARTIFACT_AUTO_DROP,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////////////////
+
+function artifact_auto_drop_stat_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_ARTIFACT_AUTO_DROP_STAT,$ref,$add);
+}
+
+function artifact_auto_drop_stat_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_ARTIFACT_AUTO_DROP_STAT,$ref,$add,$field_list);
+}
+
+function artifact_auto_drop_stat_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_ARTIFACT_AUTO_DROP_STAT, $ref, $add);
+}
+
+function artifact_auto_drop_stat_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_ARTIFACT_AUTO_DROP_STAT,$param);
+}
+
+function artifact_auto_drop_stat_delete($ref, $add = '') {
+    global $db_2;
+    common_delete($db_2,TABLE_ARTIFACT_AUTO_DROP_STAT,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////
+
+function artifact_medal_title_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,TABLE_ARTIFACT_MEDAL_TITLE,$ref,$add);
+}
+
+function artifact_medal_title_list($ref=false, $add='', $field_list='*') {
+    global $db;
+    return common_list($db,TABLE_ARTIFACT_MEDAL_TITLE,$ref,$add,$field_list);
+}
+
+function artifact_medal_title_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, TABLE_ARTIFACT_MEDAL_TITLE, $ref, $add);
+}
+
+function artifact_medal_title_save($param) {
+    global $db;
+    return common_save($db,TABLE_ARTIFACT_MEDAL_TITLE,$param);
+}
+
+function artifact_medal_title_delete($ref, $add = '') {
+    global $db;
+    common_delete($db,TABLE_ARTIFACT_MEDAL_TITLE,$ref,$add);
+    return true;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+function artifact_restrictions_title_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,TABLE_ARTIFACT_RESTRICTIONS_TITLE,$ref,$add);
+}
+
+function artifact_restrictions_title_list($ref=false, $add='', $field_list='*') {
+    global $db;
+    return common_list($db,TABLE_ARTIFACT_RESTRICTIONS_TITLE,$ref,$add,$field_list);
+}
+
+function artifact_restrictions_title_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, TABLE_ARTIFACT_RESTRICTIONS_TITLE, $ref, $add);
+}
+
+function artifact_restrictions_title_save($param) {
+    global $db;
+    return common_save($db,TABLE_ARTIFACT_RESTRICTIONS_TITLE,$param);
+}
+
+function artifact_restrictions_title_delete($ref, $add = '') {
+    global $db;
+    common_delete($db,TABLE_ARTIFACT_RESTRICTIONS_TITLE,$ref,$add);
+    return true;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+//Символы получить характеристики с предмета
+function artifact_symbol_skill_hash($artifact = array()){
+    global $symbol_skills_hash;
+    $skill_hash = array();
+    if(!$artifact) return $skill_hash;
+
+    if($artifact['flags2'] & ARTIFACT_FLAG2_RUNIC_FRAME){
+        if($skill_hash['VIT']){
+            $skill_hash['VIT']['value'] += 1;
+        }else{
+            $skill_hash['VIT'] = array(
+                'title' => 'Живучесть',
+                'skill_id' => 'VIT',
+                'value' => 1,
+            );
+        }
+    }
+
+    $symbol_skills_list = $symbol_skills_hash[$artifact['rf_enchant_id']][$artifact['rf_enchant_level']];
+
+    if($symbol_skills_list){
+        foreach ($symbol_skills_list as $skill) {
+            if($skill_hash[$skill['skill_id']]){
+                $skill_hash[$skill['skill_id']]['value'] += $skill['value'];
+            }else{
+                $skill_hash[$skill['skill_id']] = array(
+                    'title' => $skill['title'],
+                    'skill_id' => $skill['skill_id'],
+                    'value' => $skill['value'],
+                );
+            }
+        }
+    }
+
+    return $skill_hash;
+}
+
+function artifact_description_put(&$artifact, $artifact_restrictions) {
+    if($artifact_restrictions) {
+        global $rank_info;
+        $rest_text = '<b class="redd">Ограничение: </b> '.($artifact_restrictions['rank'] ? '<b><img src="/images/ranks/rank'.$artifact_restrictions['rank'].'.gif"> '.$rank_info[$artifact_restrictions['rank']]['title'].'</b> ' : '').$artifact_restrictions['description'];
+        if ($artifact['description']) {
+            $artifact['description'] .= '<br>' . $rest_text;
+        } else {
+            $artifact['description'] = $rest_text;
+        }
+    }
+}
+
+function artifact_artikul_restriction_check($artikul, $user, $flag=0) {
+    global $r_artikul_hash, $artifact_restriction_hash, $rank_info;
+    if(!$flag || $flag === 0) return false;
+    if(!(is_array($artikul) && $artikul['id'])) {
+        $artikul = cache_fetch($r_artikul_hash, $artikul, 'artifact_artikul_get');
+    }
+    if(!$artikul) return false;
+    if($artikul['restriction_id']) {
+        $artifact_restriction = cache_fetch($artifact_restriction_hash, $artikul['restriction_id'], 'artifact_restrictions_title_get');
+        if($artifact_restriction['flags'] & $flag) { //Нужно чекнуть
+            if($artifact_restriction['level'] > $user['level']) {
+                return array(
+                    'error' => 'Небходим '.$artifact_restriction['level'].' уровень!',
+                );
+            }
+            if($artifact_restriction['rank'] > $user['rank']) {
+                return array(
+                    'error' => 'Небходимо звание "'.$rank_info[$artifact_restriction['rank']]['title'].'"!',
+                );
+            }
+        }
+    }
+    return false;
+}
+
+function artifact_ransom_add($artifact_s, $user_id) {
+    artifact_sell_base_save($artifact_s);
+    //Удаление старых выкупов
+    $artifact_sell_cnt = artifact_sell_count(array(
+        'user_id' => $user_id,
+    ));
+    if($artifact_sell_cnt >= RANSOM_MAX_CNT) {
+        $delete_list = artifact_sell_list(array('user_id' => $user_id), ' AND sell_time + '.RANSOM_TIME.' > '.time_current().' ORDER BY id ASC LIMIT 0,'.RANSOM_MAX_CNT);
+        $delete_ids = array();
+        foreach ($delete_list as $del){
+            $delete_ids[] = $del['id'];
+        }
+        if($delete_ids){
+            artifact_sell_delete(array('id' => $delete_ids));
+        }
+    }
+}
+function artifact_sell_act($artifact, $cnt, $user) {
+    if (!in_array($artifact['object_class'],array(OBJECT_CLASS_ARTIFACT)) || $artifact['slot_id']) return false;
+    if ($artifact['flags'] & ARTIFACT_FLAG_NOSELL) {
+        $out['error'] = translate('Предмет нельзя продать!');
+        return $out;
+    }
+    $amount = min($cnt,$artifact['cnt']);
+    if (($artifact['cnt'] > 0) && ($amount <= 0)) {
+        $out['error'] = translate('Указано неверное количество!');
+        return $out;
+    }
+    if($amount == 0) $amount = 1;
+    $artikul = artifact_artikul_get($artifact['artikul_id']);
+    if ($artifact['durability_max'] == $artikul['durability_max'] && $artifact['durability_max'] == $artifact['durability']) {
+        $price = $artikul['price'] * AREA_STORE_SELL_NEW;
+    } else {
+        $price = $artikul['price'] * AREA_STORE_SELL_USED;
+    }
+
+    $price = min($price, AREA_STORE_SELL_LIMIT);
+    $price = max(.01, $price * $amount);
+
+    $price_type = MONEY_TYPE_GAME;
+    $comment = sprintf(translate('за продажу "%s"'),$artikul['title']);
+    $operations = ($price_type == MONEY_TYPE_GAME) ? array(MONEY_STAT_OPERATION_RECEIVE,MONEY_STAT_OPERATION_PURE_RECEIVE) : false;
+    $status = user_make_payment($price_type, $user['id'], $price,$comment, false, $operations);
+    if (!$status) {
+        $out['error'] = translate('Сбой при скупке!');
+        return $out;
+    }
+
+    $out['status'] = ACTION_STATUS_OK;
+    chat_msg_send_system(translate('Вы продали "'.$artikul['title'].'"! Получено: '.html_money_str(MONEY_TYPE_GAME, $price)), CHAT_CHF_USER, $user['id']);
+
+    if ($artifact['id'] && $amount && $amount < $artifact['cnt']) {
+        artifact_save(array(
+            'id' => $artifact['id'],
+            'cnt' => $artifact['cnt'] - $amount,
+            'artikul_actions' => 1,
+        ));
+        action_object_delete(OBJECT_CLASS_ARTIFACT,artifact_get($artifact['id']));
+    } else {
+        artifact_delete($artifact['id']);
+        $t2[] = $artifact['id'];
+    }
+
+    $t[] = $artikul['title'];
+// лог-сервис -----------------------
+    logserv_log_operation(array(
+        'money_type' => $price_type,
+        'amount' => $price,
+    ),$user);
+    logserv_log_operation(array(
+        'artifact' => $artifact,
+        'cnt' => -$amount,
+    ),$user);
+// ----------------------------------
+    $out['status'] = 100;
+    return $out;
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+
+
+function artifact_subgroup_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_ARTIFACT_SUBGROUP,$ref,$add);
+}
+
+function artifact_subgroup_list($ref=false,$add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_ARTIFACT_SUBGROUP,$ref,$add);
+}
+
+function artifact_subgroup_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_ARTIFACT_SUBGROUP, $ref, $add);
+}
+
+function artifact_subgroup_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_ARTIFACT_SUBGROUP,$param);
+}
+
+function artifact_subgroup_delete($ref=false) {
+    global $db_diff;
+    return common_delete($db_diff,TABLE_ARTIFACT_SUBGROUP,$ref);
+}
+
+/////////////////////////////////////////////
+
+function artifact_picgem_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,TABLE_ARTIFACT_PICGEM,$ref,$add);
+}
+
+function artifact_picgem_list($ref=false, $add='') {
+    global $db;
+    return common_list($db,TABLE_ARTIFACT_PICGEM,$ref,$add);
+}
+
+
+function artifact_picgem_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, TABLE_ARTIFACT_PICGEM, $ref, $add);
+}
+
+function artifact_picgem_save($param) {
+    global $db;
+    return common_save($db,TABLE_ARTIFACT_PICGEM,$param);
+}
+
+function artifact_picgem_delete($ref=false, $add='') {
+    global $db;
+    return common_delete($db,TABLE_ARTIFACT_PICGEM,$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function artifact_mount_pack_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,'artifact_mount_pack',$ref,$add);
+}
+
+function artifact_mount_pack_list($ref=false, $add='') {
+    global $db;
+    return common_list($db,'artifact_mount_pack',$ref,$add);
+}
+
+function artifact_mount_pack_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, 'artifact_mount_pack', $ref, $add);
+}
+
+function artifact_mount_pack_save($param) {
+    global $db;
+    return common_save($db,'artifact_mount_pack',$param);
+}
+
+function artifact_mount_pack_delete($ref=false, $add='') {
+    global $db;
+    return common_delete($db,'artifact_mount_pack',$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+
+function artifact_random_skill_get($ref = false, $add = '') {
+    global $db;
+    return common_get($db, TABLE_ARTIFACT_RANDOM_SKILL, $ref, $add);
+}
+
+function artifact_random_skill_list($ref = false, $add = '', $field = '*') {
+    global $db;
+    return common_list($db, TABLE_ARTIFACT_RANDOM_SKILL, $ref, $add, $field);
+}
+
+function artifact_random_skill_count($ref = false, $add = '') {
+    global $db;
+    return common_count($db, TABLE_ARTIFACT_RANDOM_SKILL, $ref, $add);
+}
+
+function artifact_random_skill_save($param) {
+    global $db;
+    return common_save($db, TABLE_ARTIFACT_RANDOM_SKILL, $param);
+}
+
+function artifact_random_skill_delete($ref, $add = '') {
+    global $db;
+    common_delete($db, TABLE_ARTIFACT_RANDOM_SKILL, $ref, $add);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function artifact_samocvet_id_get($artifact_samocvet, $artikul_samocvet, &$error) {
+    do{
+        //Подробная информация о самоцвете
+        $s_type = intval($artifact_samocvet['param1']); //Тип самоцвета
+        //$s_quality = intval($artifact_samocvet['quality']); //Цвет-самоцвет
+        //Дополнительный код для исключительных случаев.
+        if($s_type != $artikul_samocvet['param1']){
+            $error = 'Внутренняя ошибка. Параметры '.$s_type.' '.$artikul_samocvet['param1'].' '.$s_quality.' '.$artikul_samocvet['quality'];
+            break;
+        }else{
+            $s_type = intval($artikul_samocvet['param1']);
+            $s_quality = intval($artikul_samocvet['quality']);
+        }
+        if($artifact_samocvet['flags2'] & ARTIFACT_FLAG2_SOCKET){
+            $s_type = $artifact_samocvet['artikul_id'];
+        }
+
+        if(!$s_type){
+            $error = 'Неверный самоцвет.';
+            break;
+        }
+    }while(0);
+    return array($s_type, $s_quality);
+}
+
+function artifact_random_skills_set($artifact_random, $artifact) {
+    if(!$artifact || !$artifact_random || !$artifact['id'] || !$artifact_random['skills_settings']) return false;
+    $skills_settings_hash = json_decode($artifact_random['skills_settings'], true);
+    foreach ($skills_settings_hash as $skill_id=>$skill_sett) {
+        $val = 0;
+        if(rand_roll($skill_sett['perc'] / 100)) $val = mt_rand($skill_sett['min'], $skill_sett['max']);
+        if($val > 0) {
+            skill_object_save(OBJECT_CLASS_ARTIFACT, $artifact['id'], array(
+                'skill_id' => $skill_id,
+                'value' => $val,
+                '_mode' => CSMODE_REPLACE,
+                'no_copy_artikul_skills' => true,
+            ));
+        }
+    }
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+function artifact_auto_drop_trigger($user_drop, $user, $user_premium) {
+    global $quality_info, $disenchant_slots, $user_body_slots, $disenchant2_quality, $disenchant2_slots;
+    if(!$user_drop || !$user) return false;
+    if($user_premium['level'] <= 0) return false; //Только для према
+    $artikuls_rec = $user_drop['artikuls_received'];
+    if(!$artikuls_rec) return false;
+
+    $artifact_drop_ids = array_keys($user_drop['artifacts_received']);
+    if(count($artifact_drop_ids) <= 0) return false;
+    $artifact_drop_list = make_hash(artifact_auto_drop_list(array('user_id' => $user['id'], 'active' => 1, 'artikul_id' => array_keys($artikuls_rec))), 'artikul_id');
+    if(!$artifact_drop_list) return false;
+    $artikul_ids = array_keys($artifact_drop_list);
+    if(!$artikul_ids) return false;
+
+    NODE_SWITCH(null, $user['id']);
+
+    $artifacts = user_get_artifact_list($user['id'], false, sql_pholder(' AND id IN(?@) AND artikul_id IN(?@) ', $artifact_drop_ids, $artikul_ids));
+    vardump($artifacts);
+
+    artifact_artikul_get_title($artifacts);
+
+    foreach ($artifacts as $k=>$artifact) {
+        $artifacts[$k]['object_class'] = OBJECT_CLASS_ARTIFACT;
+    }
+
+    $artifact_drop_stat_cnts = array();
+
+    foreach ($artifacts as $artifact) {
+        $artifact_drop = $artifact_drop_list[$artifact['artikul_id']];
+        if(!$artifact_drop) continue;
+
+        $max_cnt = max(1, $artikuls_rec[$artifact_drop['artikul_id']]);
+
+        $artifact_drop_stat_cnts[$artifact_drop['id']]++;
+
+        switch ($artifact_drop['action']) {
+            case ARTIFACT_DROP_FLAG_SELL:
+                artifact_sell_act($artifact, $max_cnt, $user);
+                break;
+            case ARTIFACT_DROP_FLAG_DROP_NO_SELL:
+                $sell_out = artifact_sell_act($artifact, $max_cnt, $user);
+                if(!($sell_out['error'] || $sell_out['status'] != 100)) break;
+                $artifact_check = artifact_get($artifact['id']);
+                if(!$artifact_check['id']) break;
+            case ARTIFACT_DROP_FLAG_DROP:
+                if($artifact['cnt'] > 0 && $artifact['cnt'] == $max_cnt || $artifact['cnt'] == 0 || $max_cnt > $artifact['cnt']) {
+                    artifact_delete($artifact);
+                    chat_msg_send_system('Предмет "'.$artifact['title'].'" был выкинут из рюкзака.', CHAT_CHF_USER, $user['id']);
+                } else {
+                    artifact_change_cnt($artifact['id'], -$max_cnt);
+                    chat_msg_send_system('"'.$artifact['title'].'" '.$max_cnt.' шт. было выкинуто из рюкзака.', CHAT_CHF_USER, $user['id']);
+                }
+                break;
+            case ARTIFACT_DROP_DISENCHANT:
+                if($artifact['flags'] & ARTIFACT_FLAG_CANT_BROKEN) break;
+                $artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+                if(!$artifact_artikul) break;
+                $bonus_id = $quality_info[$artifact_artikul['quality']]['disenchant_bonus_id'];
+                if (!$bonus_id) break;
+                if (!in_array($artifact_artikul['slot_id'], $disenchant_slots + array('BELT'))) {
+                    break;
+                }
+
+                $d = @($artifact['durability_max'] / $artifact_artikul['durability_max']);
+                $probability = ($d > 0.3) ? 1.0 : $d;
+                artifact_delete($artifact);
+                $msg_txt = '';
+                if (mt_rand(1,100) <= intval($probability*100)) {
+                    artifact_artikul_get_title($artifact);
+                    $msg_txt = sprintf(translate('<b>Вы разрушили %s.</b>'),$artifact['title']);
+                    require_once("lib/bonus.lib");
+                    bonus_apply($user, $bonus_id);
+                } else {
+                    $msg_txt = translate('Ввиду высокой изношенности вещи, магия разрушения не сработала и вещь безвозвратно пропала...');
+                }
+                chat_msg_send_system($msg_txt, CHAT_CHF_USER, $user['id']);
+                break;
+            case ARTIFACT_DROP_DISENCHANT2:
+                if ($artifact['flags'] & ARTIFACT_FLAG_CANT_CRUSHED) {
+                    break;
+                }
+
+                $artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+                if (!in_array($artifact_artikul['quality'], $disenchant2_quality) || !$disenchant2_slots[$artifact_artikul['slot_id']] || ($artifact_artikul['durability_max'] <= 0)) {
+                    break;
+                }
+
+                $A = @($artifact['durability_max'] / $artifact_artikul['durability_max']);
+                $R = rand(0,999999)/1000000;
+                $K = (1.2 * $A) / (1.2 - $R);
+                // COLOR = цвет предмета для дробления
+                $color = $artifact_artikul['quality'];
+                // LEVEL = 1 для кирас и поножей, 2 для рук, 3 для кольчуг и сапог, 4 для плеч и перчаток.
+                // LEVEL = LEVEL + (5, если раздробляемый предмет 6-10 уровней; 10, если он 11-15 уровней)
+                $level = 1;
+                if (in_array($artifact_artikul['level_min'], range(6,10))) {
+                    $level += 5;
+                }
+                elseif (in_array($artifact_artikul['level_min'], range(11,15))) {
+                    $level += 10;
+                }
+
+                artifact_delete($artifact);
+                artifact_artikul_get_title($artifact);
+                $msg_txt = sprintf(translate('Вы применили магию дробления на %s '),$artifact['title']);
+
+                // Определяем артикул вещи, которую нужно выдать
+                // Выдаём количество указанное в param2 на артикуле, домножив на K
+                // с округлением в большую сторону
+                $ref = array(
+                    'type_id' => ARTIFACT_TYPE_ID_DISENCHANT2,
+                    'quality' => $color,
+                );
+                $disenchant2_list = make_hash(artifact_artikul_list($ref, sql_pholder(' AND level_min IN('.implode(',', range($level, $level+4)).')')));
+                shuffle($disenchant2_list);
+                if($disenchant2_list) {
+                    $osk_cnt = 1;
+                    $osk_cnt += (rand_roll(50 / 100) ? 1 : 0);
+                    $osk_cnt += (rand_roll(10 / 100) ? 1 : 0);
+                    $osk_cnt += (rand_roll(1 / 100) ? 1 : 0);
+                    $n_cnt = $osk_cnt;
+                    $n_all = mt_rand(8, 28);
+                    $msg_arts = array();
+                    for ($i = 0; $i < $osk_cnt; $i++) {
+                        $disenchant2_artikul = array_shift($disenchant2_list);
+                        $_nn = ceil($n_all / $n_cnt);
+                        $n_cur = mt_rand(max($_nn - 2, 1), max($_nn + 2, 1));
+                        $n_all -= $n_cur;
+                        $n = $n_cur;
+                        if ($n <= 0) $n = 1;
+                        $msg_arts[] = tpl_artikul_info($disenchant2_artikul).' <b>'.abs($n).' шт.</b>';
+                        $status = artifact_add($disenchant2_artikul['id'], $n, $user['id']);
+                        $n_cnt--;
+                    }
+                    $msg_txt .= sprintf(translate('и получили ' . implode(', ', $msg_arts)));
+                }else {
+                    $msg_txt .= sprintf(translate('и от %s осталась только пыль.'), $artifact_artikul['title']);
+                }
+
+                chat_msg_send_system($msg_txt, CHAT_CHF_USER, $user['id']);
+                break;
+        }
+    }
+
+    foreach ($artifact_drop_stat_cnts as $artifact_drop_id=>$cnt) {
+        artifact_auto_drop_save(array(
+            'id' => $artifact_drop_id,
+            '_set' => sql_pholder(' a_cnt = a_cnt + ?', $cnt),
+        ));
+    }
+
+    return true;
+}

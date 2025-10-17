@@ -1,0 +1,73 @@
+<? # $Id: DROP.action,v 1.9 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "выкинуть подарок клана"
+// Параметры:
+//	$in['amount'] - кол-во
+
+$artifact_id = intval($_REQUEST['clan_gift_id']);
+if($artifact_id <= 0 || intval($subject['clan_id']) <= 0)	return;
+
+$node = NODE_GET_BY_REF(TABLE_ARTIFACTS,$artifact_id);
+if (!$node) return false;
+NODE_PUSH($node);
+$object = artifact_get($artifact_id);
+NODE_POP();
+if ($object['clan_id'] != $subject['clan_id'] || !in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+
+if ($object['flags'] & ARTIFACT_FLAG_NODROP) {
+	$out['error'] = translate('Предмет нельзя выбросить!');
+	return;
+}
+
+$amount = min(intval($in['amount']),$object['cnt']);
+if (($object['cnt'] > 0) && ($amount <= 0)) {
+	$out['error'] = translate('Указано неверное количество!');
+	return;
+}
+
+$member = clan_member_get(false, $subject['id'], sql_pholder(' AND clan_id = ?', $subject['clan_id']));
+if (!$member) return;
+$grade = clan_grade_get($member['grade_id']);
+if (!$grade || !($grade['permissions'] & CLAN_PERM_FLAG_DELETE_GIFTS)) {
+	$out['error'] = translate('У вас нет полномочий для удаления клановых подарков.');
+	return;
+}
+
+NODE_PUSH($node);
+if (($amount > 0) && ($amount < $object['cnt'])) {
+	artifact_save(array(
+		'id' => $object['id'],
+		'cnt' => $object['cnt'] - $amount,
+		'artikul_actions' => 1,
+	));
+	action_object_delete(OBJECT_CLASS_ARTIFACT,$object);
+} else {
+	artifact_delete($object);
+}
+NODE_POP();
+$out['status'] = ACTION_STATUS_OK;
+
+// лог-сервис -----------------------
+logserv_log_action(array(
+	'action' => $action,
+),$action_user);
+logserv_log_operation(array(
+	'artifact' => $object,
+	'cnt' => -max($amount,1),
+),$action_user);
+// ----------------------------------
+
+// Сохранение статистики
+logfile(SERVER_ROOT.PATH_LOGS.'drop_statistic.log',implode("\t",array(
+	time_current(),
+	$object['artikul_id'],
+	$object['title'],
+	$amount,
+)));
+
+?>

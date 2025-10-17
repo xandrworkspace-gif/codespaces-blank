@@ -1,0 +1,174 @@
+<? # $Id: COME_IN.action,v 1.47 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "войти"
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_AREA))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id'] || $subject['instance_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+
+$user_area = area_get($subject['area_id']);
+
+if ($user_area['code'] != 'casino') {
+	if (!($subject['flags'] & USER_FLAG_GHOST) && ($subject['area_ftime'] > time_current())) {
+		$out['error'] = sprintf(translate('Подождите! Дальнейшее перемещение станет возможным по истечении %s.'),html_period_str($subject['area_ftime'] - time_current(),true));
+		return;
+	}
+	if (user_get_artifact_amount($subject['id']) > user_get_artifact_amount_max($subject['id'])) {
+		$out['error'] = translate('Вы не можете перемещаться, т.к. рюкзак перегружен!');
+		return;
+	}
+}
+
+$castle = castle_get(array('castle_area_id' => $object['id']));
+if ($castle) {
+	$clan = $subject['clan_id'] ? clan_get($subject['clan_id']) : array();
+	if (!$clan || ($clan['castle_id'] != $castle['id'])) {
+		$out['error'] = translate('Вы не можете войти на территорию замка, не являясь его владельцем!');
+		return;
+	}
+}
+if ($user_area['code'] == 'arena') {	// выход из арены
+	require_once("lib/fight.lib");
+	$request_user = fight_request_user_get(false,$subject['id']);
+	if ($request_user) {
+		$out['error'] = translate('Вы не можете выйти, т.к. участвуете в заявке на бой!');
+		return;
+	}
+} elseif ($user_area['code'] == 'bg') {	// выход из комнаты заявок на БГ
+	$allow = true;
+	require_once("lib/bg.lib");
+	$bg = bg_get(array('t'.$subject['kind'].'_area_id' => $user_area['id']));
+	if ($bg['id']) {
+		$allow = false;
+		if (bg_lock($bg['id'], 1)) {
+			$bg_user = bg_user_get(array('user_id' => $subject['id'], 'status' => BG_USER_STATUS_PENDING));
+			if ($bg_user) $out['error'] = translate('Вы не можете выйти, т.к. подтвердили заявку на участие!');
+			else {
+				$user = user_get($subject['id']);
+				if (!$user['instance_id']) $allow = true;
+			}
+			bg_unlock($bg['id']);
+		}
+	}
+	require_once("lib/slaughter.lib");
+	$slaughter = slaughter_get(array('t'.$subject['kind'].'_area_id' => $user_area['id']));
+	if ($slaughter['id']) {
+		$allow = false;
+		if (slaughter_lock($slaughter['id'])) {
+			$slaughter_user = slaughter_user_get(array('user_id' => $subject['id'], 'status' => SLAUGHTER_USER_STATUS_PENDING));
+			if ($slaughter_user) $out['error'] = translate('Вы не можете выйти, т.к. подтвердили заявку на участие!');
+			else {
+				$user = user_get($subject['id']);
+				if (!$user['instance_id']) $allow = true;
+			}
+			slaughter_unlock($slaughter['id']);
+		}
+	}
+	if (!$allow) return;
+} elseif ($user_area['code'] == 'castle_hall') {	// выход из комнаты заявок в замок
+	require_once("lib/castle.lib");
+	$castle = castle_get(false,sql_pholder(" AND (defend_area_id = ? OR attack_area_id = ?)",$user_area['id'],$user_area['id']));
+	if ($castle['id']) {
+		$allow = false;
+		if (castle_lock($castle['id'])) {
+			$castle_user = castle_user_get(array('user_id' => $subject['id']));
+			if ($castle_user) $out['error'] = translate('Вы не можете выйти, т.к. оставили заявку на участие!');
+			else {
+				$user = user_get($subject['id']);
+				if (!$user['instance_id']) $allow = true;
+			}
+			castle_unlock($castle['id']);
+		}
+	}
+	
+	if (!$allow) return;
+	
+} elseif ($user_area['code'] == 'casino') {	// выход из казино
+    area_casino_exit($subject, array('exit_cas' => true));
+	// ----------------------------------
+}
+$link_list = area_link_list($subject['area_id'],$object['id'],sql_pholder(" AND to_id>0 AND active=1 AND (kind=0 OR bot_group_id>0 OR kind=?)",$subject['kind']));
+$link = $link_list[0];
+if (!$link) {
+	$out['error'] = translate('Нельзя перейти в местоположение, т.к. не задана связь!');
+	return;
+}
+if (($link['flags'] & AREA_LINK_FLAG_NO_GHOST) && ($subject['flags'] & USER_FLAG_GHOST)) { // Запрещен переход для призраков
+	$out['error'] = translate('Призраку нельзя перейти в это местоположение!');
+	return;
+}
+// Проверяем ограничение на связи
+$link['object_class'] = OBJECT_CLASS_AREA_LINK;
+$out_restriction = restriction_check(0,array($link),$restriction_object_list);
+if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) {
+	$out['error'] = $out_restriction['title'] ? $out_restriction['title'] : sprintf(translate('Для прохода требуется %s'),$out_restriction['error']);
+	return;
+}
+if ($link['bot_group_id'] && ($link['kind'] != $subject['kind'])) {
+	require_once("lib/fight.lib");
+	$allow = false;
+	$out_attack = bot_group_attack($subject['area_id'],0,$link['bot_group_id'],$subject['id']);
+	if (!$out_attack['status']) $out['error'] = translate('Невозможно начать нападение!');
+	else {
+		if ($out_attack['bot_cnt'] > 0) {
+			if ($out_attack['attack_cnt'] <= 0) $out['error'] = translate('Путь еще не очищен!');
+			// Запоминаем в какую локацию пользователь шёл, чтобы после боя предложить ему продолжить путь
+			else common_resetcookie('destination_url',$_SERVER['REQUEST_URI']);
+		} else $allow = true;
+	}
+	if (!$allow) return;
+}
+
+$ftime = user_calc_ftime($subject, $object['freeze_time']);
+if ($ftime['error']) {
+	$out['error'] = $ftime['error'];
+	return;
+}
+if ($object['id'] == $subject['area_id']) {		// Переход в то же местоположение ничего не меняет
+	$out['status'] = ACTION_STATUS_OK;
+	return;
+}
+
+if ($subject['flags'] & USER_FLAG_GHOST) {
+	$subject['flags2'] |= USER_FLAG2_GHOST_WALK;
+}
+
+$param = array(
+	'id' => $subject['id'],
+	'area_id' => $object['id'],
+	'area_ftime' => $ftime['ftime'] ? time_current() + $ftime['ftime'] : 0,
+	'instance_id' => 0,
+	'raid_id' => 0,
+	'trade_id' => $object['trade_id'],
+	'flags2' => $subject['flags2'] & ~USER_FLAG2_IN_ESTATE,
+);
+
+// снимаем невидимость после перехода на "вражескую локацию"
+if ($subject['invisibility_time']) {
+	if ((($object['flags'] & AREA_FLAG_NO_INVISIBLE_MAGMAR) && ($subject['kind'] == KIND_MAGMAR)) ||
+	 (($object['flags'] & AREA_FLAG_NO_INVISIBLE_HUMAN) && ($subject['kind'] == KIND_HUMAN))) {
+		$param['invisibility_time'] = 0;
+		chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => "updateSwf({'lvl':''})"));
+	}
+}
+
+if (!($subject['flags'] & USER_FLAG_GHOST) && ($link['flags'] & AREA_LINK_FLAG_STAT)) { // переход в локацию не учитываем для призраков
+	// собираем статистику
+	require_once('lib/user_stat.lib');
+	user_stat_update($subject['id'], USER_STAT_TYPE_LOCATION, $object['id']);
+}
+
+if ($user_area['flags'] & AREA_FLAG_NO_COOLDOWN) unset($param['area_ftime']);
+
+//user_change_chat_channels($subject, $param);
+user_save($param);
+if($ftime['ftime'] > 0){
+    require_once("lib/global_event.lib");
+    _global_event_trigger(GLOBAL_EVENT_TYPE_GO_LOCA, 1, $subject['id']);
+}
+$out['status'] = ACTION_STATUS_OK;
+
+?>

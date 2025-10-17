@@ -1,0 +1,52 @@
+<?
+
+// флаги
+define('PVP_EVENTS_FLAG_ADMIN',          0x0001);	// Видимый только администраторами
+define('PVP_EVENTS_NO_SPEAKER',          0x0002);  //Нельзя громко говорить в чат призыв к бою
+
+// Имена и поля таблиц
+define('TABLE_PVP_EVENTS','pvp_events');
+define('FIELD_PVP_EVENTS','');
+
+define('PVP_EVENTS_TYPE_HAOT', 1);
+define('PVP_EVENTS_TYPE_ARENA', 2);
+define('PVP_EVENTS_TYPE_DUEL', 3);
+define('PVP_EVENTS_TYPE_FIGHT_LEVEL', 4);
+define('PVP_EVENTS_TYPE_DEFINE_CITY', 5);
+define('PVP_EVENTS_DEFAULT_BG', 6);
+
+$pvp_events_type_hash = array(
+    PVP_EVENTS_TYPE_HAOT => 'Хаотичная битва',
+    PVP_EVENTS_TYPE_ARENA => 'Арена равных',
+    PVP_EVENTS_TYPE_DUEL => 'Дуэль',
+    PVP_EVENTS_TYPE_FIGHT_LEVEL => 'Великая битва',
+    PVP_EVENTS_TYPE_DEFINE_CITY => 'Защита города',
+    PVP_EVENTS_DEFAULT_BG => 'Стандартная поле битв',
+);
+
+function pvp_events_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_PVP_EVENTS,$ref,$add);
+}
+
+function pvp_events_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_PVP_EVENTS,$ref,$add);
+}
+
+function pvp_events_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_PVP_EVENTS, $ref, $add);
+}
+
+function pvp_events_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_PVP_EVENTS,$param,FIELD_PVP_EVENTS);
+}
+
+function pvp_events_delete($ref) {
+    global $db_2;
+    if (!$ref || is_array($ref)) return false;
+    common_delete($db_2,TABLE_PVP_EVENTS,$ref);
+    return true;
+}

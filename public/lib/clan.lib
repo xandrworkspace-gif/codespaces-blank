@@ -1,0 +1,1443 @@
+<? # $Id: clan.lib,v 1.66 2010/01/28 19:28:54 v.krutov Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/user_info.lib");
+
+common_define_settings();
+
+// Имена и поля таблиц
+define('TABLE_CLANS','clans');
+define('FIELD_CLANS','id, title, picture, level, gl_level, gl_rank, member_max, url, flags, access, warn_num, creation_time, rtime, castle_id, alliance_id, alliance_since, money, clan_head_id, stock_limit_ctime, cfight_cnt, cfight_dtime');
+define('TABLE_CLAN_MEMBERS','clan_members');
+define('FIELD_CLAN_MEMBERS','');
+define('TABLE_CLAN_GRADES','clan_grades');
+define('FIELD_CLAN_GRADES','');
+define('TABLE_CLAN_REQUESTS','clan_requests');
+define('FIELD_CLAN_REQUESTS','');
+define('TABLE_CLAN_CROSSSERVER_INFO','clan_crossserver_info');
+define('FIELD_CLAN_CROSSSERVER_INFO','');
+define('TABLE_CLAN_STOCK','clan_stock');
+define('FIELD_CLAN_STOCK','');
+
+define('TABLE_CLAN_STOCK_LIMIT','clan_stock_limit');
+define('FIELD_CLAN_STOCK_LIMIT','');
+
+//Подарки
+define('TABLE_CLAN_GIFT', 'clan_gifts');
+define('TABLE_CLAN_GIFT_DAY', 'clan_gifts_day');
+
+define('TABLE_CLAN_HEAD_REQUEST', 'clan_head_request');
+
+define('CLAN_LEADER_CHANGE_TIME', 604800);
+define('CLAN_LEADER_CHANGING_TIME', 84600);
+define('CLAN_ACTIVE_GAME_PLAYER_TIME', 84600);
+
+global $clan_stock_artikuls_info;
+$clan_stock_artikuls_info = array(
+	9811 => array('id' => 9811, 'title' => 'Жетон опора клана'),
+);
+
+define('CLAN_CFIGHT_DAY_CNT', 10);
+
+define('CLAN_HISTORY_PAGE_SIZE', 20);
+define('CLAN_ICON_MAX_SIZE', 2048); // максимальный размер картинки
+define('CLAN_ICON_MAX_PICTURE_SIZE', 13); // максимальная высота и ширина картинки
+define('CLAN_TAX_AMOUNT', 100); // налог за период
+define('CLAN_TAX_PERIOD', 30*24*60*60); // ежемесячно
+define('CLAN_INACTIVE_PERIOD', 3600 * 24 * 2); // 2 дня нельзя пользоваться клановой ячейкой и торговать клановыми вещами
+
+// Флаги клана
+define('CLAN_FLAG_PERMANENT',    0x01); // Постоянный
+define('CLAN_FLAG_DISBANDED',    0x02); // Удален
+define('CLAN_FLAG_HIDEINFO',     0x04); // Скрывать блок клана в user_info
+define('CLAN_FLAG_HIDESTATUS',   0x08); // Скрывать статус online/offline в clan_info
+define('CLAN_FLAG_NO_RATING',    0x10); // не участвует в рейтинге
+//define('CLAN_FLAG_BATTLE_BOUND', 0x20); // готовится к клановой битве
+define('CLAN_FLAG_IN_FRIDGE',    0x40); // находится в заморозке за неуплату налога
+define('CLAN_FLAG_GUARD',    	0x80); // клан стражей
+
+// Статусы
+define('CM_STATUS_NONE', 0);		// --
+define('CM_STATUS_INVITED', 1);		// приглашен
+define('CM_STATUS_ACTIVE', 2);		// активный
+define('CM_STATUS_KICKEDOUT', 3);	// выгнан
+define('CM_STATUS_LEFT', 4);		// вышел
+
+$clan_member_status_hash = array(
+	CM_STATUS_NONE => '--',
+	CM_STATUS_INVITED => translate('ожидание согласия'),
+	CM_STATUS_ACTIVE => translate('принят в клан'),
+	CM_STATUS_KICKEDOUT => translate('выгнан из клана'),
+	CM_STATUS_LEFT => translate('вышел из клана'),
+);
+
+// Статусы заявок на создание клана
+define('CR_STATUS_NEW', 0);         // новая заявка
+define('CR_STATUS_REJECTED', 1);      // отклоненная заявка
+define('CR_STATUS_ACCEPTED', 2);      // принятая заявка
+
+$clan_request_status_hash = array(
+	CR_STATUS_NEW => translate('новая'),
+	CR_STATUS_REJECTED => translate('отклонено'),
+	CR_STATUS_ACCEPTED => translate('одобрено'),
+);
+
+// Звания в клане
+define('CLAN_GRADE_HEAD',    1);
+define('CLAN_GRADE_OFFICER', 5);
+define('CLAN_GRADE_PRIVATE', 10);
+define('CLAN_GRADE_NUB',     15);
+
+define('CLAN_GRADE_FLAG_CDEL',         0x01); // Можно удалять
+define('CLAN_GRADE_FLAG_CEDIT',        0x02); // Можно редактировать permission
+define('CLAN_GRADE_FLAG_CRENAME',      0x04); // Можно переименовывать
+define('CLAN_GRADE_FLAG_CKICK',        0x10); // Можно выгнать человека с этим рангом
+define('CLAN_GRADE_FLAG_ALL',  CLAN_GRADE_FLAG_CDEL | CLAN_GRADE_FLAG_CEDIT | CLAN_GRADE_FLAG_CRENAME | CLAN_GRADE_FLAG_CKICK);
+
+define('CLAN_PERM_FLAG_INVITE',               0x01);  // имеет право приглашать в клан
+define('CLAN_PERM_FLAG_KICK',                 0x02);  // имеет право исключать из клана
+define('CLAN_PERM_FLAG_SEND_CHAT',            0x04);  // имеет право писать в клан чат
+define('CLAN_PERM_FLAG_EDIT_GRADE',           0x10);  // имеет право редактировать звания
+define('CLAN_PERM_FLAG_CHG_GRADE',            0x20);  // имеет право менять звания игрокам в клане
+define('CLAN_PERM_FLAG_EDIT_NEWS',            0x40);  // имеет право редактировать новости
+define('CLAN_PERM_FLAG_EDIT_ACCESS',          0x80);  // имеет право редактировать клановые действия
+define('CLAN_PERM_FLAG_CELL_ADD',             0x100); // Можно добавлять деньги и вещи в ячейку
+define('CLAN_PERM_FLAG_CELL_MONEY',           0x200); // Можно забирать деньги
+define('CLAN_PERM_FLAG_CELL_ITEMS',           0x400); // Можно забирать вещи
+define('CLAN_PERM_FLAG_ALLY_CHAT',	          0x800); // имеет право писать в чат альянса
+define('CLAN_PERM_FLAG_REQUEST_STRONGHOLD',	  0x1000); // имеет право подачи заявки на осаду крепости
+define('CLAN_PERM_FLAG_DELETE_GIFTS',	        0x2000); // имеет право удалять подарки клана
+define('CLAN_PERM_FLAG_SMS_SEND',	      0x4000); // имеет право отправлять смс
+define('CLAN_PERM_FLAG_ATTACK_CLAN',          0x8000); // имеет право нападать на другие кланы
+define('CLAN_PERM_FLAG_UPGRADE_TALENT',          0x10000); // имеет право улучшать таланты
+
+define('CLAN_PERM_FLAG_BATTLE_LOCATION',          	0x20000); // имеет право начинать боя за локацию
+define('CLAN_PERM_FLAG_CITADEL_ACCESS',          	0x40000); // Доступ в цитадель
+define('CLAN_PERM_FLAG_CITADEL_TAX',                0x80000); // Оплата налога
+define('CLAN_PERM_FLAG_CITADEL_CH_RES',             0x100000); // Обмен ресурсов
+define('CLAN_PERM_FLAG_CITADEL_VIEW_QUEST',         0x200000); // Видит статус квеста Оракула
+define('CLAN_PERM_FLAG_CITADEL_WORK_TEPL',          0x400000); // Работа в теплице
+define('CLAN_PERM_FLAG_CITADEL_WORK_MAST',          0x800000); // Работа в мастерской
+define('CLAN_PERM_FLAG_CITADEL_LOG_MAST',          	0x1000000); // Лог мастерской
+define('CLAN_PERM_FLAG_CITADEL_ISL_RET',          	0x2000000); // Исследование ритуала
+define('CLAN_PERM_FLAG_CITADEL_PROV_RET',          	0x4000000); // Проведение ритуала
+define('CLAN_PERM_FLAG_CITADEL_OBJAVLEN',          	0x8000000); // Объявления
+define('CLAN_PERM_FLAG_CITADEL_POST_MES',          	0x10000000); // Почтовая рассылка
+
+define('CLAN_PERM_FLAG_ALL', CLAN_PERM_FLAG_INVITE | CLAN_PERM_FLAG_KICK | CLAN_PERM_FLAG_SEND_CHAT | CLAN_PERM_FLAG_EDIT_GRADE | CLAN_PERM_FLAG_CHG_GRADE | CLAN_PERM_FLAG_EDIT_NEWS | CLAN_PERM_FLAG_EDIT_ACCESS | CLAN_PERM_FLAG_CELL_ADD | CLAN_PERM_FLAG_CELL_MONEY | CLAN_PERM_FLAG_CELL_ITEMS | CLAN_PERM_FLAG_ALLY_CHAT | CLAN_PERM_FLAG_REQUEST_STRONGHOLD | CLAN_PERM_FLAG_DELETE_GIFTS | CLAN_PERM_FLAG_ATTACK_CLAN | CLAN_PERM_FLAG_SMS_SEND | CLAN_PERM_FLAG_UPGRADE_TALENT | CLAN_PERM_FLAG_BATTLE_LOCATION | CLAN_PERM_FLAG_CITADEL_ACCESS | CLAN_PERM_FLAG_CITADEL_TAX | CLAN_PERM_FLAG_CITADEL_CH_RES | CLAN_PERM_FLAG_CITADEL_VIEW_QUEST | CLAN_PERM_FLAG_CITADEL_WORK_TEPL | CLAN_PERM_FLAG_CITADEL_WORK_MAST | CLAN_PERM_FLAG_CITADEL_LOG_MAST | CLAN_PERM_FLAG_CITADEL_ISL_RET |CLAN_PERM_FLAG_CITADEL_PROV_RET | CLAN_PERM_FLAG_CITADEL_OBJAVLEN	| CLAN_PERM_FLAG_CITADEL_POST_MES);
+
+$clan_perm_groups_info = array(
+	1 => array('title' => 'Общие', 'alt' => 'Общие полномочия', 'field' => 'general',),
+    2 => array('title' => 'Сражения', 'alt' => 'Полномочия, связанные с боевыми действиями', 'field' => 'battle',),
+    3 => array('title' => 'Цитадель', 'alt' => 'Доступно кланам, получившим доступ к Цитадели', 'field' => 'citadel',),
+    4 => array('title' => 'Прочие', 'alt' => 'Прочие полномочия', 'field' => 'other',),
+
+);
+
+$clan_perm_groups = array(
+    CLAN_PERM_FLAG_INVITE           	=> 1,
+	CLAN_PERM_FLAG_KICK              	=> 1,
+	CLAN_PERM_FLAG_SEND_CHAT         	=> 1,
+	CLAN_PERM_FLAG_ALLY_CHAT         	=> 1,
+	CLAN_PERM_FLAG_EDIT_GRADE        	=> 1,
+	CLAN_PERM_FLAG_CHG_GRADE         	=> 1,
+	CLAN_PERM_FLAG_EDIT_NEWS         	=> 1,
+	CLAN_PERM_FLAG_EDIT_ACCESS       	=> 1,
+	CLAN_PERM_FLAG_CELL_ADD          	=> 1,
+	CLAN_PERM_FLAG_CELL_MONEY        	=> 1,
+	CLAN_PERM_FLAG_CELL_ITEMS        	=> 1,
+    CLAN_PERM_FLAG_DELETE_GIFTS      	=> 1,
+
+	CLAN_PERM_FLAG_REQUEST_STRONGHOLD	=> 2,
+	CLAN_PERM_FLAG_ATTACK_CLAN       	=> 2,
+	CLAN_PERM_FLAG_BATTLE_LOCATION		=> 2,
+
+    CLAN_PERM_FLAG_CITADEL_ACCESS		=> 3,
+    CLAN_PERM_FLAG_CITADEL_TAX			=> 3,
+    CLAN_PERM_FLAG_CITADEL_CH_RES		=> 3,
+    CLAN_PERM_FLAG_CITADEL_VIEW_QUEST	=> 3,
+    CLAN_PERM_FLAG_CITADEL_WORK_TEPL	=> 3,
+    CLAN_PERM_FLAG_CITADEL_WORK_MAST	=> 3,
+    CLAN_PERM_FLAG_CITADEL_LOG_MAST		=> 3,
+    CLAN_PERM_FLAG_CITADEL_ISL_RET		=> 3,
+    CLAN_PERM_FLAG_CITADEL_PROV_RET		=> 3,
+    CLAN_PERM_FLAG_CITADEL_OBJAVLEN		=> 3,
+    CLAN_PERM_FLAG_CITADEL_POST_MES		=> 3,
+
+
+    CLAN_PERM_FLAG_UPGRADE_TALENT	 	=> 4,
+    CLAN_PERM_FLAG_SMS_SEND          	=> 4,
+);
+
+$clan_perm_info = array(
+	CLAN_PERM_FLAG_INVITE             => array('id' => CLAN_PERM_FLAG_INVITE     , 'title' => '', 'short' => translate('Принимать <br>в клан'), 'alt' => translate('Имеет право принимать игроков в клан')),
+	CLAN_PERM_FLAG_KICK               => array('id' => CLAN_PERM_FLAG_KICK       , 'title' => '', 'short' => translate('Исключать <br>из клана'), 'alt' => translate('Имеет право исключать игроков из клана')),
+	CLAN_PERM_FLAG_SEND_CHAT          => array('id' => CLAN_PERM_FLAG_SEND_CHAT  , 'title' => '', 'short' => translate('Писать в <br>клан чат'), 'alt' => translate('Имеет право писать в клан чат')),
+	CLAN_PERM_FLAG_ALLY_CHAT          => array('id' => CLAN_PERM_FLAG_ALLY_CHAT  , 'title' => '', 'short' => translate('Писать в<br>чат альянса'), 'alt' => translate('Имеет право писать сообщения в чат альянса')),
+	CLAN_PERM_FLAG_EDIT_GRADE         => array('id' => CLAN_PERM_FLAG_EDIT_GRADE , 'title' => '', 'short' => translate('Менять <br>полномочия'), 'alt' => translate('Имеет право Менять полномочия званий')),
+	CLAN_PERM_FLAG_CHG_GRADE          => array('id' => CLAN_PERM_FLAG_CHG_GRADE  , 'title' => '', 'short' => translate('Изменение<br>званий'), 'alt' => translate('Имеет право изменять звания соклановцев')),
+	CLAN_PERM_FLAG_EDIT_NEWS          => array('id' => CLAN_PERM_FLAG_EDIT_NEWS  , 'title' => '', 'short' => translate('Изменение<br>новостей'), 'alt' => translate('Имеет право изменять новости')),
+	CLAN_PERM_FLAG_EDIT_ACCESS        => array('id' => CLAN_PERM_FLAG_EDIT_ACCESS, 'title' => '', 'short' => translate('Изменение<br>действий'), 'alt' => translate('Имеет право изменять клановые действия')),
+	CLAN_PERM_FLAG_CELL_ADD           => array('id' => CLAN_PERM_FLAG_CELL_ADD, 'title' => '', 'short' => translate('Добавление<br>в ячейку'), 'alt' => translate('Имеет право оставлять ценности в клановой ячейке')),
+	CLAN_PERM_FLAG_CELL_MONEY         => array('id' => CLAN_PERM_FLAG_CELL_MONEY, 'title' => '', 'short' => translate('Забирать<br>деньги'), 'alt' => translate('Имеет право забирать деньги из ячейки')),
+	CLAN_PERM_FLAG_CELL_ITEMS         => array('id' => CLAN_PERM_FLAG_CELL_ITEMS, 'title' => '', 'short' => translate('Забирать<br>вещи'), 'alt' => translate('Имеет право забирать вещи из ячейки')),
+	CLAN_PERM_FLAG_REQUEST_STRONGHOLD => array('id' => CLAN_PERM_FLAG_REQUEST_STRONGHOLD, 'title' => '', 'short' => translate('Подавать<br>заявку<br>на крепость'), 'alt' => translate('Имеет право подавать заявку на осаду крепости')),
+	CLAN_PERM_FLAG_DELETE_GIFTS       => array('id' => CLAN_PERM_FLAG_DELETE_GIFTS, 'title' => '', 'short' => translate('Удалять<br>подарки'), 'alt' => translate('Имеет право удалять подарки')),
+	CLAN_PERM_FLAG_SMS_SEND           => array('id' => CLAN_PERM_FLAG_SMS_SEND, 'title' => '', 'short' => translate('Отправлять<br>СМС'), 'alt' => translate('Имеет право отправлять СМС-сообщения')),
+	CLAN_PERM_FLAG_ATTACK_CLAN        => array('id' => CLAN_PERM_FLAG_ATTACK_CLAN, 'title' => '', 'short' => translate('Подавать<br>заявку<br>на клановые битвы'), 'alt' => translate('Имеет право подавать заявку на клановые битвы')),
+    CLAN_PERM_FLAG_UPGRADE_TALENT	  => array('id' => CLAN_PERM_FLAG_UPGRADE_TALENT     , 'title' => '', 'short' => translate('Улучшать<br>таланты'), 'alt' => translate('Имеет право улучшать таланты')),
+
+    CLAN_PERM_FLAG_BATTLE_LOCATION 	  => array('id' => CLAN_PERM_FLAG_BATTLE_LOCATION     , 'title' => '', 'short' => translate('Начинать бой<br>за локацию<br>разлома'), 'alt' => translate('Имеет право начинать бой за локацию разлома')),
+
+    CLAN_PERM_FLAG_CITADEL_ACCESS 	  => array('id' => CLAN_PERM_FLAG_CITADEL_ACCESS     , 'title' => '', 'short' => translate('Доступ в<br>цитадель'), 'alt' => translate('Доступ в цитадель')),
+    CLAN_PERM_FLAG_CITADEL_TAX 	  	  => array('id' => CLAN_PERM_FLAG_CITADEL_TAX     , 'title' => '', 'short' => translate('Оплата<br>налога'), 'alt' => translate('Оплачивать налог')),
+    CLAN_PERM_FLAG_CITADEL_CH_RES 	  => array('id' => CLAN_PERM_FLAG_CITADEL_CH_RES     , 'title' => '', 'short' => translate('Обмен<br>ресурсов'), 'alt' => translate('Обмен ресурсов на рынке в Цитадели')),
+    CLAN_PERM_FLAG_CITADEL_VIEW_QUEST => array('id' => CLAN_PERM_FLAG_CITADEL_VIEW_QUEST     , 'title' => '', 'short' => translate('Видит статус<br>квеста Оракула'), 'alt' => translate('Видит статус квеста Оракула')),
+    CLAN_PERM_FLAG_CITADEL_WORK_TEPL  => array('id' => CLAN_PERM_FLAG_CITADEL_WORK_TEPL     , 'title' => '', 'short' => translate('Работа в<br>теплице'), 'alt' => translate('Имеет право сеять и собирать урожай, а также арендовать места для высаживаний')),
+    CLAN_PERM_FLAG_CITADEL_WORK_MAST  => array('id' => CLAN_PERM_FLAG_CITADEL_WORK_MAST     , 'title' => '', 'short' => translate('Работа в<br>мастерской'), 'alt' => translate('Имеет право создавать предметы в мастерской')),
+    CLAN_PERM_FLAG_CITADEL_LOG_MAST   => array('id' => CLAN_PERM_FLAG_CITADEL_LOG_MAST     , 'title' => '', 'short' => translate('Лог<br>мастерской'), 'alt' => translate('Имеет право просматривать лог мастерской')),
+    CLAN_PERM_FLAG_CITADEL_ISL_RET 	  => array('id' => CLAN_PERM_FLAG_CITADEL_ISL_RET     , 'title' => '', 'short' => translate('Исследование<br>ритуала'), 'alt' => translate('Позволяет исследовать новые ритуалы в магическом котле')),
+    CLAN_PERM_FLAG_CITADEL_PROV_RET   => array('id' => CLAN_PERM_FLAG_CITADEL_PROV_RET     , 'title' => '', 'short' => translate('Проведение<br>ритуала'), 'alt' => translate('Позволяет проводить ритуалы в магическом котле')),
+    CLAN_PERM_FLAG_CITADEL_OBJAVLEN   => array('id' => CLAN_PERM_FLAG_CITADEL_OBJAVLEN     , 'title' => '', 'short' => translate('Объявления'), 'alt' => translate('Позволяет добавлять или редактировать клановые объявления')),
+    CLAN_PERM_FLAG_CITADEL_POST_MES   => array('id' => CLAN_PERM_FLAG_CITADEL_POST_MES     , 'title' => '', 'short' => translate('Почтовая<br>рассылка'), 'alt' => translate('Позволяет создавать почтовые рассылки членам клана.')),
+);
+//if (!constant('CLAN_BATTLE_IS_ON')) unset($clan_perm_info[CLAN_PERM_FLAG_ATTACK_CLAN]);
+
+
+$clan_grade_info = array(
+	CLAN_GRADE_HEAD => array('id' => CLAN_GRADE_HEAD, 'title' => translate('Глава клана'), 'permissions' => CLAN_PERM_FLAG_ALL,
+		'flags' => CLAN_GRADE_FLAG_CRENAME ),
+	CLAN_GRADE_OFFICER => array('id' => CLAN_GRADE_OFFICER, 'title' => translate('Офицер'), 'permissions' => CLAN_PERM_FLAG_SEND_CHAT,
+		'flags' => CLAN_GRADE_FLAG_CRENAME | CLAN_GRADE_FLAG_CEDIT | CLAN_GRADE_FLAG_CKICK ),
+	CLAN_GRADE_PRIVATE => array('id' => CLAN_GRADE_PRIVATE, 'title' => translate('Рядовой'), 'permissions' => CLAN_PERM_FLAG_SEND_CHAT,
+		'flags' => CLAN_GRADE_FLAG_CRENAME | CLAN_GRADE_FLAG_CEDIT | CLAN_GRADE_FLAG_CKICK),
+	CLAN_GRADE_NUB => array('id' => CLAN_GRADE_NUB, 'title' => translate('Новичок'), 'permissions' => CLAN_PERM_FLAG_SEND_CHAT,
+		'flags' => CLAN_GRADE_FLAG_CRENAME | CLAN_GRADE_FLAG_CEDIT | CLAN_GRADE_FLAG_CKICK),
+);
+
+
+$clan_warning_time_hash = array(
+	1 => array('id' => 1, 'days' => 7),
+	2 => array('id' => 2, 'days' => 3),
+	3 => array('id' => 3, 'days' => 1),
+);
+
+
+define('TABLE_CLAN_GL_STAT','clan_gl_stat');
+
+define('CLAN_STAT_TYPE_USER_ENTER', 1); //Вступление игрока в клан!!!
+define('CLAN_STAT_TYPE_USER_LEAVE', 2); //Выход игрока из клана!!!
+define('CLAN_STAT_TYPE_USER_LEVEL', 3); //Взятие членом клана уровня!!!
+define('CLAN_STAT_TYPE_USER_RANK', 4); //Взятие членом клана звания!!!
+define('CLAN_STAT_TYPE_USER_REP', 5); //Достижение репутации
+define('CLAN_STAT_TYPE_LEVEL', 6); //Взятие кланом уровня!!!
+define('CLAN_STAT_TYPE_RANK', 7); //Взятие кланом звания!!!
+define('CLAN_STAT_TYPE_LEVEL_CL', 8); //Взятие кланом ступени клана!!!
+define('CLAN_STAT_TYPE_USER_MEDAL', 9); //Взятие членом клана медали!!!
+define('CLAN_STAT_TYPE_USER_MARRY', 10); //Свадьба участника клана!!!
+define('CLAN_STAT_TYPE_USER_DISMARRY', 11); //Развод участника клана!!!
+define('CLAN_STAT_TYPE_CH_CLAN_HEAD', 12); //Смена главы клана
+define('CLAN_STAT_TYPE_ENTER_ALLIANCE', 13); //Вступление клана в альянс!!!
+define('CLAN_STAT_TYPE_LEAVE_ALLIANCE', 14); //Выход клана из альянса!!!
+define('CLAN_STAT_TYPE_CREATE_ALLIANCE', 15); //Создание альянса!!!
+define('CLAN_STAT_TYPE_STRONHOLD_WIN', 16); //Победа в бою за крепость
+define('CLAN_STAT_TYPE_STRONHOLD_FAIL', 17); //Поражение в бою за крепость
+define('CLAN_STAT_TYPE_CLAN_ACHIEVEMENT', 18); //Получение достижения
+define('CLAN_STAT_TYPE_CLAN_BUILDING', 19); //Постройка здания
+define('CLAN_STAT_TYPE_USER_KICK', 20); //Изгнание игрока из клана!!!
+define('CLAN_STAT_TYPE_ENTER_ALLIANCE_IN', 21); //Присоединение клана к альянсу!!!
+define('CLAN_STAT_TYPE_KICK_ALLIANCE', 22); //Рассторжение альянса с кланом!!!
+define('CLAN_STAT_TYPE_DELETE_ALLIANCE', 23); //Расформирование альянса!!!
+define('CLAN_STAT_TYPE_CREATE', 24); //Создание клана!!!
+
+$clan_stat_type_hash = array(
+	CLAN_STAT_TYPE_USER_ENTER => 'Вступление игрока в клан',
+	CLAN_STAT_TYPE_USER_LEAVE => 'Выход игрока из клана',
+	CLAN_STAT_TYPE_USER_LEVEL => 'Взятие членом клана уровня',
+	CLAN_STAT_TYPE_USER_RANK => 'Взятие членом клана звания',
+	CLAN_STAT_TYPE_USER_REP => 'Достижение репутации',
+	CLAN_STAT_TYPE_LEVEL => 'Взятие кланом уровня',
+	CLAN_STAT_TYPE_RANK => 'Взятие кланом звания',
+	CLAN_STAT_TYPE_LEVEL_CL => 'Взятие кланом ступени клана',
+	CLAN_STAT_TYPE_USER_MEDAL => 'Взятие членом клана медали',
+	CLAN_STAT_TYPE_USER_MARRY => 'Свадьба участника клана',
+	CLAN_STAT_TYPE_USER_DISMARRY => 'Развод участника клана',
+	CLAN_STAT_TYPE_CH_CLAN_HEAD => 'Смена главы клана',
+	CLAN_STAT_TYPE_ENTER_ALLIANCE => 'Вступление клана в альянс',
+	CLAN_STAT_TYPE_LEAVE_ALLIANCE => 'Выход клана из альянса',
+	CLAN_STAT_TYPE_CREATE_ALLIANCE => 'Создание альянса',
+	CLAN_STAT_TYPE_STRONHOLD_WIN => 'Победа в бою за крепость',
+	CLAN_STAT_TYPE_STRONHOLD_FAIL => 'Поражение в бою за крепость',
+	CLAN_STAT_TYPE_CLAN_ACHIEVEMENT => 'Получение достижения',
+	CLAN_STAT_TYPE_CLAN_BUILDING => 'Постройка здания',
+    CLAN_STAT_TYPE_USER_KICK => 'Изгнание игрока из клана',
+    //CLAN_STAT_TYPE_ENTER_ALLIANCE_IN => 'Присоединение клана к альянсу',
+    //CLAN_STAT_TYPE_KICK_ALLIANCE => 'Рассторжение альянса с кланом',
+    //CLAN_STAT_TYPE_DELETE_ALLIANCE => 'Расформирование альянса',
+    CLAN_STAT_TYPE_CREATE => 'Создание клана',
+);
+
+$clan_annals_images = array(
+    CLAN_STAT_TYPE_USER_ENTER => 'memorial-icon-join.png',
+    CLAN_STAT_TYPE_USER_LEAVE => 'memorial-icon-leave.png',
+    CLAN_STAT_TYPE_USER_KICK => 'memorial-icon-leave.png',
+    CLAN_STAT_TYPE_USER_LEVEL => 'memorial-icon-levelup.png',
+    //CLAN_STAT_TYPE_USER_RANK => '', //отобразить ранг
+    CLAN_STAT_TYPE_USER_REP => '',
+    CLAN_STAT_TYPE_LEVEL => 'memorial-icon-clanlevelup.png',
+    CLAN_STAT_TYPE_RANK => 'memorial-icon-clan.png',
+    CLAN_STAT_TYPE_LEVEL_CL => '',
+    CLAN_STAT_TYPE_USER_MEDAL => 'memorial-icon-awards.png',
+    CLAN_STAT_TYPE_USER_MARRY => 'memorial-icon-marry.png',
+    CLAN_STAT_TYPE_USER_DISMARRY => '',
+    CLAN_STAT_TYPE_CH_CLAN_HEAD => 'memorial-icon-new-head.png',
+    CLAN_STAT_TYPE_ENTER_ALLIANCE => 'memorial-icon-alliance.png',
+    CLAN_STAT_TYPE_LEAVE_ALLIANCE => 'memorial-icon-alliance.png',
+    CLAN_STAT_TYPE_CREATE_ALLIANCE => 'memorial-icon-alliance.png',
+    CLAN_STAT_TYPE_STRONHOLD_WIN => '',
+    CLAN_STAT_TYPE_STRONHOLD_FAIL => '',
+    CLAN_STAT_TYPE_CLAN_ACHIEVEMENT => 'memorial-icon-ach.png',
+    CLAN_STAT_TYPE_CLAN_BUILDING => 'memorial-icon-building-create.png',
+);
+
+$clan_step_hash = array(
+    1 => translate('Первая ступень'),
+    2 => translate('Вторая ступень'),
+    3 => translate('Третья ступень'),
+    4 => translate('Четвертая ступень'),
+    5 => translate('Пятая ступень'),
+    6 => translate('Шестая ступень'),
+    7 => translate('Седьмая ступень'),
+    8 => translate('Восьмая ступень'),
+    9 => translate('Девятая ступень'),
+    10 => translate('Десятая ступень'),
+    11 => translate('Одинадцатая ступень'),
+    12 => translate('Двенадцатая ступень'),
+    13 => translate('Тринадцатая ступень'),
+);
+
+define('CLAN_FRIDGE_TIME', 60*60*24*30); //  Период нахождения клана в заморозке за неуплату налога
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/clan_talents.lib");
+
+function clan_get($ref=false, $add='', $extended=false) {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	$clan = common_get($db_2,TABLE_CLANS,$ref,$add);
+	if ($clan) {
+		if ($extended) {
+			require_once("lib/clan_info.lib");
+			$clan_info = clan_info_get($clan['id']);
+			$clan = array_merge($clan,$clan_info);
+		}
+	}
+	if ($clan) {
+		$clan['object_class'] = OBJECT_CLASS_CLAN;
+	}
+	return $clan;
+}
+
+function clan_list($ref=false,$add='',$field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLANS,$ref,$add,$field_list);
+}
+
+function clan_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CLANS, $ref, $add);
+}
+
+function clan_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLANS,$param,FIELD_CLANS);
+}
+
+function clan_delete($ref) {
+	global $db_2, $NODE_NUMS;
+	$clan = clan_get($ref);
+	if ($clan) {
+		$user_ids = get_hash(clan_member_list($ref), 'user_id', 'user_id');
+
+		clan_quests_delete($clan['id']);
+		common_delete($db_2,TABLE_CLANS,$ref);
+		clan_member_delete(false,$ref);
+		clan_member_sync($ref);
+
+		require_once("lib/clan_stat.lib");
+		clan_stat_delete(array('clan_id' => $clan['id']));
+
+		$clan_grade_list = clan_grade_list($ref);
+		foreach ($clan_grade_list as $grade) {
+			clan_grade_delete($grade['id']);
+		}
+
+		// Удаление записи о владении Крепостью
+		stronghold_info_save(array(
+			'owner_clan_id' => 0,
+			'_add' => sql_pholder(' AND owner_clan_id = ? ', $clan['id']),
+		));
+
+		// Удаление всех клановых вещей у всех пользователей и из банка
+		require_once('lib/area_bank.lib');
+		require_once('lib/artifact.lib');
+		foreach ($NODE_NUMS as $nn) {
+			NODE_SWITCH($nn);
+
+			// Убираем привязку к клану в статах пользователя
+			user_stat_save(array(
+				'_set' => sql_pholder(' clan_id = 0, before_clan_value = 0'),
+				'_add' => sql_pholder(' AND clan_id = ?', $clan['id']),
+			));
+
+			$artifact_list = artifact_list(false,null,null,true,false,sql_pholder(' AND user_id=0 AND owner_id>0 AND area_id>0 AND clan_id=?',$ref)); // вещи в клановой ячейке
+			foreach ($artifact_list as $artifact) {
+				artifact_delete($artifact['id']);
+			}
+			if ($user_ids) {
+				$artifact_list = artifact_list(false,null,null,true,false,sql_pholder(' AND user_id IN (?@) AND flags & ?', $user_ids, ARTIFACT_FLAG_CLAN_THING)); // вещи у пользователей
+				foreach ($artifact_list as $artifact) {
+					artifact_save(array('id' => $artifact['id'], 'time_expire' => time_current()));
+				}
+			}
+		}
+
+		// unlink(PATH_IMAGE_CLANS.$clan['picture']); // не удалять значки, потому что на форуме посты становится кривым
+	}
+	return true;
+}
+
+function clan_member_get($ref=false, $user_id=false, $add='') {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($user_id) $ref['user_id'] = $user_id;
+	return common_get($db_2,TABLE_CLAN_MEMBERS,$ref,$add);
+}
+
+function clan_member_list($clan_id, $status=null, $add='') {
+	global $db_2;
+	if (!$clan_id) return false;
+	$ref = array('clan_id' => $clan_id);
+	if (isset($status)) $ref['status'] = $status;
+	return common_list($db_2,TABLE_CLAN_MEMBERS,$ref,$add);
+}
+
+function clan_member_count($clan_id, $status=null, $add='') {
+	global $db_2;
+	if (!$clan_id) return false;
+	$ref = array('clan_id' => $clan_id);
+	if (isset($status)) $ref['status'] = $status;
+	return common_count($db_2,TABLE_CLAN_MEMBERS,$ref,$add);
+}
+
+function clan_member_save($param) {
+	global $db_2;
+	if (!$param['id'] && !$param['clan_id']) return false;
+	return common_save($db_2,TABLE_CLAN_MEMBERS,$param,FIELD_CLAN_MEMBERS);
+}
+
+function clan_member_delete($ref=false, $clan_id=false, $add='') {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($clan_id) $ref['clan_id'] = $clan_id;
+	return common_delete($db_2,TABLE_CLAN_MEMBERS,$ref,$add);
+}
+
+function clan_member_update($user_ids, $field, $value='', $value_old=null, $add='') {
+	global $db_2;
+	if (!common_bulk_update($db_2,TABLE_CLAN_MEMBERS,$user_ids,$field,$value,$value_old,$add)) return false;
+	return true;
+}
+
+function clan_member_sync($clan_id) {
+	if (!$clan_id) return false;
+	$clan_user_ids = make_hash(user_list(array('clan_id'=>$clan_id)), 'id');
+	user_bulk_update(false,'clan_id',0,$clan_id);
+	if (!empty($clan_user_ids)) user_info_save(array(
+		'_set' => " clan_data = '' ",
+		'_add' => sql_pholder(' AND uid IN (?@)', array_keys($clan_user_ids))
+	));
+	$clan = clan_get($clan_id);
+	if (!$clan || ($clan['flags'] & CLAN_FLAG_DISBANDED)) return false;
+	$clan_member_list = make_hash(clan_member_list($clan_id,CM_STATUS_ACTIVE),'user_id');
+	if (!$clan_member_list) return false;
+    $new_users = array_diff_key($clan_member_list,$clan_user_ids);
+    $deleted_users = array_diff_key($clan_user_ids,$clan_member_list);
+    
+    foreach($deleted_users as $user_id => $item) {
+    	$u = user_get($user_id);
+    	$u['clan_id'] = $clan_id;
+    	//user_change_chat_channels($u, array('clan_id' => 0));
+    }
+    foreach($new_users as $user_id => $item); //user_change_chat_channels(user_get($user_id), array('clan_id' => $clan_id));
+    
+    global $db_3;
+	//устанавливаем соответствие между флагами звания в клане на флаги пользователя
+	$clan_flags_correlation = array(
+		CLAN_PERM_FLAG_SEND_CHAT => array( 'unset' => USER_FLAG_NOCLANCHAT ),
+		CLAN_PERM_FLAG_ALLY_CHAT => array( 'set' => USER_FLAG_ALLY_CHAT )
+	);
+	$clan_grades = make_hash(clan_grade_list($clan_id));
+	foreach ($clan_flags_correlation as $clan_flag => $member_flag) {
+		$user_ids_with_flag = array();
+		$user_ids_without_flag = array();
+		foreach ($clan_member_list as $member) {
+			if ($clan_grades[$member['grade_id']]['permissions'] & $clan_flag) {
+				$user_ids_with_flag[] = $member['user_id'];
+			}
+			else $user_ids_without_flag[] = $member['user_id'];
+		}
+		
+		if ($user_ids_with_flag) {
+			if ($member_flag['set']) {
+				common_save($db_3, TABLE_USERS, array(
+					'_set' => sql_pholder('clan_id=?, flags=flags|?', $clan_id, $member_flag['set']),
+					'_add' => sql_pholder(' AND id IN (?@)', $user_ids_with_flag),
+				));
+			}
+			if ($member_flag['unset']) {
+				common_save($db_3, TABLE_USERS, array(
+					'_set' => sql_pholder('clan_id=?, flags=flags&~?', $clan_id, $member_flag['unset']),
+					'_add' => sql_pholder(' AND id IN (?@)', $user_ids_with_flag),
+				));
+			}
+		}
+		if ($user_ids_without_flag) {
+			if ($member_flag['set']) {
+				common_save($db_3, TABLE_USERS, array(
+					'_set' => sql_pholder('clan_id=?, flags=flags&~?', $clan_id, $member_flag['set']),
+					'_add' => sql_pholder(' AND id IN (?@)', $user_ids_without_flag),
+				));
+			}
+			if ($member_flag['unset']) {
+				common_save($db_3, TABLE_USERS, array(
+					'_set' => sql_pholder('clan_id=?, flags=flags|?', $clan_id, $member_flag['unset']),
+					'_add' => sql_pholder(' AND id IN (?@)', $user_ids_without_flag),
+				));
+			}
+		}
+	}
+	foreach ($deleted_users as $user) {
+	    NODE_SWITCH(null, $user['id']);
+	    clan_stat_save_user_stats($clan_id, $user['id']);
+	}
+    foreach ($new_users as $user) {
+        NODE_SWITCH(null, $user['user_id']);
+	    user_stat_update($user['user_id'], USER_STAT_TYPE_MISC, USER_STAT_OBJECT_CLAN_ENTER, 1);
+	    user_stat_save(array(
+			'_set' => sql_pholder(' clan_id = ?, before_clan_value = value ', $clan_id),
+			'_add' => sql_pholder(' AND user_id = ? ', $user['user_id']),
+		));
+	}
+	
+	$clan_info = array(
+		'id' => $clan_id,
+		'title' => $clan['title'],
+		'picture' => $clan['picture'],
+		'server_id' => SERVER_ID,
+	);
+	
+	user_info_save(array(
+		'_add' => sql_pholder(' and uid in (?@)', array_keys($clan_member_list)),
+		'_set' => sql_pholder('clan_data=?', serialize($clan_info)),
+	));
+	
+	return true;
+}
+
+// механизм управления званиями в клане
+// создаем/удаляем/редактируем новые звания
+
+function clan_grade_get($ref=false, $clan_id=false, $add='') {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($clan_id) $ref['clan_id'] = $clan_id;
+	return common_get($db_2,TABLE_CLAN_GRADES,$ref,$add);
+}
+
+function clan_grade_list($clan_id = false, $add='') {
+	global $db_2;
+	$ref = false;
+	if ($clan_id) $ref = array('clan_id' => $clan_id);
+	$data = common_list($db_2,TABLE_CLAN_GRADES,$ref,$add);
+	if (!$data) {
+		// скопируем предопределенные звания
+		clan_grade_copy_predefined($clan_id);
+		return common_list($db_2,TABLE_CLAN_GRADES,$ref,$add);
+	}
+	return $data;
+}
+
+function clan_grade_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_GRADES,$param,FIELD_CLAN_GRADES);
+}
+
+function clan_grade_delete($ref) {
+	global $db_2;
+	return common_delete($db_2,TABLE_CLAN_GRADES,$ref);
+}
+
+function clan_grade_copy_predefined($clan_id=false) {
+	global $db_2, $clan_grade_info;
+
+	$clan = clan_get($clan_id);
+	if (!$clan) {
+		return false;
+	}
+	$grade = clan_grade_get(false, $clan_id);
+	if ($grade) {
+		return false;
+	}
+	foreach($clan_grade_info as $predef_grade) {
+		clan_grade_save(array(
+			'clan_id' => $clan_id,
+			'basic_id' => $predef_grade['id'],
+			'title' => $predef_grade['title'],
+			'permissions' => $predef_grade['permissions'],
+			'flags' => $predef_grade['flags'],
+			'ord' => $predef_grade['id'],
+		));
+	}
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($clan_id) $ref['clan_id'] = $clan_id;
+	return common_get($db_2,TABLE_CLAN_GRADES,$ref);
+	//return common_get($db_2,TABLE_CLAN_GRADES,$ref,$add);
+}
+
+
+/////////////////////////////////////////////////////////
+
+function clan_request_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_REQUESTS,$ref,$add);
+}
+
+function clan_request_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLAN_REQUESTS,$ref,$add);
+}
+
+function clan_request_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_CLAN_REQUESTS,$ref,$add);
+}
+
+function clan_request_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_REQUESTS,$param,FIELD_CLAN_REQUESTS);
+}
+
+function clan_request_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CLAN_REQUESTS,$ref,$add);
+}
+
+function clan_is_title_correct($title) {
+	if ((mb_strlen($title) < 2) || (mb_strlen($title) > 30)) return false;
+	if (preg_match('/^\d/',$title)) return false;
+	if (preg_match(common_get_regexp('valid_name_symbols'),$title)) return false;
+	if (@constant('_TRANS_LANG') == 'ru' && preg_match('/[a-zA-Z]/',$title) && preg_match(common_get_regexp('locale_symbols'),$title)) return false;
+	return true;
+}
+
+function clan_generate_icon_name($orig_name) {
+	return mt_rand(1000000, 9999999).strtolower(strrchr($orig_name,"."));
+}
+
+function clan_send_warning_message($clan_id, $subject, $msg) {
+	$clan = clan_get($clan_id);
+	if (!$clan) return false;
+	$clan_head_grade = clan_grade_get(array('clan_id'=>$clan_id, 'basic_id' => CLAN_GRADE_HEAD));
+	if (!$clan_head_grade) return false;
+	$member = clan_member_get(array('status' => CM_STATUS_ACTIVE, 'clan_id' => $clan_id, 'grade_id' => $clan_head_grade['id']));
+	if (!$member) return false;
+
+	$param = array(
+		'from_id' => 0,
+		'to_id' => $member['user_id'],
+		'unread' => 1,
+		'type_id' => MSG_TYPE_SYS_NORMAL,
+		'text' => $msg,
+		'subject' => $subject,
+		'stime' => time_current(),
+		'rtime' => time_current() + area_post_message_ttl(MSG_TYPE_SYS_NORMAL, false),
+	);
+	$status = area_post_message_save($param);
+	area_post_user_send_chat_notify($param['to_id']);
+	return $status;
+}
+
+///////////////////////////////////////////////////////////
+
+function user_set_clan_access($user_id, $new_access=0, $clan_access_mask=0) {
+	$clan_access_mask = intval($clan_access_mask);
+	if (!$user_id || !$clan_access_mask) return false;
+	$status = user_save(array(
+		'id' => $user_id,
+		'_set' => ' access = '.($new_access & $clan_access_mask).' | access & ~'.$clan_access_mask,
+	));
+	return $status;
+}
+
+function clan_get_active_game_player_count($clan_id){
+	$clan_member_ids = get_hash(clan_member_list($clan_id, CM_STATUS_ACTIVE), 'user_id', 'user_id');
+	if($clan_member_ids) $auth_hash = make_hash(auth_list(false, array('uid' => $clan_member_ids)), 'uid');
+	$count = 0;
+	foreach ($auth_hash as $auth) {
+		if(time_current() - $auth['time_login'] > CLAN_ACTIVE_GAME_PLAYER_TIME) $count++;
+	}
+	return $count;
+}
+
+function clan_leader_id_get($clan_id) {
+	$clan_head_grade = clan_grade_get(array('clan_id'=>$clan_id, 'basic_id' => CLAN_GRADE_HEAD));
+	if (!$clan_head_grade) return false;
+	$member = clan_member_get(array('status' => CM_STATUS_ACTIVE, 'clan_id' => $clan_id, 'grade_id' => $clan_head_grade['id']));
+	if (!$member) return false;
+	return $member['user_id'];
+}
+
+function clan_quests_delete($clan_id) {
+	if (!$clan_id) return false;
+	$clan_leader_id = clan_leader_id_get ($clan_id);
+	if (!$clan_leader_id) return false;
+	$clan_leader = user_get($clan_leader_id);
+	NODE_PUSH(null, $clan_leader_id);
+	$clan_leader_quest_user_hash = make_hash(quest_user_list(array('user_id' => $clan_leader['id'])),'quest_id');
+	if ($clan_leader_quest_user_hash) {
+		foreach (quest_list(array('id' => array_keys($clan_leader_quest_user_hash)), sql_pholder(" AND flags & ?", QUEST_FLAG_CLAN)) as $quest) {
+			if ($clan_leader_quest_user_hash[$quest['id']]['status'] == QUEST_STATUS_STARTED) {
+				quest_user_cancel($quest,$clan_leader);
+			} else {
+				quest_user_delete(array('quest_id' => $quest['id'], 'user_id' => $clan_leader_id));
+				quest_user_point_delete(array('quest_id' => $quest['id'], 'user_id' => $clan_leader_id));
+			}
+		}
+	}
+	NODE_POP();
+	return true;
+}
+
+function clan_quest_list($clan_id) {
+	if (!$clan_id) return false;
+	$clan_leader_id = clan_leader_id_get ($clan_id);
+	if (!$clan_leader_id) return false;
+	NODE_PUSH(null, $clan_leader_id);
+	$clan_leader_quest_user_hash = make_hash(quest_user_list(array('user_id' => $clan_leader_id, 'status' => QUEST_STATUS_STARTED)),'quest_id');
+	NODE_POP();
+	return $clan_leader_quest_user_hash ? quest_list(array('id' => array_keys($clan_leader_quest_user_hash)), sql_pholder(" AND flags & ?", QUEST_FLAG_CLAN)) : array();
+}
+
+// Выдача бонусов отказа от клановых квестов
+function clan_user_quest_cancel_bonus(&$user) {
+	foreach (clan_quest_list($user['clan_id']) as $quest) {
+		chat_msg_send_system(sprintf(translate('Вы лишились кланового квеста "%s"'),htmlspecialchars($quest['title'])), CHAT_CHF_USER, $user['id']);
+		if ($quest['cancel_bonus_id']) bonus_apply($user,$quest['cancel_bonus_id']);
+	}
+	return true;
+}
+
+function clan_user_leave($user){
+	//Удаляем клановую репу
+    NODE_SWITCH(false, $user['id']);
+	user_stat_delete(array(
+		'user_id' => $user['id'],
+		'type_id' => USER_STAT_TYPE_SKILL,
+		'object_id' => USER_STAT_SKILL_REP_CLAN,
+	));
+
+	$remove_artikuls = array(9800,9801,9802,9803,9804,9805,9806,9807,9808,9809,9811);
+	$user_artifact_list = user_get_artifact_list($user['id'], '', sql_pholder(' AND artikul_id IN (?@)',$remove_artikuls));
+	foreach ($user_artifact_list as $artifact){
+		artifact_delete($artifact);
+	}
+}
+
+// Открепляет клановые артефакты от пользователя
+function clan_user_move_artifact($user) {
+	global $kind_info, $session_user, $NODE_NUMS;
+	$artifact_list = array();
+	foreach ($NODE_NUMS as $nn) {
+		if (!NODE_PUSH($nn)) continue;
+		$artifact_list = array_merge($artifact_list, artifact_list(null, null, null, null, null, sql_pholder(' AND (user_id = ? OR owner_id = ?) AND flags & ?#ARTIFACT_FLAG_CLAN_THING', $user['id'], $user['id'])));
+		NODE_POP();
+	}
+	foreach ($artifact_list as $artifact) {
+		artifact_transfer($artifact['id'], 0, $kind_info[$user['kind']]['bank_area_id'], $user['clan_id']);		
+	}
+}
+
+function clan_member_max($clan) {
+	if (!is_array($clan)) $clan = clan_get($clan);
+	if (!$clan) return false;
+
+	if ($clan['member_max']) { 
+		// приоритет у прописанного в базе значения 'member_max'. 
+		// если оно не "0" то это фиксированное кол-во членов клана не зависящее от уровня клана
+		return $clan['member_max'];
+	}
+	// 0 ступень клана - 20 человек
+	// 1 ступень клана - 40 человек
+	// 2 ступень клана - 60 человек
+	if($clan['level']){ return ($clan['level']*10); }else{
+        return 10;
+	}
+}
+
+// Блокировка
+function clan_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('CLAN_'.intval($ref),$timewait,$timelock);
+}
+
+function clan_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('CLAN_'.intval($ref));
+}
+
+function clan_store_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('CLAN_STORE_'.intval($ref),$timewait,$timelock);
+}
+
+function clan_store_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('CLAN_STORE_'.intval($ref));
+}
+
+function clan_crossserver_info_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_CROSSSERVER_INFO,$ref,$add);
+}
+
+function clan_crossserver_info_list($ref=false, $add='', $fields='*') {
+	global $db_2;
+	return common_list($db_2, TABLE_CLAN_CROSSSERVER_INFO, $ref, $add, $fields);
+}
+
+function clan_crossserver_info_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CLAN_CROSSSERVER_INFO, $ref, $add);
+}
+
+function clan_crossserver_info_save($param,$add='') {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_CROSSSERVER_INFO,$param,FIELD_CLAN_CROSSSERVER_INFO,'id',$add);
+}
+
+function clan_crossserver_info_delete($ref,$add='') {
+	global $db_2;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_2,TABLE_CLAN_CROSSSERVER_INFO,$ref,$add);
+	return true;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+function clan_stock_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CLAN_STOCK,$ref,$add);
+}
+
+function clan_stock_list($ref=false, $add='', $fields='*') {
+    global $db_2;
+    return common_list($db_2, TABLE_CLAN_STOCK, $ref, $add, $fields);
+}
+
+function clan_stock_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_CLAN_STOCK, $ref, $add);
+}
+
+function clan_stock_save($param,$add='') {
+    global $db_2;
+    return common_save($db_2,TABLE_CLAN_STOCK,$param);
+}
+
+function clan_stock_delete($ref,$add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_CLAN_STOCK,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+function clan_stock_limit_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_STOCK_LIMIT,$ref,$add);
+}
+
+function clan_stock_limit_list($ref=false, $add='', $fields='*') {
+	global $db_2;
+	return common_list($db_2, TABLE_CLAN_STOCK_LIMIT, $ref, $add, $fields);
+}
+
+function clan_stock_limit_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_CLAN_STOCK_LIMIT, $ref, $add);
+}
+
+function clan_stock_limit_save($param,$add='') {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_STOCK_LIMIT,$param);
+}
+
+function clan_stock_limit_delete($ref,$add='') {
+	global $db_2;
+	common_delete($db_2,TABLE_CLAN_STOCK_LIMIT,$ref,$add);
+	return true;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+function clan_gl_stat_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CLAN_GL_STAT,$ref,$add);
+}
+
+function clan_gl_stat_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_CLAN_GL_STAT,$ref,$add);
+}
+
+function clan_gl_stat_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_CLAN_GL_STAT,$ref,$add);
+}
+
+function clan_gl_stat_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CLAN_GL_STAT,$param);
+}
+
+function clan_gl_stat_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_CLAN_GL_STAT,$ref,$add);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+function clan_stat_archive($clan_id = false, $user_id = false, $type = false, $value = false, $param = array()){
+	global $clan_stat_type_hash;
+	if(!$clan_id || !$type || !$clan_stat_type_hash[$type]) return false;
+	$data = array(
+		'clan_id' => $clan_id,
+		'type' => $type,
+		'ctime' => time_current(),
+	);
+	if($user_id) $data['user_id'] = $user_id;
+
+	$data['data1'] = ($value ? $value : '');
+	switch ($type){
+		case CLAN_STAT_TYPE_USER_LEVEL:
+        case CLAN_STAT_TYPE_USER_RANK:
+		case CLAN_STAT_TYPE_LEVEL:
+		case CLAN_STAT_TYPE_RANK:
+		case CLAN_STAT_TYPE_USER_MEDAL:
+		case CLAN_STAT_TYPE_LEVEL_CL: //Медаль ID
+        case CLAN_STAT_TYPE_USER_MARRY: //С кем свадьба
+		case CLAN_STAT_TYPE_USER_DISMARRY: //С кем развод
+		case CLAN_STAT_TYPE_STRONHOLD_WIN: //Бой ID
+		case CLAN_STAT_TYPE_STRONHOLD_FAIL: //Бой ID
+		case CLAN_STAT_TYPE_CLAN_ACHIEVEMENT: //ID достижения
+		case CLAN_STAT_TYPE_CLAN_BUILDING: //ID здания
+            $data['data1'] = intval($value);
+			break;
+        case CLAN_STAT_TYPE_USER_REP: //ХЗ
+			break;
+		case CLAN_STAT_TYPE_KICK_ALLIANCE:
+			$data['data2'] = strval($param);
+			break;
+		case CLAN_STAT_TYPE_CREATE:
+			if(clan_gl_stat_get(array('type' => CLAN_STAT_TYPE_CREATE, 'clan_id' => $clan_id))){
+				return false;
+			}
+			break;
+	}
+
+	return clan_gl_stat_save($data);
+}
+
+define('CLAN_STAT_ARTIKUL_EXP', 1); //Значение из админки INDEX Клановых статистик
+define('CLAN_STAT_ARTIKUL_HONOR', 2); //Значение из админки INDEX Клановых статистик
+function clan_get_current_lr($clan = array(), $type = 1){
+	$out = array(
+		'level' => ($clan['gl_level'] ? $clan['gl_level'] : 1),
+		'rank' => ($clan['gl_rank'] ? $clan['gl_rank'] : 1),
+		'error' => false,
+	);
+	if($clan['id']){
+		switch ($type){
+			case 1:
+				if(!function_exists('total_rating_clan_get')) require_once("lib/rating.lib");
+                $total_rating_clan = total_rating_clan_get(array('clan_id' => $clan['id']));
+                $out['level'] = ($total_rating_clan['stat_level'] > $clan['gl_level'] ? $total_rating_clan['stat_level'] : $clan['gl_level']);
+                $out['rank'] = ($total_rating_clan['stat_rank'] > $clan['gl_rank'] ? $total_rating_clan['stat_rank'] : $clan['gl_rank']);
+				break;
+			case 2:
+                if(!function_exists('clan_stat_list')) require_once("lib/clan_stat.lib");
+                $clan_stat_hash = make_hash(clan_stat_list(array('clan_id' => $clan['id'], 'clan_stat_artikul_id' => array(CLAN_STAT_ARTIKUL_EXP,CLAN_STAT_ARTIKUL_HONOR))), 'clan_stat_artikul_id');
+                $out['level'] = ($clan_stat_hash[CLAN_STAT_ARTIKUL_EXP]['clan_stat_artikul_level'] > $clan['gl_level'] ? $clan_stat_hash[CLAN_STAT_ARTIKUL_EXP]['clan_stat_artikul_level'] : $clan['gl_level']);
+                $out['rank'] = ($clan_stat_hash[CLAN_STAT_ARTIKUL_HONOR]['clan_stat_artikul_level'] > $clan['gl_rank'] ? $clan_stat_hash[CLAN_STAT_ARTIKUL_HONOR]['clan_stat_artikul_level'] : $clan['gl_rank']);
+				break;
+		}
+	}
+	return $out;
+}
+
+//Синхронизирует измененные права лидерам клана!
+function clan_grades_head_sync_all(){
+	global $db_2;
+	$clan_list = make_hash(clan_list());
+	$clan_grade_list = common_list($db_2,TABLE_CLAN_GRADES, array('clan_id' => array_keys($clan_list), 'basic_id' => CLAN_GRADE_HEAD));
+	foreach ($clan_grade_list as $clan_grade){
+		clan_grade_save(array(
+			'id' => $clan_grade['id'],
+			'permissions' => CLAN_PERM_FLAG_ALL,
+		));
+	}
+}
+
+function clan_stock_add_artikul($clan_id, $artikul_id, $amount = 0){
+	if(!$clan_id || !$artikul_id || $amount <= 0) return false;
+
+    $clan_stock_art = clan_stock_get(array('clan_id' => $clan_id, 'artikul_id' => $artikul_id));
+    if($clan_stock_art){
+        return clan_stock_save(array(
+            'id' => $clan_stock_art['id'],
+            '_set' => sql_pholder(' cnt = cnt + ?', $amount),
+        ));
+    }else{
+        return clan_stock_save(array(
+            'clan_id' => $clan_id,
+            'artikul_id' => $artikul_id,
+            'cnt' => $amount,
+        ));
+    }
+}
+
+function clan_stock_remove_artikul($clan_id, $artikul_id, $amount = 0){
+	if(!$clan_id || !$artikul_id || $amount <= 0) return false;
+
+	$clan_stock_art = clan_stock_get(array('clan_id' => $clan_id, 'artikul_id' => $artikul_id));
+	$ostatok = $clan_stock_art['cnt'] - $amount;
+	if($ostatok < 0) $amount += $ostatok;
+	if($clan_stock_art){
+		if(clan_stock_save(array(
+			'id' => $clan_stock_art['id'],
+			'_set' => sql_pholder(' cnt = cnt - ?', $amount),
+		))){ return $amount; }else{
+			return false;
+		}
+	}else{
+		return false;
+	}
+}
+
+function clan_add_cell($artifact_id, $amount, $cell, $clan_id, $user_id = false){
+	global $clan_stock_artikuls_info;
+	if(!$artifact_id || $amount < 0) {
+		$error = 'Не указан артефакт или кол-во!';
+		return array('error' => $error, 'status' -1);
+	}
+	if(!$cell){
+		$error = 'Не найдена клановая ячейка!';
+		return array('error' => $error, 'status' -1);
+	}
+	$area_id = intval($cell['area_id']);
+
+	if ($clan_id) {
+		$cell_artifact_hash = make_hash(area_get_artifact_list($area_id, false, sql_pholder(' AND clan_id=?', $clan_id)));
+		$clan = clan_get($clan_id);
+		if($user_id) {
+			$member = clan_member_get(array('status' => CM_STATUS_ACTIVE, 'clan_id' => $clan_id), $user_id);
+			$grade = clan_grade_get($member['grade_id']);
+			$artifact_hash = make_hash(user_get_artifact_list($user_id, '', sql_pholder(' AND type_id<>?#ARTIFACT_TYPE_ID_GIFT AND NOT (flags & ?)', ARTIFACT_FLAG_NODROP | ARTIFACT_FLAG_NOGIVE | ARTIFACT_FLAG_CHANGE)));
+			NODE_SWITCH(false, $user_id);
+		}else{
+			NODE_SWITCH(false, clan_leader_id_get($clan['id']));
+		}
+	}
+
+	do{
+		if ($user_id && ($amount <= 0) || !$artifact_hash[$artifact_id]) {
+			$error = translate('Указано неверное количество!');
+			break;
+		}
+		if ($user_id && $artifact_hash[$artifact_id]['cnt'] > 0 && ($artifact_hash[$artifact_id]['cnt'] < $amount)) {
+			$error = translate('У Вас нет такого количества предметов!');
+			break;
+		}
+		if ($user_id && !($grade['permissions'] & CLAN_PERM_FLAG_CELL_ADD)) {
+			$error = translate('У вас нет разрешения на эту операцию, обратитесь к главе клана');
+			break;
+		}
+		if ($user_id && !session_lock($user_id)) {
+			$error = translate('Не удалось выполнить операцию!');
+			break;
+		}
+		do {
+			if ($user_id && user_get_punishment_state($user_id, array(CRIME_FINANCE,CRIME_FREEDOM))) {
+				$error = translate('Вы не можете выполнить это действие, так как на вас наложено проклятие!');
+				break;
+			}
+			if (!clan_lock($clan['id'])) {
+				$error = translate('Не удалось выполнить операцию!');
+				break;
+			}
+			$clan_stock_artikuls_hash = get_hash($clan_stock_artikuls_info, 'id', 'id');
+			$artifact = artifact_get($artifact_id);
+			if(in_array($artifact['artikul_id'],$clan_stock_artikuls_hash)){
+				do {
+					artifact_remove($artifact['artikul_id'], $amount, $user_id);
+					$clan_stock_art = clan_stock_get(array('clan_id' => $clan['id'], 'artikul_id' => $artifact['artikul_id']));
+					if($clan_stock_art){
+						clan_stock_save(array(
+							'id' => $clan_stock_art['id'],
+							'_set' => sql_pholder(' cnt = cnt + ?', $amount),
+						));
+					}else{
+						clan_stock_save(array(
+							'clan_id' => $clan['id'],
+							'artikul_id' => $artifact['artikul_id'],
+							'cnt' => $amount,
+						));
+					}
+				} while (0);
+			} else {
+				do {
+					$weight_left = $cell['num'] - get_cell_artifact_weight($cell_artifact_hash);
+					$weight_left -= artifact_check_capacity($artifact['artikul_id'], $amount, $user_id, $area_id, '', $clan_id, true, ARTIFACT_STORAGE_TYPE_ALL);
+					if ($weight_left < 0) {
+						$error = translate('У Вас нет достаточного места в ячейке!');
+						break;
+					}
+					artifact_move($artifact_id, $amount, $user_id, $area_id, $clan_id, array(), ARTIFACT_STORAGE_TYPE_ALL);
+					area_bank_cell_log_save(array(
+						'area_id' => $area_id,
+						'clan_id' => $clan_id,
+						'type' => AREA_BANK_CELL_LT_ADDITEM,
+						'artifact_artikul_id' => $artifact_hash[$artifact_id]['artikul_id'],
+						'artifact_id' => $artifact_hash[$artifact_id]['id'],
+						'user_id' => $user_id,
+						'cnt' => $amount,
+						'stime' => time_current(),
+					));
+				} while (0);
+			}
+			clan_unlock($clan['id']);
+		} while (0);
+		if($user_id) session_unlock($user_id);
+	}while(0);
+	if($error){
+		return array('error' => $error, 'status' => -1);
+	}
+	return array('status' => 100);
+}
+
+function clan_stock_limit_user_info($user_id) {
+	$clan_stock_limit_hash = make_hash(clan_stock_limit_list(array('user_id' => $user_id)), 'artikul_id');
+	$out = array();
+	foreach ($clan_stock_limit_hash as $clan_stock_limit){
+		$out[$clan_stock_limit['artikul_id']] = clan_stock_limit_info($user_id, $clan_stock_limit['artikul_id'], $clan_stock_limit);
+	}
+	return $out;
+}
+
+function clan_stock_limit_clan_info($clan_id) {
+	$clan_member_list = clan_member_list($clan_id, CM_STATUS_ACTIVE);
+	$user_ids = array();
+	foreach ($clan_member_list as $member){
+		$user_ids[$member['user_id']] = $member['user_id'];
+	}
+	if($user_ids) $clan_stock_limit_hash = make_hash(clan_stock_limit_list(array('user_id' => $user_ids)), 'user_id', true);
+	$out = array();
+	foreach ($clan_stock_limit_hash as $user_id=>$clan_stock_limit_list){
+		foreach ($clan_stock_limit_list as $clan_stock_limit){
+			$out[$user_id][$clan_stock_limit['artikul_id']] = clan_stock_limit_info($user_id, $clan_stock_limit['artikul_id'], $clan_stock_limit);
+		}
+	}
+	return $out;
+}
+
+function clan_stock_limit_info($user_id, $artikul_id, $clan_stock_limit = false){
+	$out = array();
+	$out['limit'] = false; $out['cnt'] = 0;
+	if(!$clan_stock_limit) $clan_stock_limit = clan_stock_limit_get(array('user_id' => $user_id, 'artikul_id' => $artikul_id));
+	if($clan_stock_limit){
+		$out['csl'] = $clan_stock_limit;
+		$out['cnt'] = $clan_stock_limit['amount'] - $clan_stock_limit['cnt'];
+		$out['limit'] = true;
+		if($clan_stock_limit['amount'] <= 0) $out['limit'] = false;
+	}
+	return $out;
+}
+
+function clan_stock_limit_cron() {
+    clan_stock_limit_save(array(
+        '_add' => sql_pholder(' AND dtime < ?', time_current()),
+        '_set' => sql_pholder(' cnt = 0, dtime = ?', (mktime(23,59,59) + 1)),
+    ));
+}
+
+function clan_cfight_cron(){
+	clan_save(array(
+        '_add' => sql_pholder(' AND cfight_dtime > 0 AND cfight_dtime < ?', time_current()),
+		'_set' => sql_pholder(' cfight_cnt = 0, cfight_dtime = ?', mktime(23, 59, 59) + 1),
+    ));
+}
+
+function clan_arena_sim_open($user = array()) {
+    if(((defined('CLAN_ARENA_SIM_OPEN_ADMIN') && CLAN_ARENA_SIM_OPEN_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('CLAN_ARENA_SIM_OPEN') && CLAN_ARENA_SIM_OPEN)) {
+        return true;
+    }
+    return false;
+}
+
+///////////////////////Подарки
+
+/*
+ * artikul_id = артефакт
+ * lvl = огранка по уровню
+ * rank = огранка по званию
+ * dp = огранка по спец-пакету
+ * dp_level = огранка по уровню спец-пакета
+ * d_id = важность подарка (влияет на отображение
+ * */
+$clan_gift_artikul_list = array(
+	8836 => array(
+		'artikul_id' => 8836,
+		'lvl' => 1,
+		'rank' => 0,
+		'd_id' => 1,
+	),
+	8837 => array(
+		'artikul_id' => 8837,
+		'lvl' => 4,
+		'rank' => 2,
+		'd_id' => 2,
+	),
+	8838 => array(
+		'artikul_id' => 8838,
+		'lvl' => 4,
+		'rank' => 4,
+		'd_id' => 3,
+	),
+	8839 => array(
+		'artikul_id' => 8839,
+		'lvl' => 4,
+		'rank' => 6,
+		'd_id' => 4,
+	),
+	/*8840 => array(
+		'artikul_id' => 8840,
+		'lvl' => 4,
+		'rank' => 8,
+		'd_id' => 5,
+	),
+	8841 => array(
+		'artikul_id' => 8841,
+		'lvl' => 4,
+		'rank' => 10,
+		'd_id' => 6,
+	),*/
+);
+
+$clan_gift_MAX_DAY = array(
+	3 => 2,
+	4 => 3,
+	5 => 4,
+	6 => 4,
+	7 => 5,
+	8 => 5,
+	9 => 6,
+	10 => 7,
+	11 => 8,
+	12 => 9,
+	13 => 9,
+	14 => 10,
+	15 => 10,
+);
+
+function clan_get_max_day($level){
+	return 3;
+}
+
+function cl_gift_restriction($clan_gift = array()){
+	global $rank_info, $clan;
+	$restriction = false;
+	$out = array();
+	if($clan_gift['lvl'] && $clan_gift['lvl'] > $clan['gl_level']) {
+		$restriction = true;
+		$out['error'] .= '<br>-вашему клану необходим '.$clan_gift['lvl'].' уровень.';
+	}
+
+	//Если есть господство, выбираем его!
+	$rank = $clan['gl_rank'];
+	if($clan_gift['rank'] && $clan_gift['rank'] > $rank){
+		$restriction = true;
+		$out['error'] .= '<br>-вашему клану необходимо достигнуть звания <br><img src="'.PATH_IMAGE_RANKS.'rank'.$clan_gift['rank'].'.gif">&nbsp;'.$rank_info[$clan_gift['rank']]['title'].'.';
+	}
+	$out['allow'] = !$restriction;
+	return $out;
+}
+
+function clan_gift_open($clan = array()){
+	if(((defined('CLAN_GIFT_GLOBAL_OPEN_ADMIN') && CLAN_GIFT_GLOBAL_OPEN_ADMIN) && $clan['flags'] & CLAN_FLAG_GUARD) || (defined('CLAN_GIFT_GLOBAL_OPEN') && CLAN_GIFT_GLOBAL_OPEN)) {
+		return true;
+	}
+	return false;
+}
+
+function clan_gift_get($ref=false) {
+	global $db_path;
+	return common_get($db_path,TABLE_CLAN_GIFT,$ref);
+}
+
+function clan_gift_list($ref=false, $add='') {
+	global $db_path;
+	return common_list($db_path,TABLE_CLAN_GIFT,$ref,$add);
+}
+
+function clan_gift_save($param) {
+	global $db_path;
+	return common_save($db_path,TABLE_CLAN_GIFT,$param);
+}
+
+function clan_gift_delete($ref, $add='') {
+	global $db_path;
+	return common_delete($db_path,TABLE_CLAN_GIFT,$ref,$add);
+}
+
+function clan_gift_count($ref) {
+	global $db_path;
+	return common_count($db_path,TABLE_CLAN_GIFT,$ref);
+}
+
+function clan_gift_day_get($ref=false) {
+	global $db_path;
+	return common_get($db_path,TABLE_CLAN_GIFT_DAY,$ref);
+}
+
+function clan_gift_day_list($ref=false, $add='') {
+	global $db_path;
+	return common_list($db_path,TABLE_CLAN_GIFT_DAY,$ref,$add);
+}
+
+function clan_gift_day_save($param) {
+	global $db_path;
+	return common_save($db_path,TABLE_CLAN_GIFT_DAY,$param);
+}
+
+function clan_gift_day_delete($ref,$add='') {
+	global $db_path;
+	return common_delete($db_path,TABLE_CLAN_GIFT_DAY,$ref,$add);
+}
+
+function clan_gift_day_count($ref) {
+	global $db_path;
+	return common_count($db_path,TABLE_CLAN_GIFT_DAY,$ref);
+}
+
+function clan_gift_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('CLAN_GIFT_'.intval($ref),$timewait,$timelock);
+}
+
+function clan_gift_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('CLAN_GIFT_'.intval($ref));
+}
+
+function clan_gift_cron() {
+	clan_gift_delete(false, ' AND dtime <= '.time_current());
+	clan_gift_day_delete(false, ' AND dtime <= '.time_current());
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+function clan_head_request_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_CLAN_HEAD_REQUEST,$ref,$add);
+}
+
+function clan_head_request_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_CLAN_HEAD_REQUEST,$ref,$add);
+}
+
+function clan_head_request_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_CLAN_HEAD_REQUEST,$param);
+}
+
+function clan_head_request_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_CLAN_HEAD_REQUEST,$ref,$add);
+}
+
+function clan_head_request_count($ref) {
+	global $db_2;
+	return common_count($db_2,TABLE_CLAN_HEAD_REQUEST,$ref);
+}
+
+function clan_head_request_control() {
+	$clan_request_main_list = clan_head_request_list(false, sql_pholder(' AND dtime < ? GROUP BY clan_id ORDER BY ctime ASC ', time_current()));
+	foreach ($clan_request_main_list as $clan_request_main) {
+		if(!clan_lock($clan_request_main['clan_id'])) continue;
+		$clan_request_list = clan_head_request_list(array('clan_id' => $clan_request_main['clan_id']));
+		if(count($clan_request_list) >= $clan_request_main['need_voice']) {
+			$clan_id = $clan_request_main['clan_id'];
+			//Меняем главу
+			$user_score = array();
+			foreach ($clan_request_list as $clan_request) {
+				$user_score[$clan_request['vote_user_id']]['score']++;
+			}
+			common_fldsort($user_score, true, 'score');
+			$new_leader_id = 0;
+			foreach ($user_score as $user_id=>$v){
+				$new_leader_id = $user_id;
+				break;
+			}
+			$clan_leader_id = clan_leader_id_get($clan_request_main['clan_id']);
+
+			do{
+				if(user_is_online($clan_leader_id, true, true)) break;
+				$user_leader = user_get($clan_leader_id, false, false, true);
+				if(time_current() - $user_leader['time_login'] < CLAN_LEADER_CHANGE_TIME) break;
+
+				if($new_leader_id > 0 && $new_leader_id != $clan_leader_id) {
+					//Вот теперь точно меняем!
+					do{
+						$clan_head_grade = clan_grade_get(array('clan_id'=>$clan_id, 'basic_id' => CLAN_GRADE_HEAD));
+						if (!$clan_head_grade) break;
+						$leader_member = clan_member_get(array('status' => CM_STATUS_ACTIVE, 'clan_id' => $clan_id, 'user_id' => $clan_leader_id));
+						$new_leader_member = clan_member_get(array('status' => CM_STATUS_ACTIVE, 'clan_id' => $clan_id, 'user_id' => $new_leader_id));
+						if(!$leader_member || !$new_leader_member) break;
+						//Меняем!
+						clan_member_save(array('id' => $new_leader_member['id'], 'user_id' => -1));
+						clan_member_save(array('id' => $leader_member['id'], 'user_id' => $new_leader_member['user_id']));
+						clan_member_save(array('id' => $new_leader_member['id'], 'user_id' => $leader_member['user_id']));
+						$clan_head_log = array(
+							'clan_id' => $clan_id,
+							'prev_leader_id' => $clan_leader_id,
+							'new_leader_id' => $new_leader_id,
+							'ctime' => time_current(),
+							'member_voice' => $clan_request_main['need_voice'],
+						);
+						logfile(CLAN_HEAD_REQUEST_LOG, json_encode($clan_head_log), false);
+					}while(0);
+				}
+			}while(0);
+		}
+		clan_head_request_delete(array('clan_id' => $clan_request_main['clan_id']));
+		clan_unlock($clan_request_main['clan_id']);
+	}
+}
+
+?>

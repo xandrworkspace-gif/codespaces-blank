@@ -1,0 +1,273 @@
+<?php
+
+define('TABLE_MIRROR_POOLS', 'mirror_pools');
+define('FIELD_MIRROR_POOLS', '');
+define('TABLE_MIRROR_GARANTS', 'mirror_garants');
+define('FIELD_MIRROR_GARANTS', '');
+define('TABLE_MIRROR_EVENTS', 'mirror_events');
+define('FIELD_MIRROR_EVENTS', '');
+define('TABLE_MIRROR_USER', 'mirror_user');
+define('FIELD_MIRROR_USER', '');
+
+define('MIRROR_PLAY_PRICE', 100.00); //5з
+
+define('MIRROR_RAND_MAX', 2147483647);
+
+define('MIRROR_POOLS_FLAG_SUPERGAME', 0x000001);
+
+define('MIRROR_EVENT_FLAG_SG_DAY', 0x000001);
+
+$mirror_pools_flags_hash = array(
+    MIRROR_POOLS_FLAG_SUPERGAME => 'Приз для супер-игры',
+);
+
+$mirror_magic_prob_hash = array(
+    0 => 'От 0 до 29',
+    1 => 'От 30 до 59',
+    2 => 'От 60 до 79',
+    3 => 'От 80 до 99',
+    4 => 'От 100 до 129',
+    5 => 'От 120 до 149',
+    6 => 'От 150 до 199',
+);
+
+$mirror_magic_prob = array(
+    0 => array('min' => 0, 'max' => 29),
+    1 => array('min' => 30, 'max' => 59),
+    2 => array('min' => 60, 'max' => 79),
+    3 => array('min' => 80, 'max' => 99),
+    4 => array('min' => 100, 'max' => 129),
+    5 => array('min' => 120, 'max' => 149),
+    6 => array('min' => 150, 'max' => 199),
+);
+
+$mirror_magic_pool_hash = array(
+    3 => '3 очка',
+    6 => '6 очков',
+    9 => '9 очков',
+    12 => '12 очков',
+    15 => '15 очков',
+);
+
+$win_control = array_keys($mirror_magic_pool_hash);
+function win_control($luck){
+    global $win_control;
+    $wc = 0;
+    foreach ($win_control as $win){
+        if($luck >= $win){
+            $wc = $win;
+        }
+    }
+    if($wc == 0) return $luck;
+    return $wc;
+}
+
+/////////////////////////
+//DB
+/////////////////////////
+
+#Работа с базой данных
+function mirror_user_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_MIRROR_USER,$ref,$add);
+}
+
+function mirror_user_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_MIRROR_USER,$ref,$add);
+}
+
+function mirror_user_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_MIRROR_USER, $ref, $add);
+}
+
+function mirror_user_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_MIRROR_USER,$param,FIELD_MIRROR_USER);
+}
+
+function mirror_user_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_MIRROR_USER,$ref,$add);
+    return true;
+}
+#Работа с базой данных
+
+#Работа с базой данных
+function mirror_pool_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_MIRROR_POOLS,$ref,$add);
+}
+
+function mirror_pool_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_MIRROR_POOLS,$ref,$add);
+}
+
+function mirror_pool_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_MIRROR_POOLS, $ref, $add);
+}
+
+function mirror_pool_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_MIRROR_POOLS,$param,FIELD_MIRROR_POOLS);
+}
+
+function mirror_pool_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_MIRROR_POOLS,$ref,$add);
+    return true;
+}
+#Работа с базой данных
+
+#Работа с базой данных
+function mirror_garant_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_MIRROR_GARANTS,$ref,$add);
+}
+
+function mirror_garant_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_MIRROR_GARANTS,$ref,$add);
+}
+
+function mirror_garant_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_MIRROR_GARANTS, $ref, $add);
+}
+
+function mirror_garant_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_MIRROR_GARANTS,$param,FIELD_MIRROR_GARANTS);
+}
+
+function mirror_garant_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_MIRROR_GARANTS,$ref,$add);
+    return true;
+}
+#Работа с базой данных
+
+#Работа с базой данных
+function mirror_event_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_MIRROR_EVENTS,$ref,$add);
+}
+
+function mirror_event_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_MIRROR_EVENTS,$ref,$add);
+}
+
+function mirror_event_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_MIRROR_EVENTS, $ref, $add);
+}
+
+function mirror_event_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_MIRROR_EVENTS,$param,FIELD_MIRROR_EVENTS);
+}
+
+function mirror_event_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_MIRROR_EVENTS,$ref,$add);
+    return true;
+}
+#Работа с базой данных
+
+function mirror_current_event(){
+    global $session_user;
+    return mirror_event_get(false, ' AND start_time < '.time_current().' AND end_time > '.time_current());
+}
+
+function mirror_prob_get($luck){
+    global $mirror_magic_prob;
+    foreach ($mirror_magic_prob as $prob_id=>$prob){
+        if($prob['min'] <= $luck && $luck <= $prob['max']) return $prob_id;
+    }
+}
+
+function mirror_pools_seed($mirror_event_id, $seed, $super_game = false, $luck = 0){
+    if(!$seed) $seed = date("d");
+
+    $prob_id = mirror_prob_get($luck);
+    $mirror_pools = false;
+    while($prob_id >= 0 && !$mirror_pools){
+        $mirror_pools = mirror_pool_list(array('mirror_event_id' => $mirror_event_id), sql_pholder(''.(!$super_game ? ' AND prob_id = '.$prob_id.' AND !' : ' AND ').'(flags & ?#MIRROR_POOLS_FLAG_SUPERGAME)'.' ORDER BY luck ASC'));
+        if(!$mirror_pools) $prob_id--;
+    }
+    $mirror_pools = make_hash($mirror_pools, 'luck', true);
+    $mirror_pools_day = array();
+    foreach ($mirror_pools as $pools){
+        $mirror_pools_day[] = $pools[($seed % count($pools))];
+    }
+    return $mirror_pools_day;
+}
+
+function magic_mirror_cron(){
+    //Затем перенесем на следующий день и установим новый сид?
+    mirror_user_save(array(
+        '_add' => ' AND dtime < '.time_current().' OR dtime = 0',
+        '_set' => ' sg = 0, dtime = '.(mktime(23,59,59) + 1).', seed = '.mt_rand(1,MIRROR_RAND_MAX),
+    ));
+}
+
+
+/////////////////////////
+//LOGIC HUEGIC
+/////////////////////////
+
+$LCG_A = 0;
+$LCG_C = 0;
+$LCG_M = 0;
+$_seed = 0;
+
+$global_mirrors = array(1,1,1,1,1,1,1,2,2,2,2,2,5,5,5);
+$global_new_mirrors = array();
+
+function init_magic_m($seed, $LCGA, $LCGC, $LCGM){
+    global $LCG_A, $LCG_C, $LCG_M, $_seed;
+    $LCG_A = $LCGA;
+    $LCG_C = $LCGC;
+    $LCG_M = $LCGM;
+    $_seed = $seed;
+}
+
+function _lcg($seed, $LCGA, $LCGC, $LCGM){
+    return fmod((($LCGA * $seed) + $LCGC) , $LCGM);
+}
+
+function lcgRand($par1, $par2){
+    global $LCG_A, $LCG_C, $LCG_M, $_seed;
+    $_seed = _lcg($_seed,$LCG_A,$LCG_C,$LCG_M);
+    return round(((abs($_seed) / $LCG_M) * ($par2 - $par1)) + $par1);
+}
+
+function lcgShuffle($mirrors = array()){
+    global $global_new_mirrors;
+    $new_mirrors = array();
+    $loc3 = 0;
+    while (($loc3 = count($mirrors)) > 0){
+        $new_mirrors[] = array_splice($mirrors, lcgRand(0,$loc3-1),1)[0];
+    }
+    $global_new_mirrors = $new_mirrors;
+    return $new_mirrors;
+}
+
+function calc_Points($step){
+    global $global_new_mirrors;
+    $i = 0;
+    $points = 0;
+    while($i < $step){
+        $points = $points + $global_new_mirrors[$i];
+        $i++;
+    }
+    return $points;
+}

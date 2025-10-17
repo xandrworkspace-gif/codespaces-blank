@@ -1,0 +1,2023 @@
+<? # $Id: restriction.lib,v 1.130 2010-03-02 13:21:53 i.hrustalev Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/artifact.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/area.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/quest.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/recipe.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/clan.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/clan_info.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/castle.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/area_bank.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/event.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/achievement.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/stronghold.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/punishment.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/pet.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/bonus_cache.lib");
+require_once('/home/admin/web/dwar.fun/public_html/lib/clan_stat.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/castle_tower.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/crossserver.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/metric.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/buildings.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/user_avatar.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/user_fon.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/global_skill.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/smile.lib');
+require_once("/home/admin/web/dwar.fun/public_html/lib/adv_medal.lib");
+
+
+// Имена и поля таблиц
+define('TABLE_RESTRICTIONS','restrictions');
+define('FIELD_RESTRICTIONS','');
+define('TABLE_RESTRICTION_ITEMS','restriction_items');
+define('FIELD_RESTRICTION_ITEMS','');
+
+define('RESTRICTION_STATUS_ALLOW', 0);
+define('RESTRICTION_STATUS_DENY', -1);
+
+// Флаги ограничений
+define('RESTRICTION_FLAG_COND_OR', 0x0001);	// Условие ИЛИ
+define('RESTRICTION_FLAG_CHECK_ON_TARGET', 0x0002);	// Проверять на цели
+define('RESTRICTION_FLAG_DONT_INHERIT', 0x0004); // не наследовать подчиненным локациям/инстансам
+
+// Флаги этапов ограничений
+define('RESTRICTION_ITEM_FLAG_CLAN_LEADER', 0x0001);	// Проверять на главе клана
+define('RESTRICTION_ITEM_FLAG_TROPHY',      0x0002);		// Проверять на трофее
+define('RESTRICTION_ITEM_FLAG_SKILL_TIME',  0x0004);		// Проверять на трофее
+
+
+function restriction_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_RESTRICTIONS,$ref,$add);
+}
+
+function restriction_list($object_class, $object, $action_id=false, $add='') {
+	global $db_2, $object_table_info;
+	if (!$object_class && !$object) return false;
+	$info = $object_table_info[$object_class]['actions'];
+	if ($object_table_info[$object_class]['artikul_class']) {
+		if (!is_array($object)) $object = common_object_get($object_class,$object);
+		return restriction_list($object_table_info[$object_class]['artikul_class'],$object['artikul_id'],$action_id,$add);
+	}
+	$ref = array('object_class' => $object_class, 'object_id' => is_array($object) ? $object['id'] : $object);
+	if ($action_id) $ref['action_id'] = $action_id;
+	$data = common_list($db_2,TABLE_RESTRICTIONS,$ref,$add);
+	common_fldsort($data);
+	return $data;
+}
+
+function restriction_objects_list(&$objects, $action_id=false, $add='') {
+	global $db_2, $object_table_info;
+	if (!$objects) return false;
+// Подготовка списка ID по классам объектов (артикула или экземпляра)
+	$object_ids = array();
+	foreach ($objects as $object) {
+		$artikul_class = $object_table_info[$object['object_class']]['artikul_class'];
+		if ($artikul_class) $object_ids[$object_table_info[$object['object_class']]['artikul_class']][$object['artikul_id']] = 1;
+		else $object_ids[$object['object_class']][$object['id']] = 1;
+	}
+// Получение списков ограничений объектов по классам
+	$restriction_lists = array();
+	$restriction_ids = array();
+	foreach (array_keys($object_ids) as $class) {
+		$ref = array('object_class' => $class,'object_id' => array_keys($object_ids[$class]));
+		if ($action_id) $ref['action_id'] = $action_id;
+		$restriction_lists[$class] = common_list($db_2,TABLE_RESTRICTIONS,$ref,$add);
+	}
+// Слияние объектов с их списками ограничений
+	foreach ($objects as $k=>$object) {
+		$artikul_class = $object_table_info[$object['object_class']]['artikul_class'];
+		$class = $artikul_class ? $artikul_class : $object['object_class'];
+		$objects[$k]['object_restrictions'] = array();
+		if (count($restriction_lists[$class])) {
+			foreach ($restriction_lists[$class] as $item) {
+				if ($object['check_restriction_inheritance'] && $item['flags'] & RESTRICTION_FLAG_DONT_INHERIT) continue;
+				if ($item['object_id'] == $object[$artikul_class ? 'artikul_id' : 'id']) {
+					$objects[$k]['object_restrictions'][] = $item;
+				}
+			}
+		}
+	}
+}
+
+function restriction_save($param) {
+	global $db_2;
+	$bonus_id = false;
+	if ($param['object_class'] == OBJECT_CLASS_BONUS_ITEM) {
+		$bonus_item = bonus_item_get($param['object_id']);
+		$bonus_id = $bonus_item['bonus_id'];  
+	}
+	
+	$res = common_save($db_2,TABLE_RESTRICTIONS,$param,FIELD_RESTRICTIONS);
+	if ( $bonus_id )
+		bonus_set_for_cache_update($bonus_id);
+	return $res;
+}
+
+function restriction_delete($ref) {
+	global $db_2;
+	if ($ref && !is_array($ref) ) 
+		$ref = array('id'=>$ref);
+	bonus_cache_section_start();
+	$bonus_ids = array();
+	$list = common_list($db_2,TABLE_RESTRICTIONS,$ref);
+	if ($list) {
+		foreach ($list as $rest) {
+			if ($rest['object_class'] == OBJECT_CLASS_BONUS_ITEM) {
+				$bonus_item = bonus_item_get($rest['object_id']);
+				$bonus_ids[] = $bonus_item['bonus_id'];
+			}
+			restriction_item_delete(false, $rest['id'] );
+		}
+	}
+	common_delete($db_2,TABLE_RESTRICTIONS,$ref);
+	foreach($bonus_ids as $bonus_id)
+		bonus_set_for_cache_update($bonus_id);
+	bonus_cache_section_finish();
+	return true;
+}
+
+function restriction_item_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_RESTRICTION_ITEMS,$ref,$add);
+}
+
+function restriction_item_list($restriction_id, $add='') {
+	global $db_2;
+	if (!$restriction_id) return false;
+	return common_list($db_2,TABLE_RESTRICTION_ITEMS,array('restriction_id' => $restriction_id),$add);
+}
+
+function restriction_item_save($param) {
+	global $db_2;
+	if (!$param['id'] && !$param['restriction_id']) return false;
+	if ( $param['id'] ) {
+		$item = restriction_item_get($param['id']);
+		$restriction_id = $item['restriction_id'];
+	}
+	else 
+		$restriction_id = $param['restriction_id'];
+	$bonus_id = false;
+	$restriction = restriction_get( $restriction_id );
+	if ($restriction['object_class'] == OBJECT_CLASS_BONUS_ITEM) {
+		$bonus_item = bonus_item_get($restriction['object_id']);
+		$bonus_id  = $bonus_item['bonus_id'];
+	}
+	$res = common_save($db_2,TABLE_RESTRICTION_ITEMS,$param,FIELD_RESTRICTION_ITEMS);
+	if ($bonus_id)
+		bonus_set_for_cache_update($bonus_id);
+	return $res;
+}
+
+function restriction_item_delete($ref=false, $restriction_id=false, $add='') {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($restriction_id) $ref['restriction_id'] = $restriction_id;
+	
+	if ( !$restriction_id ) {
+		$item = restriction_item_get($ref['id']);
+		$restriction_id = $item['restriction_id'];
+	}
+	$restriction = restriction_get( $restriction_id );
+	if ($restriction['object_class'] == OBJECT_CLASS_BONUS_ITEM) {
+		$bonus_item = bonus_item_get($restriction['object_id']);
+		$bonus_id  = $bonus_item['bonus_id'];
+	}
+	
+	$res = common_delete($db_2,TABLE_RESTRICTION_ITEMS,$ref,$add);
+	if ($bonus_id)
+		bonus_set_for_cache_update($bonus_id);
+	return $res;
+}
+
+// Функция предназначена для заполнения списка связанных объектов
+function restriction_get_dependent(&$object, &$object_list, $except_classes=array()) {
+	if (!$object['object_class'] || !$object['id']) return false;
+	$object_list[$object['object_class'].$object['id']] = $object;
+	$dependent_list = array();
+	if ($object['object_class'] == OBJECT_CLASS_AREA) {
+		if ($object['parent_id'] && !in_array(OBJECT_CLASS_AREA,$except_classes) && !array_key_exists(OBJECT_CLASS_AREA.$object['parent_id'],$object_list)) {
+			require_once("lib/area.lib");
+			$dependent_list[] = area_get($object['parent_id']) + array('check_restriction_inheritance' => 1);
+		}
+	} elseif ($object['object_class'] == OBJECT_CLASS_USER) {
+		$check_inheritance = 0;
+		if ($object['instance_id'] && !in_array(OBJECT_CLASS_INSTANCE,$except_classes) && !array_key_exists(OBJECT_CLASS_INSTANCE.$object['instance_id'],$object_list)) {
+			require_once("lib/instance.lib");
+			$dependent_list[] = instance_get_safe($object['instance_id']);
+			$check_inheritance = 1;
+		}
+		if ($object['area_id'] && !in_array(OBJECT_CLASS_AREA,$except_classes) && !array_key_exists(OBJECT_CLASS_AREA.$object['area_id'],$object_list)) {
+			require_once("lib/area.lib");
+			$area = area_get($object['area_id']);
+			if ($check_inheritance) $area['check_restriction_inheritance'] = 1;
+			$dependent_list[] = $area;
+		}
+		if ($object['party_id'] && !in_array(OBJECT_CLASS_PARTY,$except_classes) && !array_key_exists(OBJECT_CLASS_PARTY.$object['party_id'],$object_list)) {
+			require_once("lib/party.lib");
+			$dependent_list[] = party_get($object['party_id']);
+		}
+	} elseif ($object['object_class'] == OBJECT_CLASS_ARTIFACT && $object['enchant2_id']) {
+		require_once("lib/artifact.lib");
+		$dependent_list[] = artifact_artikul_get($object['enchant2_id']);
+	}
+	foreach ($dependent_list as $dependent) restriction_get_dependent($dependent,$object_list,$except_classes);
+	return true;
+}
+
+function restriction_check_item($object, $restriction_item, &$allow) {
+	$allow = true;
+	$item = &$restriction_item;
+	do {
+	// Проверка ограничений на главе клана
+		if (($item['flags'] & RESTRICTION_ITEM_FLAG_CLAN_LEADER) && ($object['object_class'] == OBJECT_CLASS_USER)) {
+			if (!$object['clan_id']) {
+				$allow = false;
+				$item['inverse'] = false;
+				break;
+			}
+			$leader_id = clan_leader_id_get($object['clan_id']);
+			$object = user_get($leader_id);
+			if (!$object) {
+				$allow = false;
+				$item['inverse'] = false;
+				break;
+			}
+			NODE_SWITCH(null, $object['id']);
+		}
+		// Проверка ограничений на трофее
+		if (($item['flags'] & RESTRICTION_ITEM_FLAG_TROPHY) && ($object['object_class'] == OBJECT_CLASS_USER)) {
+			if (!$object['trophy_id'] || ($object['trophy_server_id'] && ($object['trophy_server_id']!=SERVER_ID))) {
+				$allow = false;
+				$item['inverse'] = false;
+				break;
+			}
+			$object = user_get($object['trophy_id']);
+			if (!$object) {
+				$allow = false;
+				$item['inverse'] = false;
+				break;
+			}
+			NODE_SWITCH(null, $object['id']);
+		}
+		
+		switch ($item['type']) {
+		case 'USER_SKILL':   // ограничение на значение характеристики пользователя
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			NODE_PUSH(null, $object['id']);
+			$skill_info = user_get_skill_info($object['id'],$item['field1']);
+			NODE_POP();
+			$skill_hash = &$skill_info['skills'];
+			$value = $skill_hash[$item['field1']]['value'];
+			if ($item['flags'] & RESTRICTION_ITEM_FLAG_SKILL_TIME) {
+				$value = $value - time_current();
+			}
+			if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			break;
+
+		case 'USER_LEVEL':   // ограничение на уровень пользователя, не завязанный на характеристику LEVEL
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			$value = $object['level'];
+			if (!$value) {
+				$user = user_get(array('id' => $object['id']));
+				$value = $user['level'];
+			}
+			if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			break;
+			
+		case 'PET_LEVEL':   // ограничение на уровень питомца, надетого на персонажа
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			
+			// получаем подоходящих питомцев пользователя
+			NODE_PUSH(null, $object['id']);
+			$user_pets = pet_list(false, $object['id'], 'and flags & '.PET_FLAG_PUTTED_ON);
+			NODE_POP();
+			
+			$allow = false;
+			
+			foreach ($user_pets as $pet) {
+				$pet_artikul = pet_artikul_get($pet['artikul_id']);
+				if (isset($value1) && $value1>$pet_artikul['level']) continue;
+				if (isset($value2) && $value2<$pet_artikul['level']) continue;
+				$allow = true;
+				break;
+			}
+			break;
+		case 'PET_NOT_MAXLEVEL':   // уровень питомца меньше уровня пользователя
+			$allow = false;
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			// получаем итомца пользователя
+			$user = $object;
+			if (!$user['pet_id']) return false;
+			NODE_PUSH(null, $object['id']);
+			$pet = pet_get($user['pet_id']);
+			NODE_POP();
+			if (!$pet) return false;
+			// питомец должен быть одет
+			if(!($pet['flags'] & PET_FLAG_PUTTED_ON)) return false;
+			$pet_artikul = pet_artikul_get($pet['artikul_id']);
+			if (!$pet_artikul) return false;			
+			if ($pet_artikul['level'] < $user['level']) {
+				$allow = true;
+			}
+			break;
+		case 'USER_STAT':   // ограничение на значение статистики пользователя
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+
+			$type_id = intval($item['field1']);
+			$object_id = intval($item['field2']);
+
+			NODE_PUSH(null, $object['id']);
+			$stat = user_stat_get(array(
+				'type_id' => $type_id,
+				'object_id' => $object_id,
+				'user_id' => $object['id'],
+			));
+			NODE_POP();
+
+			$value = $stat['value'];
+			if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			break;
+
+		case 'INST_SKILL':   // ограничение на значение характеристики инстанса (характеристика проверяется на корневом инстансе)
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_INSTANCE))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			$skill = skill_object_get($object['object_class'],($object['root_id'] ? $object['root_id'] : $object),array('skill_id' => $item['field1']));
+			$value = (!$skill['dtime'] || ($skill['dtime'] > time())) ? $skill['value'] : 0;
+			if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			break;
+
+		case 'CASTLE_SKILL':   // ограничение на значение характеристики замка пользователя
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			if (!$object['clan_id']) {
+				$allow = false;
+				break;
+			}
+			$clan = clan_get($object['clan_id']);
+			if (!$clan || !$clan['castle_id']) {
+				$allow = false;
+				break;
+			}
+			$castle = castle_get($clan['castle_id']);
+			if (!$castle || !$castle['castle_area_id']) {
+				$allow = false;
+				break;
+			}
+			$skill = skill_object_get(OBJECT_CLASS_AREA,$castle['castle_area_id'],false,sql_pholder(" AND skill_id = ?",$item['field1']));
+			$value = $skill['value'];
+			if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			break;
+
+		case 'EVENT_TASK':   // ограничение на значение задачи этапа события
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			$task_user = event_point_task_user_get(array(
+				'user_id' => $object['id'],
+				'task_id' => $item['field1'],
+			));
+// TODO: здесь необходимо доработать ограничение, чтобы учитывались различные артикулы для одного этапа
+			$value = $task_user ? $task_user['value'] : 0;
+			if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			break;
+			
+		case 'EVENT_POINT':   // ограничение на статус этапа события
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			$params = array();
+			if ($item['field1']) $params['artikul_id'] = $item['field1'];
+			if ($item['field2']) $params['point_id'] = $item['field2'];
+			
+			if (!event_get($params)) $allow = false;
+			break;
+			
+		case 'MONEY':    // ограничение на кол-во денег
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = floatval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = floatval($item['value2']);
+			$amount = user_get_money_amount(intval($item['field1']),$object['id']);
+			if ((isset($value1) && ($amount < $value1)) || (isset($value2) && ($amount > $value2))) $allow = false;
+			break;
+
+		case 'ARTIFACT':   // ограничение на наличие артефакта
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+            //if($item['field2'] == 0) $item['field2'] = null;
+			NODE_PUSH(null, $object['id']);
+			$amount = artifact_amount(intval($item['field1']),$object['id'],false, $item['field2'],true);
+			NODE_POP();
+			if ((isset($value1) && ($amount < $value1)) || (isset($value2) && ($amount > $value2))) $allow = false;
+			break;
+
+		case 'ARTIFACT2':   // ограничение на наличие артефакта (по типу)
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			NODE_PUSH(null, $object['id']);
+			$amount = artifact_amount(false,$object['id'],false,$item['field2'],true,false,sql_pholder(" AND type_id=?",intval($item['field1'])));
+			NODE_POP();
+			if ((isset($value1) && ($amount < $value1)) || (isset($value2) && ($amount > $value2))) $allow = false;
+			break;
+			
+		case 'ARTIFACT3':   // ограничение по группе эффектов
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			NODE_PUSH(null, $object['id']);
+			$amount = artifact_amount(false,$object['id'],false,$item['field2'],true,false,sql_pholder(" AND type_bafs_id=?",intval($item['field1'])));
+			NODE_POP();
+			if ((isset($value1) && ($amount < $value1)) || (isset($value2) && ($amount > $value2))) $allow = false;
+			break;
+
+		case 'CLAN':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if ($item['field1'] && ($item['field1'] != $object['clan_id'])) $allow = false;
+			elseif (!$item['field1'] && !$object['clan_id']) $allow = false;
+			break;
+
+		case 'CLAN_LEVEL':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			$clan = $object['clan_id'] ? clan_get($object['clan_id']) : false;
+			if (!$clan || ($clan['flags'] & CLAN_FLAG_DISBANDED)) $allow = false;
+			else {
+				if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+				if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+				$value = $clan['level'];
+				if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			}
+			break;
+
+		case 'CLAN_SEASONPLACE':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			$clan = $object['clan_id'] ? clan_get($object['clan_id']) : false;
+			$clan_info = $object['clan_id'] ? clan_info_get($object['clan_id']) : false;
+			if (!$clan_info || !$clan || ($clan['flags'] & CLAN_FLAG_DISBANDED)) $allow = false;
+			else {
+				if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+				if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+				$value = $clan_info['clan_battle_season_place'];
+				if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			}
+			break;
+
+		case 'CLAN_STAT_LEVEL':   // ограничение на значение уровня клановой статистики
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+
+			$clan = $object['clan_id'] ? clan_get($object['clan_id']) : false;
+			if (!$clan || ($clan['flags'] & CLAN_FLAG_DISBANDED)) $allow = false;
+			else {
+				if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+				if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+
+				$clan_stat_artikul_id = intval($item['field1']);
+				$clan_stat = clan_stat_get(array(
+					'clan_id' => $clan['id'],
+					'clan_stat_artikul_id' => $clan_stat_artikul_id,
+				));
+
+				$value = intval($clan_stat['clan_stat_artikul_level']);
+				if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			}
+			break;
+
+		case 'CLAN_STAT':   // ограничение на значение клановой статистики
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+
+			$clan = $object['clan_id'] ? clan_get($object['clan_id']) : false;
+			if (!$clan || ($clan['flags'] & CLAN_FLAG_DISBANDED)) $allow = false;
+			else {
+				if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+				if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+
+				$clan_stat_artikul_id = intval($item['field1']);
+				$clan_stat = clan_stat_get(array(
+					'clan_id' => $clan['id'],
+					'clan_stat_artikul_id' => $clan_stat_artikul_id,
+				));
+
+				$value = intval($clan_stat['total_value']);
+				if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			}
+			break;
+
+
+		case 'CLAN_HEAD':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			$clan = $object['clan_id'] ? clan_get($object['clan_id']) : false;
+			if (!$clan || ($clan['flags'] & CLAN_FLAG_DISBANDED)) $allow = false;
+			else {
+				$clan_member = clan_member_get(array('status' => CM_STATUS_ACTIVE, 'clan_id' => $clan['id'], 'user_id' => $object['id']));
+				$clan_grade = $clan_member['grade_id'] ? clan_grade_get($clan_member['grade_id']) : false;
+				if (!$clan_grade || $clan_grade['basic_id'] != CLAN_GRADE_HEAD) $allow = false;
+			}
+			break;
+
+		case 'BACKPACK':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			NODE_PUSH(null, $object['id']);
+			$amount = user_get_artifact_amount_max($object['id']) - user_get_artifact_amount($object['id']);
+			NODE_POP();
+			if ((isset($value1) && ($amount < $value1)) || (isset($value2) && ($amount > $value2))) $allow = false;
+			break;
+
+		case 'KIND':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if ($item['field1'] != $object['kind']) $allow = false;
+			break;
+
+		case 'AREA':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			$areas = $item['value1'] ? area_select($item['field1']) : array($item['field1'] => true);
+			if (!array_key_exists($object['area_id'], $areas)) $allow = false;
+			break;
+
+		case 'PARTY_LEVEL':   // ограничение на уровень группы
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_PARTY))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			$value = $object['level_max'];
+			if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			break;
+
+		case 'PARTY_SIZE':   // ограничение на количество игроков в группе
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_PARTY))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			$value = $object['member_num'];
+			if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			break;
+
+		case 'QUEST_STATUS':	// ограничение на статус квеста
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			NODE_PUSH(null, $object['id']);
+			$quest_user = quest_user_get(array('quest_id' => intval($item['field1']), 'user_id' => $object['id']));
+			NODE_POP();
+			if (intval($quest_user['status']) != intval($item['field2'])) $allow = false;
+			break;
+
+		case 'PROFESSION':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (!(intval($item['field1']) & intval($object['profession']))) $allow = false;
+			break;
+
+		case 'QUEST_PT_STATUS':	// ограничение на статус этапа квеста
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			NODE_PUSH(null, $object['id']);
+			$quest_user_point = quest_user_point_get(array('user_id' => $object['id'], 'point_id' => intval($item['field1'])));
+			NODE_POP();
+			if (intval($quest_user_point['status']) != intval($item['field2'])) $allow = false;
+			break;
+
+		case 'RECIPE': // ограничение на наличие изученного рецепта
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			$recipe_id = intval($item['field1']);
+			$allow = $recipe_id ? intval(recipe_user_get(array('user_id' => $object['id'], 'artikul_id' => $recipe_id))) : false;
+			break;
+
+		case 'RANK':    // ограничение на звание
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			$rank = $object['rank'];
+
+			//Если есть господство, выбираем его!
+			if($object['dominance'] && $object['dominance'] > $rank) $rank = $object['dominance'];
+			if ((isset($value1) && ($rank < $value1)) || (isset($value2) && ($rank > $value2))) $allow = false;
+			break;
+
+		case 'BANK_CELL':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			$cell = area_bank_cell_get(array('area_id' => $item['field1'], 'user_id' => $object['id']));
+			if (!$cell) $allow = false; // нет выкупленной ячейки
+			$amount = $cell['num'];
+			if ((isset($value1) && ($amount < $value1)) || (isset($value2) && ($amount > $value2))) $allow = false;
+			break;
+
+		case 'CLASS':    // ограничение на школу магии
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if ($item['field1'] != $object['class']) $allow = false;
+			break;
+
+		case 'AREA_CNT':   // ограничение на количество человек в текущей локации
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value = intval($item['value1']);
+			
+			// Если пользователь в инстансе
+			if ($object['instance_id'])
+				$cnt = user_count(array('instance_id' => $object['instance_id']));
+			else
+				$cnt = user_count(array('area_id' => $object['area_id'], 'instance_id' => 0));
+			
+			if ($cnt > $value) $allow = false;
+			break;
+		case 'CB_USER_REQUEST':   // ограничение на заявку в КВ
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+
+			require_once('lib/clan_battle.lib');
+			
+			if (!$object['clan_id']) {
+				$allow = false;
+				break;
+			}
+
+			$allow = clan_battle_user_request_get(array('user_id' => $object['id'])) ? true : false;
+			if (!$allow) {
+				$check_clan_battle = clan_battle_get(false, sql_pholder(' AND status < ? AND ((first_clan_id = ? AND first_clan_server_id = ?) OR (second_clan_id = ? AND second_clan_server_id = ?))', CLAN_BATTLE_STATUS_FINISHED, $object['clan_id'], SERVER_ID, $object['clan_id'], SERVER_ID));
+				$allow = ($check_clan_battle && ($check_clan_battle['stime']-CLAN_BATTLE_PREPARE_PERIOD<time_current())) ? true : false;
+			}
+			break;
+		case 'CASTLE_OWNER':   // ограничение на владение кланом персонажа замка
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			
+			// Пользователь не в клане
+			if (!$object['clan_id']) {
+				$allow = false;
+				break;
+			}
+
+			// Такого замка нет
+			$castle = castle_get($item['field1']);
+			if (!$castle) {
+				$allow = false;
+				break;
+			}
+			
+			$clan = clan_get($object['clan_id']);
+			// Такого клана нет или он не владеет этим замком
+			if (!$clan || !$clan['castle_id'] || ($clan['castle_id'] != $castle['id'])) {
+				$allow = false;
+				break;
+			}
+			
+			break;
+		case 'DATE_HOUR':   // ограничение на диапозон часов
+			$amount = idate('H', time_current());
+			$value1 = intval($item['field1']);
+			$value2 = intval($item['field2']);
+			if (($amount < $value1) || ($amount > $value2)) $allow = false;
+			break;
+		case 'DATE_DAY':   // ограничение на диапозон дня
+			$amount = idate('d', time_current());
+			$value1 = intval($item['field1']);
+			$value2 = intval($item['field2']);
+			if (($amount < $value1) || ($amount > $value2)) $allow = false;
+			break;
+		case 'DATE_WEEK_DAY':   // ограничение на диапозон дня недели
+			$amount = date_week_day(time_current());
+			$value1 = intval($item['field1']);
+			$value2 = intval($item['field2']);
+			if (($amount < $value1) || ($amount > $value2)) $allow = false;
+			break;
+
+		case 'USER_CLAN_STIME':   // ограничение по времени пребывания пользователя в клане
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+
+			//Пользователь не в клане
+			if (!$object['clan_id']) {
+				$allow = false;
+				break;
+			}
+			//Такого клана не существует
+			$clan = clan_get($object['clan_id']);
+			if (!$clan) {
+				$allow = false;
+				break;
+			}
+			//Пользователь даже не подавал заявки не вступление в клан
+			$clan_member = clan_member_get(array('clan_id' => $object['clan_id'], 'user_id' => $object['id']));
+			if (!$clan_member) {
+				$allow = false;
+				break;
+			}
+			//Пользователь не принят в клан
+			if ($clan_member['status'] != CM_STATUS_ACTIVE) {
+				$allow = false;
+				break;
+			}
+			//Проверка нижней границы ограничения по времени
+			if (mb_strlen($item['value1'])) {
+				$value1 = intval($item['value1']);
+				//Время пребывания в клане слишком мало
+				if ( abs(time_current() - $clan_member['stime']) < $value1) {
+					$allow = false;
+					break;
+				}
+			};
+			//Проверка верхней границы ограничения по времени
+			if (mb_strlen($item['value2'])) {
+				$value2 = intval($item['value2']);
+				//Время пребывания в клане слишком долгое
+				if ( abs(time_current() - $clan_member['stime']) > $value2) {
+					$allow = false;
+					break;
+				}
+			};
+			break;
+		case 'USER_REG_TIME':
+		    if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+		    $regtime = abs(time_current() - $object['time_registered']);
+			if (mb_strlen($item['value1'])) {
+                if ( $regtime < intval($item['value1'])) {
+					$allow = false;
+					break;
+				}
+			};
+			if (mb_strlen($item['value2'])) {
+				if ( $regtime > intval($item['value2'])) {
+					$allow = false;
+					break;
+				}
+			};
+		    break;
+		case 'ACHIEVEMENT': // ограничение на наличие достижения
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			NODE_PUSH(null, $object['id']);
+			$user_achivement = user_achievement_get(array('user_id' => $object['id'], 'achievement_id' => intval($item['field1'])));
+			NODE_POP();
+			if (!($user_achivement)) $allow = false;
+			break;
+
+		case 'STRONGHOLD_OWNER':   // ограничение на владение кланом персонажа крепостью
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (!$object['clan_id']) { // Пользователь не в клане
+				$allow = false;
+				break;
+			}
+			$clan = clan_get($object['clan_id']);
+			if (!$clan) { // Клан не существует
+				$allow = false;
+				break;
+			}
+			$stronghold_info = stronghold_info_get(
+				array(
+					'stronghold_id' => intval($item['field1']),
+					'owner_clan_id' => $clan['id']
+				)
+			);
+			if (!$stronghold_info) { // Нет информации о владении кланом крепостью
+				$allow = false;
+				break;
+			}
+			break;
+		case 'PET':   // ограничение на наличие питомца
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+
+			bonus_temporary_variable_reset();
+			$wasFed = intval(bonus_temporary_var_get('PETWASFED_'.$object['id']));
+
+			// получаем подоходящих питомцев пользователя
+			NODE_PUSH(null, $object['id']);
+			$user_pets = pet_list(intval($item['field1']), $object['id']);
+			NODE_POP();
+			$putted_check_mode = intval($item['field2']);
+			if (!$putted_check_mode) { // все питомцы
+				$amount = count($user_pets);
+			} else {
+				$amount = 0;
+				foreach ($user_pets as $pet) {
+					if ($pet['flags'] & PET_FLAG_PUTTED_ON && ($putted_check_mode == 1 || ($putted_check_mode == 3 && ($wasFed || $pet['satiation'] > 0)) || ($putted_check_mode == 4 && (!$wasFed || $pet['satiation'] <= 0)))) { // 1 - надет, 3 - надет и сыт, 4 - надет и голоден
+						$amount++;
+					} elseif (!($pet['flags'] & PET_FLAG_PUTTED_ON) && ($putted_check_mode == 2)) {
+						$amount++;
+					}
+				}
+			}
+			if ((isset($value1) && ($amount < $value1)) || (isset($value2) && ($amount > $value2))) $allow = false;
+			break;
+		case 'PET2':   // ограничение на наличие питомца (по типу)
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			
+			// получаем валидные артикулы
+			$valid_artikul_hash = make_hash(pet_artikul_list(array('type_id' => $item['field1']), '', 'id'));
+			
+			// нет питомцев удовлетворяющих условия
+			if (!$valid_artikul_hash) {
+				$allow = false;
+				break;
+			}
+
+			bonus_temporary_variable_reset();
+			$wasFed = intval(bonus_temporary_var_get('PETWASFED_'.$object['id']));
+
+			// получаем подоходящих питомцев пользователя
+			NODE_PUSH(null, $object['id']);
+			$user_pets = pet_list(false, $object['id'], sql_pholder(' AND artikul_id IN (?@)', array_keys($valid_artikul_hash)));
+			NODE_POP();
+			$putted_check_mode = intval($item['field2']);
+			if (!$putted_check_mode) { // все питомцы
+				$amount = count($user_pets);
+			} else {
+				$amount = 0;
+				foreach ($user_pets as $pet) {
+					if ($pet['flags'] & PET_FLAG_PUTTED_ON && ($putted_check_mode == 1 || ($putted_check_mode == 3 && ($wasFed || $pet['satiation'] > 0)) || ($putted_check_mode == 4 && (!$wasFed || $pet['satiation'] <= 0)))) { // 1 - надет, 3 - надет и сыт, 4 - надет и голоден
+						$amount++;
+					} elseif (!($pet['flags'] & PET_FLAG_PUTTED_ON) && ($putted_check_mode == 2)) {
+						$amount++;
+					}
+				}
+			}
+			if ((isset($value1) && ($amount < $value1)) || (isset($value2) && ($amount > $value2))) $allow = false;
+			break;
+		case 'PET3':   // ограничение на наличие питомца (по группе)
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			
+			$type_id = intval($item['field1']);
+			$group_id = intval($item['field2']);
+			
+			
+			if ($type_id || $group_id) {
+				
+				// получаем валидные артикулы
+				$ref = array();
+				if ($type_id) {
+					$ref['type_id'] = $type_id;
+				}
+				if ($group_id) {
+					$ref['group_id'] = $group_id;
+				}
+				$valid_artikul_hash = make_hash(pet_artikul_list($ref, '', 'id'));
+				
+				// нет питомцев удовлетворяющих условия
+				if (!$valid_artikul_hash) {
+					$allow = false;
+					break;
+				}
+
+				bonus_temporary_variable_reset();
+				$wasFed = intval(bonus_temporary_var_get('PETWASFED_'.$object['id']));
+
+				// получаем подоходящих питомцев пользователя
+				NODE_PUSH(null, $object['id']);
+				$user_pets = pet_list(false, $object['id'], sql_pholder(' AND artikul_id IN (?@)', array_keys($valid_artikul_hash)));
+				NODE_POP();
+				$putted_check_mode = intval($item['value2']);
+				if (!$putted_check_mode) { // все питомцы
+					$amount = count($user_pets);
+				} else {
+					$amount = 0;
+					foreach ($user_pets as $pet) {
+						if ($pet['flags'] & PET_FLAG_PUTTED_ON && ($putted_check_mode == 1 || ($putted_check_mode == 3 && ($wasFed || $pet['satiation'] > 0)) || ($putted_check_mode == 4 && (!$wasFed || $pet['satiation'] <= 0)))) { // 1 - надет, 3 - надет и сыт, 4 - надет и голоден
+							$amount++;
+						} elseif (!($pet['flags'] & PET_FLAG_PUTTED_ON) && ($putted_check_mode == 2)) {
+							$amount++;
+						}
+					}
+				}
+				
+			} else {
+				// нам важно только кол-во питомцев у пользователя
+				NODE_PUSH(null, $object['id']);
+				$amount = pet_count(false, $object['id']);
+				NODE_POP();
+			}
+			
+			if ((isset($value1) && ($amount < $value1))) $allow = false;
+			break;
+		case 'BONUS_TEMPVAR':
+			$name = $item['field1'];
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			
+			$value = intval(bonus_temporary_var_get($name));
+			$allow = ((!isset($value1) || ($value >= $value1)) && (!isset($value2) || ($value <= $value2)));
+			break;
+		case 'SERVER': // ограничение на сервер
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			global $SERVERS;
+			if (!$SERVERS) return false;
+
+			$restriction_server_id = intval($item['field1']);
+
+			$allow = $restriction_server_id == SERVER_ID;
+			break;
+		case 'WORLD': // ограничение для определённого мира
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			global $SITE_CFG;
+			if (!$SITE_CFG || !(defined('WORLD_ID') && WORLD_ID)) return false;
+
+			$restriction_world_id = intval($item['field1']);
+			$current_world_id = WORLD_ID;
+			$known_worlds = get_hash($SITE_CFG, 'world', 'name');
+			if (!$known_worlds[$restriction_world_id]) {
+				$allow = false;
+			}
+			elseif ($restriction_world_id == $current_world_id) {
+				$allow = true;
+			}
+			else {
+				$allow = false;
+			}
+			break;
+		case 'CRIME': // ограничение для определённого проклятия
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			$crime_id = intval($item['field1']);
+			$allow = punishment_user_count(array('user_id' => $object['id'], 'crime_id' => $crime_id)) ? true : false;
+			break;
+
+		case 'GENDER': // ограничение по полу персонажа
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			$gender = intval($item['field1']);
+			$allow = ($object['gender'] == $gender ? true : false);
+			break;
+		case 'INCOME':
+		    if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+		    if (mb_strlen($item['value1']) || mb_strlen($item['value2'])) {
+		        $allow = true;
+		        $user_credit = user_credit_get($object['id']);
+		        if (!$user_credit) {
+		            $allow = false;
+		            break; 
+		        }
+		        if (mb_strlen($item['value1']) && ($item['value1']>$user_credit['payments_total'])) {
+		            $allow = false;
+		        }
+		        if (mb_strlen($item['value1']) && ($user_credit['payments_total'] == 0)) {
+		            $allow = false;
+		        }
+		        if (mb_strlen($item['value2']) && ($item['value2']<$user_credit['payments_total'])) {
+		            $allow = false;
+		        }
+		    } else {
+		        $auth = auth_get(array('uid' => $object['id']));
+		        $allow = !!($auth['auth_flags'] & AUTH_FLAG_INCOME);
+		    }
+    			
+	        break;
+
+		case 'MOUNTUSED':
+		    if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+		    if (!$object['fight_id']) {
+		        $allow = false;
+		        break;
+		    }
+		    $fight_user = fight_user_get(array('user_id' => $object['id'], 'fight_id' => intval($object['fight_id'])));
+		    $allow = !!(intval($fight_user['flags']) & FIGHT_USER_FLAG_MOUNTUSED);
+		    break;
+		case 'FIGHT':
+		    if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+		    $allow = !!$object['fight_id'];
+		    break;
+		case 'GREAT_BATTLE':
+		    if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (!$object['fight_id']) {
+		        $allow = false;
+		        break;
+			}
+			$fight = fight_get($object['fight_id']);
+			$allow = ($fight && $fight['level']);
+			break;
+		case 'USER_RATING':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			$user_rating = total_rating_user_get(array('user_id' => $object['id']));
+			if (!$user_rating) {
+				$allow = false;
+				break;
+			}
+			
+			if (mb_strlen($item['value1']) && ($user_rating['rating']<intval($item['value1']))) {
+				$allow = false;
+				break;
+			}
+			if (mb_strlen($item['value2']) && ($user_rating['rating']>intval($item['value2']))) {
+				$allow = false;
+				break;
+			}
+			
+			$allow = true;
+			break;
+		case 'INSTANCE':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (!$object['instance_id']) {
+				$allow = false;
+				break;
+			}
+			
+			if (!intval($item['field1'])) {
+				$allow = true;
+				break;
+			}
+			
+			$instance = instance_get($object['instance_id']);
+			
+			if ($instance && $instance['root_id']) {
+				$instance = instance_get($instance['root_id']);
+			}
+			
+			if (!$instance || ($instance['artikul_id'] != intval($item['field1']))) {
+				$allow = false;
+				break;
+			}
+			
+			$allow = true;
+			break;
+		case 'CASTLE_TOWER':
+			// проверка на владение башней
+			// если есть заявка, то считается что клан пока ещё владеет башней
+		    if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+		    if ($object['flags'] & USER_FLAG_CSERVER_GUEST) {
+				// если понаехавший
+				$user_info = user_info_get($object['id']);
+			    $clan_info = unserialize($user_info['clan_data']);
+			    $clan_id = $clan_info['id'];
+			    $server_id = $clan_info['server_id'];
+			    if (!$clan_id) {
+			    	$allow = false;
+		        	break;
+			    }
+			    $clan = crossserver_clan_get($server_id, $clan_id, true);
+			    if (!$clan) {
+			    	$allow = false;
+		        	break;
+			    }
+			    $tower_area = castle_tower_area_get(array('area_id' => $item['field1']));
+			    if (!$tower_area || !$tower_area['tower_id']) {
+					$allow = false;
+			        break;
+				}
+			    if ($clan['tower_id'] == $tower_area['tower_id']) {
+			    	$allow = true;
+		       		break;
+			    }
+		    	break;
+		    }
+		    
+			if (!$object['clan_id']) {
+		        $allow = false;
+		        break;
+			}
+			
+			$tower_request = castle_tower_request_get(array('area_id'=>$item['field1'], 'clan_id'=>$object['clan_id']));
+			if ($tower_request) {
+				$allow = true;
+		        break;
+			}
+			
+			$tower_area = castle_tower_area_get(array('area_id' => $item['field1']));
+			if (!$tower_area || !$tower_area['tower_id']) {
+				$allow = false;
+		        break;
+			}
+			$tower = castle_tower_get($tower_area['tower_id']);
+ 			if ($tower && ($tower['clan_id'] == $object['clan_id'])) {
+				$allow = true;
+		        break;
+			}
+			
+			$allow = false;
+			break;
+//		case 'MAILRU_ASSOC':
+//		    if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+//		    $allow = !!($object['flags'] & USER_FLAG_MAILRU_ASSOC);
+//		    break;
+
+		case 'COMPARE_STATS':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			
+			$stat1_id = intval($item['field1']);
+			$stat2_id = intval($item['field2']);
+			$rule = intval($item['value1']);
+			if (!$stat1_id || !$stat2_id) return false;
+			
+			NODE_PUSH(null, $object['id']);
+			$stat1 = user_stat_get(false, sql_pholder(' AND user_id = ? AND object_id = ? AND type_id = ?', $object['id'], $stat1_id, USER_STAT_TYPE_SKILL));
+			$stat1_value = $stat1 ? intval($stat1['value']) : 0;
+			
+			$stat2 = user_stat_get(false, sql_pholder(' AND user_id = ? AND object_id = ? AND type_id = ?', $object['id'], $stat2_id, USER_STAT_TYPE_SKILL));
+			$stat2_value = $stat2 ? intval($stat2['value']) : 0;
+			NODE_POP();
+			
+			$diff = $stat1_value - $stat2_value;
+			$diff = ($diff) ? (($diff > 0) ? 1 : -1) : 0;
+			$allow = ($diff == $rule) ? true : false;
+			break;
+		case 'UAGENT_ISCLIENT':
+			if (!in_array($object['object_class'], array(OBJECT_CLASS_USER))) return false;
+						
+			$auth = auth_get(array('uid' => $object['id']));
+			$allow = (bool) ($auth['auth_flags'] & AUTH_FLAG_ISCLIENT);
+			break;
+		case 'BUILDING':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			//Если вообще нет здания
+			$building = building_get(array('user_id'=>$object['id'],'type_id'=>$item['field2']));
+			if (!$building) {
+				$allow = false;
+				break;
+			}
+			//Если уровень здания меньше минимальной границы
+			if (strlen($item['value1']) && ($building['level']<intval($item['value1']))) {
+				$allow = false;
+				break;
+			}
+			//Если уровень здания больше максимальной границы
+			if (strlen($item['value2']) && ($building['level']>intval($item['value2']))) {
+				$allow = false;
+				break;
+			}
+			break;
+		case 'ESTATE_CNT':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			$estate = estate_get(array('user_id' => $object['id']));
+			$estate_cnt = 0;
+			if ($estate && $estate['area_id'] && $estate['area_id_second']) {
+				$estate_cnt = 2;
+			} elseif ($estate && ($estate['area_id'] || $estate['area_id_second'])) {
+				$estate_cnt = 1;
+			}
+			if ((intval($item['value1']) > $estate_cnt) || (intval($item['value2']) < $estate_cnt)) {
+				$allow = false;
+				break;
+			}
+			break;
+		case 'GREAT_FIGHT_WIN':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			
+			$date = date('Y-m-d',time_current() - 60*60*24); // берем стату за вчерашний день
+			$metric_list = make_hash(metric_group_list(METRIC_TYPES_GREAT_FIGHT, $date, $date),'kind_id');
+			$type = $item['field1'];
+			$kind_id_user = $object['kind'];
+			$kind_id_other = $kind_id_user == KIND_HUMAN ? KIND_MAGMAR : KIND_HUMAN;
+			$win_cnt_user = intval($metric_list[$kind_id_user]['value']);
+			$win_cnt_other = intval($metric_list[$kind_id_other]['value']);
+			
+			if (($type && ($win_cnt_user <= $win_cnt_other)) || (!$type && ($win_cnt_user >= $win_cnt_other))) {
+				$allow = false;
+				break;
+			}
+		
+			$allow = true;
+			break;
+		case 'AVATAR':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (!intval($item['value1'])) return false;
+
+			$avatar = user_avatar_get(array('user_id' => $object['id'], 'artikul_id' => $item['value1']), sql_pholder(' AND (dtime = 0 OR dtime > ?) ', time_current()));
+			$allow = (bool)$avatar;
+			break;
+		case 'FON':
+            if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+            if (!intval($item['value1'])) return false;
+
+            $fon = user_fon_get(array('user_id' => $object['id'], 'artikul_id' => $item['value1']), sql_pholder(' AND (dtime = 0 OR dtime > ?) ', time_current()));
+            //logfile(DEBUG_FILE_LOG_DEV, print_r($fon, true));
+            $allow = (bool)$fon;
+            break;
+        case 'SMILE':
+            if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+            if (!intval($item['value1'])) return false;
+
+            $smile = smile_user_get(array('user_id' => $object['id'], 'smile_id' => $item['value1']));
+            $allow = (bool)$smile;
+            break;
+		case 'WORK_CNT':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+
+			require_once("lib/buildings.lib");
+
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			
+			$estate = estate_get(array('user_id' => $object['id']));
+			if ((isset($value1) && ($estate['work'] < $value1)) || (isset($value2) && ($estate['work'] > $value2)))
+				$allow = false;
+			break;
+			
+		case 'GLOBAL_SKILL': // глобальная характеристика сервера
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			$global_skill = global_skill_value_get(array('skill_id' => $item['field1'], 'stime' => 0));
+			$value = !$global_skill ? 0 : $global_skill['value'];
+			if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+			break;
+			
+		case 'TEAM1_SIZE':
+			$team_id = 1;
+		case 'TEAM2_SIZE':
+			if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+			if (!isset($team_id)) $team_id = 2;
+			
+			$allow = false;
+			
+			$team_cnt = bonus_temporary_var_get('TEAM_SIZE_'.$object['id']);
+			if(!$team_cnt || !isset($team_cnt[$team_id]))
+				break;
+			
+			if ((isset($value1) && ($team_cnt[$team_id] < $value1)) || (isset($value2) && ($team_cnt[$team_id] > $value2)))
+				break;
+			
+			$allow = true;
+			
+			break;
+		case 'ADV_MEDAL':    // ограничение на медаль
+                if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+                if (strlen($item['value1'])) $value1 = intval($item['value1']);
+                if (strlen($item['value2'])) $value2 = intval($item['value2']);
+                $adv_medal_user = adv_medal_user_get(array('user_id' => $object['id'], 'adv_medal_id' => $item['field1']));
+                if(!$adv_medal_user) $adv_medal_user['value'] = 0;
+                $value = intval($adv_medal_user['value']);
+                if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+            break;
+
+            case 'COMPANION_LEVEL':   // ограничение на уровень тени
+                if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+                if(!$object['companion_id']) break;
+                $companion = common_object_get(OBJECT_CLASS_COMPANION, $object['companion_id']);
+                if(!$companion) break;
+                if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+                if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+                $value = $companion['level'];
+                if (!$value) {
+                    break;
+                }
+                if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+                break;
+            case 'COMPANION_RANK':    // ограничение на звание
+                if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+                if(!$object['companion_id']) break;
+                $companion = common_object_get(OBJECT_CLASS_COMPANION, $object['companion_id']);
+                if(!$companion) break;
+                if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+                if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+                $rank = $companion['rank'];
+
+                if ((isset($value1) && ($rank < $value1)) || (isset($value2) && ($rank > $value2))) $allow = false;
+                break;
+            case 'COMPANION_SKILL':   // ограничение на значение характеристики пользователя
+
+                if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+                if(!$object['companion_id']) break;
+                $companion = common_object_get(OBJECT_CLASS_COMPANION, $object['companion_id']);
+                if(!$companion) break;
+                if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+                if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+                NODE_PUSH(null, $object['id']);
+                $skill_info = companion_get_skill_info($companion['id'],$item['field1']);
+                NODE_POP();
+                $skill_hash = &$skill_info['skills'];
+                $value = $skill_hash[$item['field1']]['value'];
+                if ($item['flags'] & RESTRICTION_ITEM_FLAG_SKILL_TIME) {
+                    $value = $value - time_current();
+                }
+                if ((isset($value1) && ($value < $value1)) || (isset($value2) && ($value > $value2))) $allow = false;
+                break;
+            case 'USER_REFERRAL':
+                if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+                $allow = ($object['referrer_id'] ? true : false);
+                break;
+            case 'CLAN_LOGO':
+                if (!in_array($object['object_class'],array(OBJECT_CLASS_USER))) return false;
+                $allow = false;
+                if($object['clan_id']) {
+                    $clan = clan_get($object['clan_id']);
+                    if($clan['logo']) $allow = true;
+                }
+                break;
+		}
+
+	} while (0);
+
+	$allow = $item['inverse'] ? !$allow: $allow;
+	return true;
+}
+		
+// Функция проверки ограничений на действие для списка зависимых объектов:
+function restriction_check($action_id, $restriction_object_list, $check_object_list, $target_object_list=false) {
+	global $node_num;
+	$status = true;
+	$restriction = false;
+	$item = false;
+	$current_node_num = $node_num;
+	$restriction_object_list = array_merge($restriction_object_list);
+	restriction_objects_list($restriction_object_list,$action_id);
+	foreach ($restriction_object_list as $obj) {	// Выбираем ограничения
+		foreach ($obj['object_restrictions'] as $restriction) {
+			$item_list = restriction_item_list($restriction['id']);
+			if ($restriction['time_start'] && ($restriction['time_start'] > time_current())) continue;
+			if ($restriction['time_end'] && ($restriction['time_end'] < time_current())) continue;
+			if ((intval($restriction['prob'])!=0) && (rand(1,99)>=intval($restriction['prob']))) continue;
+			if ($restriction['flags'] & RESTRICTION_FLAG_CHECK_ON_TARGET) {
+				if (!$target_object_list) continue;
+				$object_list = $target_object_list;
+			} else {
+				$object_list = $check_object_list;
+			}
+			$status = false;
+			if (!$item_list) break 2;
+			foreach ($object_list as $cur_object) {		// Проверяем ограничение				
+				$allow_expect = ($restriction['flags'] & RESTRICTION_FLAG_COND_OR) ? false : true;
+				foreach ($item_list as $item) {
+					NODE_SWITCH($current_node_num);
+					
+					
+					if (restriction_check_item($cur_object, $item, $allow) == false)
+						continue;
+					$status = $allow;
+					if ($allow_expect != $allow) 
+						break 2;
+				}
+			}
+			if (!$status) break 2;
+		}
+	}
+	$out['status'] = $status ? RESTRICTION_STATUS_ALLOW : RESTRICTION_STATUS_DENY;
+	if (!$status && $restriction) {
+		$out['error'] = restriction_get_description($restriction,$item);
+		$out['title'] = $restriction['title'];
+	}
+	NODE_SWITCH($current_node_num);
+	return $out;
+}
+
+// Функция проверки ограничений на действие для списка зависимых объектов:
+function restriction_check_bonus($bonus_items, $check_object_list, $target_object_list=false) {
+	$status = true;
+	$current_node_num = NODE_SWITCH();
+	foreach ($bonus_items as $obj) {
+		foreach ($obj['restriction_list'] as $restriction) {
+			$item_list = $restriction['restriction_item_list'];
+			if ($restriction['time_start'] && ($restriction['time_start'] > time_current())) continue;
+			if ($restriction['time_end'] && ($restriction['time_end'] < time_current())) continue;
+			if ((intval($restriction['prob'])!=0) && (rand(1,99)>=intval($restriction['prob']))) continue;
+			if ($restriction['flags'] & RESTRICTION_FLAG_CHECK_ON_TARGET) {
+				if (!$target_object_list) continue;
+				$object_list = $target_object_list;
+			} else {
+				$object_list = $check_object_list;
+			}
+			$status = false;
+			if (!$item_list) break 2;
+			foreach ($object_list as $cur_object) {		// Проверяем ограничение
+				$allow_expect = ($restriction['flags'] & RESTRICTION_FLAG_COND_OR) ? false : true;
+				foreach ($item_list as $item) {
+					NODE_SWITCH($current_node_num);
+					if (restriction_check_item($cur_object, $item, $allow) == false)
+						continue;
+					$status = $allow;
+					if ($allow_expect != $allow) break 2;
+				}
+			}
+			if (!$status) break 2;
+		}
+	}
+	$out['status'] = $status ? RESTRICTION_STATUS_ALLOW : RESTRICTION_STATUS_DENY;
+	if (!$status && $restriction) {
+		$out['error'] = restriction_get_description($restriction,$item);
+		$out['title'] = $restriction['title'];
+	}
+	NODE_SWITCH($current_node_num);
+	return $out;
+}
+
+
+function restriction_item_get_description(&$item, $admin = false) {
+	global $money_type_info, $user_rank_info, $kind_info, $quest_status_hash, $quest_point_status_hash, $profession_info, $rank_info, $class_info, $week_day_info, $gender_info;
+	global $user_stat_skill_hash, $building_types;
+
+	// [i.hrustalev] тригер ругается на множественное использование, пришлось вытащить в переменные
+	$string_absence = translate('отсутствие');
+	$string_presence = translate('наличие');
+	$string_in_backpack = translate('у игрока');
+	$string_inactive = translate('не активного (снят)');
+	$string_active = translate('активного (одет)');
+	$string_pet_active_fed = translate('одетого и сытого');
+	$string_pet_active_hungry = translate('одетого и голодного');
+	$string_amount_from = translate('от %d');
+	$string_amount_to = translate('до %d');
+	$string_pet_restriction = translate('%s %s %s %s в количестве %s шт');
+	
+	$descr_str = '';
+	switch ($item['type']) {
+		default:
+			$descr_str = sprintf(translate('неизвестный тип условия "%s"'),$item['type']);
+			break;
+		case 'USER_SKILL':
+			$skill = skill_get($item['field1']);
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s характеристики пользователя "%s" %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$skill['title'],implode(' ',$t));
+			break;
+		case 'USER_LEVEL':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s уровня пользователя %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),implode(' ',$t));
+			break;
+		case 'PET_LEVEL':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			if (!$t) $t[] = translate('любого');
+			$descr_str = sprintf(translate('%s питомца %s уровня, надетого на персонажа'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),implode(' ',$t));
+			break;
+		case 'PET_NOT_MAXLEVEL':
+			$descr_str = translate('Уровень питомца не максимальный');
+			break;
+		case 'USER_STAT':
+			$type_id = intval($item['field1']);
+			$object_id = intval($item['field2']);
+
+			$stat = array(
+				'type_id' => $type_id,
+				'object_id' => $object_id,
+			);
+
+			$descr = user_stat_get_description($stat);
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s статистика пользователя "%s" %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$descr,implode(' ',$t));
+			break;
+		case 'INST_SKILL':
+			$skill = skill_get($item['field1']);
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s характеристики инстанса "%s" %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$skill['title'],implode(' ',$t));
+			break;
+		case 'CASTLE_SKILL':
+			$skill = skill_get($item['field1']);
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s характеристики замка "%s" %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$skill['title'],implode(' ',$t));
+			break;
+		case 'EVENT_TASK':
+			$task = event_point_task_get($item['field1']);
+			$point = event_point_get($task['point_id']);
+			$event = event_artikul_get($point['artikul_id']);
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s значения задачи "%s" этапа "%s" события "%s" %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$task['title'],$point['title'],$event['title'],implode(' ',$t));
+			break;
+		case 'EVENT_POINT':
+			$descr_str = (!$item['inverse'] ? translate('идёт'): translate('не идёт'));
+			if ($item['field2']) {
+				$point = event_point_get($item['field2']);
+				$descr_str .= sprintf(translate(' этап "[%d] %s"'),$point['id'],$point['title']);
+			}
+			if ($item['field1']) {
+				$event = event_artikul_get($item['field1']);
+				$descr_str .= sprintf(translate(' событие "[%d] %s%s"'),$event['id'],$event['title'],$event['kind'] ? ' ('.$kind_info[$event['kind']]['title'].')' : '');
+			}
+			break;
+		case 'MONEY':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %.2f'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %.2f'),$item['value2']);
+			$descr_str = sprintf(translate('%s в кошельке суммы %s %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),implode(' ',$t),$money_type_info[$item['field1']]['title']);
+			break;
+		case 'ARTIFACT':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			if ($item['field1']) {
+				$artikul = artifact_artikul_get($item['field1']);
+				$str1 = sprintf(translate('артефакта "%s"'),$artikul['title']);
+				if ($admin)
+					$str1 .= sprintf(' <a href="?mod=artifact_artikul&action=edit&ref=%1$d" target="_blank">{%1$d}</a>', $artikul['id']);
+			} else $str1 = translate('любого артефакта');
+			if ($item['field2']) {
+				if ($item['field2'] != '*') {
+					$slot = slot_get($item['field2']);
+					$str2 = sprintf(translate('в слоте "%s"'),$slot['title']);
+				} else $str2 = translate('в любом слоте');
+			} else $str2 = translate('в рюкзаке');
+			$descr_str = sprintf(translate('%s %s %s в количестве %s шт'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$str1,$str2,implode(' ',$t));
+			break;
+		case 'ARTIFACT2':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			if ($item['field1']) {
+				$type = artifact_type_get($item['field1']);
+				$str1 = sprintf(translate('артефакта типа "%s"'),$type['title']);
+			} else $str1 = translate('артефакта любого типа');
+			if ($item['field2']) {
+				if ($item['field2'] != '*') {
+					$slot = slot_get($item['field2']);
+					$str2 = sprintf(translate('в слоте "%s"'),$slot['title']);
+				} else $str2 = translate('в любом слоте');
+			} else $str2 = translate('в рюкзаке');
+			$descr_str = sprintf(translate('%s %s %s в количестве %s шт'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$str1,$str2,implode(' ',$t));
+			break;
+		case 'ARTIFACT3':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			if ($item['field1']) {
+				$type = artifact_type_bafs_get($item['field1']);
+				$str1 = sprintf(translate('типа бафа "%s"'),$type['title']);
+			} else $str1 = translate('любого типа бафа');
+			if ($item['field2']) {
+				if ($item['field2'] != '*') {
+					$slot = slot_get($item['field2']);
+					$str2 = sprintf(translate('в слоте "%s"'),$slot['title']);
+				} else $str2 = translate('в любом слоте');
+			} else $str2 = translate('в рюкзаке');
+			$descr_str = sprintf(translate('%s %s %s в количестве %s шт'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$str1,$str2,implode(' ',$t));
+			break;
+		case 'CLAN':
+			if ($item['field1']) {
+				$clan = clan_get($item['field1']);
+				$t = '"'.$clan['title'].'"';
+			}
+			$descr_str = sprintf(translate('%s клана %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$t);
+			break;
+		case 'CLAN_LEVEL':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s уровня у клана %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),implode(' ',$t));
+			break;
+		case 'CLAN_SEASONPLACE':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s место в сезоне клановых битв клана %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),implode(' ',$t));
+			break;
+		case 'CLAN_HEAD':
+			$descr_str = sprintf(translate('%s звания "глава клана"'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')));
+			break;
+		case 'CLAN_STAT_LEVEL':
+			$clan_stat_artikul_id = intval($item['field1']);
+			$clan_stat_artikul = clan_stat_artikul_get(array('id' => $clan_stat_artikul_id));
+			$descr = $clan_stat_artikul['title'];
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s уровня клановой статистики "%s" %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$descr,implode(' ',$t));
+			break;
+		case 'CLAN_STAT':
+			$clan_stat_artikul_id = intval($item['field1']);
+			$clan_stat_artikul = clan_stat_artikul_get(array('id' => $clan_stat_artikul_id));
+			$descr = $clan_stat_artikul['title'];
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s клановой статистики "%s" %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$descr,implode(' ',$t));
+			break;
+		case 'BACKPACK':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s сбодных мест в рюкзаке в количестве %s шт'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),implode(' ',$t));
+			break;
+		case 'KIND':
+			$descr_str = sprintf(translate('%s расы "%s"'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$kind_info[$item['field1']]['title']);
+			break;
+		case 'AREA':
+			$area = area_get($item['field1']);
+			$descr_str = sprintf(translate('%s местоположения "%s"'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$area['title']);
+			if ($admin)
+				$descr_str .= sprintf(' <a href="?mod=area&action=edit&ref=%1$d" target="_blank">{%1$d}</a>', $area['id']);
+			if ($item['value1'])
+				$descr_str .= translate(' или любого из подчиненных');
+			break;
+		case 'PARTY_LEVEL':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s уровня группы %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),implode(' ',$t));
+			break;
+		case 'PARTY_SIZE':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s количества игроков в группе %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),implode(' ',$t));
+			break;
+		case 'QUEST_STATUS':
+			$quest = quest_get($item['field1']);
+			$descr_str = sprintf(translate('%s квеста "[%d] %s" со статусом "%s"'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$quest['id'],$quest['title'],$quest_status_hash[$item['field2']]);
+			if ($admin)
+				$descr_str = str_replace('['.$quest['id'].']', sprintf('<a href="?mod=quest&action=edit&ref=%1$d" target="_blank">{%1$d}</a>', $quest['id']), $descr_str);
+			break;
+		case 'PROFESSION':
+			$profession = intval($item['field1']);
+			$prof_hash = array(-1 => translate('Любая')) + get_hash($profession_info);
+			$descr_str = sprintf(translate('%s профессии "%s"'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')), $prof_hash[$profession]);
+			break;
+		case 'QUEST_PT_STATUS':
+			$quest_point = quest_point_get($item['field1']);
+			$quest = quest_get($quest_point['quest_id']);
+			$descr_str = sprintf(translate('%s этапа "[%d] %s" квеста "[%d] %s" со статусом "%s"'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$quest_point['id'],$quest_point['title'],$quest['id'],$quest['title'],$quest_point_status_hash[$item['field2']]);
+			break;
+		case 'RECIPE':
+			$recipe_id = intval($item['field1']);
+			$recipe = recipe_get($recipe_id);
+			$descr_str = sprintf(translate('%s иученного рецепта "%s"'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')), $recipe['title']);
+			break;
+		case 'RANK':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от "%s"'),$rank_info[$item['value1']]['title']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до "%s"'),$rank_info[$item['value2']]['title']);
+			$descr_str = sprintf(translate('%s звания %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),implode(' ',$t));
+			break;
+		case 'BANK_CELL':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$bank = area_get($item['field1']);
+			$descr_str = sprintf(translate('%s мест в банковской ячейке в "%s" %s шт'), (!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$bank['title'],implode(' ',$t));
+			break;
+		case 'CLASS':
+			$t = array();
+			foreach ($class_info as $k=>$v) {
+				if (!($k & $item['field1'])) continue;
+				$t[] = $v['title'];
+			}
+			$descr_str = sprintf(translate('%s любой из школ магии (%s)'),(!$item['inverse'] ? translate('наличие') : translate('отсутствие')),implode(', ',$t));
+			break;
+		case 'AREA_CNT':
+			$t = array();
+			$descr_str = sprintf(translate('в текущей локации игроков не более %d'),$item['value1']);
+			break;
+		case 'CB_USER_REQUEST':
+			$descr_str = sprintf(translate('%s если у игрока есть заявка на клановую битву'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')));
+			break;
+		case 'CASTLE_OWNER':
+			$t = array();
+			$castle = castle_get($item['field1']);
+			$descr_str = sprintf(translate('владелец замка "%s"'),$castle['title']);
+			break;
+		case 'DATE_HOUR':
+			$value1 = intval($item['field1']);
+			$value2 = intval($item['field2']);
+			$msg = ($item['inverse']) ? translate('запрещено') : translate('разрешено');
+			$descr_str = sprintf(translate('%s c %d:00 по %d:59'), $msg, $value1, $value2);
+			break;
+		case 'DATE_DAY':
+			$value1 = intval($item['field1']);
+			$value2 = intval($item['field2']);
+			$msg = ($item['inverse']) ? translate('запрещено') : translate('разрешено');
+			$descr_str = sprintf(translate('%s c %d числа месяца по %d число'), $msg, $value1, $value2);
+			break;
+		case 'DATE_WEEK_DAY':
+			$value1 = intval($item['field1']);
+			$value2 = intval($item['field2']);
+			$msg = ($item['inverse']) ? translate('запрещено') : translate('разрешено');
+			$descr_str = sprintf(translate('%s c %s по %s'), $msg, $week_day_info[$value1], $week_day_info[$value2]);
+			break;
+		case 'USER_CLAN_STIME':
+			$t = array();
+			$msg = ($item['inverse']) ? translate('запрещено') : translate('разрешено');
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('не менее %s секунд'), intval($item['value1']));
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('не более %s секунд'), intval($item['value2']));
+			$descr_str = sprintf(translate('%s, если время пребывания пользователя в клане %s'), $msg, implode(', ', $t));
+			break;
+		case 'USER_REG_TIME':
+		    $t = array();
+		    $msg = ($item['inverse']) ? translate('запрещено') : translate('разрешено');
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('не менее %s секунд'), intval($item['value1']));
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('не более %s секунд'), intval($item['value2']));
+			$descr_str = sprintf(translate('%s, если время с момента регистрации %s'), $msg, implode(', ', $t));
+		    break;
+		case 'ACHIEVEMENT':
+			$achievement = achievement_get(intval($item['field1']));
+			$descr_str = sprintf(translate('%s достижения "%s"'), (!$item['inverse'] ? translate('наличие'): translate('отсутствие')), $achievement['title']);
+			if ($admin)
+				$descr_str .= sprintf(' <a href="?mod=achievement&action=edit&ref=%1$d" target="_blank">{%1$d}</a>', $achievement['id']);
+			break;
+		case 'STRONGHOLD_OWNER':
+			$t = array();
+			$stronghold = stronghold_get($item['field1']);
+			$descr_str = sprintf(translate('владелец крепости "%s"'),$stronghold['title']);
+			break;
+		case 'PET':
+			$text = array();
+			if (mb_strlen($item['value1'])) $text[] = sprintf($string_amount_from,$item['value1']);
+			if (mb_strlen($item['value2'])) $text[] = sprintf($string_amount_to,$item['value2']);
+			if ($item['field1']) {
+				$artikul = pet_artikul_get($item['field1']);
+				$str1 = sprintf(translate('питомца "%s"'), _pet_artikul_title($artikul));
+			} else {
+				$str1 = translate('любого питомца');
+			}
+			if ($item['field2']) {
+				if ($item['field2'] == 1) {
+					$str2 = $string_active;
+				} elseif ($item['field2'] == 2) {
+					$str2 = $string_inactive;
+				} elseif ($item['field2'] == 3) {
+					$str2 = $string_pet_active_fed;
+				} elseif ($item['field2'] == 4) {
+					$str2 = $string_pet_active_hungry;
+				}
+			} else $str2 = $string_in_backpack;
+			$descr_str = sprintf($string_pet_restriction, (!$item['inverse'] ? $string_presence : $string_absence), $str1, $str2, '', implode(' ', $text));
+			break;
+		case 'PET2':
+			$text = array();
+			if (mb_strlen($item['value1'])) $text[] = sprintf($string_amount_from,$item['value1']);
+			if (mb_strlen($item['value2'])) $text[] = sprintf($string_amount_to,$item['value2']);
+			
+			$type_id = intval($item['field1']);
+			
+			if ($type_id) {
+				$type = pet_type_get($item['field1']);
+				$str1 = sprintf(translate('питомца типа "%s"'), $type['title']);
+			} else {
+				$str1 = translate('питомца любого типа');
+			}
+			
+			if ($item['field2']) {
+				if ($item['field2'] == 1) {
+					$str2 = $string_active;
+				} elseif ($item['field2'] == 2) {
+					$str2 = $string_inactive;
+				} elseif ($item['field2'] == 3) {
+					$str2 = $string_pet_active_fed;
+				} elseif ($item['field2'] == 4) {
+					$str2 = $string_pet_active_hungry;
+				}
+			} else $str2 = $string_in_backpack;
+			
+			$descr_str = sprintf($string_pet_restriction, (!$item['inverse'] ? $string_presence : $string_absence), $str1, $str2, '', implode(' ', $text));
+			break;
+		case 'PET3':
+			$text = array();
+			if (mb_strlen($item['value1'])) $text[] = sprintf($string_amount_from,$item['value1']);
+			
+			$type_id = intval($item['field1']);
+			$group_id = intval($item['field2']);
+			
+			$str1 = $str2 = '';
+			if ($type_id || $group_id) {
+				if (mb_strlen($item['value2']) && ($item['value2'] == 1)) {
+					$str0 = translate('одетого питомца');
+				} elseif (mb_strlen($item['value2']) && ($item['value2'] == 2)) {
+					$str0 = translate('питомца в рюкзаке');
+				} elseif (mb_strlen($item['value2']) && ($item['value2'] == 3)) {
+					$str2 = $string_pet_active_fed.' '.translate('питомца');
+				} elseif (mb_strlen($item['value2']) && ($item['value2'] == 4)) {
+					$str2 = $string_pet_active_hungry.' '.translate('питомца');
+				} else {
+					$str0 = translate('питомца');
+				}
+				$join = '';
+				
+				if ($group_id) {
+					$group = pet_group_get($group_id);
+					$str1 = sprintf(translate('группы "%s"'), $group['title']);
+					$join = translate(' и ');
+				}
+				
+				if ($type_id) {
+					$type = pet_type_get($item['field1']);
+					$str2 = sprintf(translate('%sтипа "%s"'), $join, $type['title']);
+				}
+				
+			} else {
+				$str0 = translate('любых питомцев');
+			}
+			
+			$descr_str = sprintf($string_pet_restriction, (!$item['inverse'] ? $string_presence : $string_absence), $str0, $str1, $str2, implode(' ', $text));
+			break;
+		case 'BONUS_TEMPVAR':
+			$name = $item['field1'];
+			if (mb_strlen($item['value1'])) $value1 = intval($item['value1']);
+			if (mb_strlen($item['value2'])) $value2 = intval($item['value2']);
+			
+			if (isset($value1) && isset($value2)) {
+				if ($value1 ==  $value2) {
+					$add = sprintf(translate(' равно "<b>%d</b>"'), $value1);
+				} else {
+					$add = sprintf(translate(' находится в пределах <b>[%d..%d]</b>'), $value1, $value2);
+				}
+			} elseif (isset($value1)) {
+				$add = sprintf(translate(' более или равно "<b>%d</b>"'), $value1);
+			} else {
+				$add = sprintf(translate(' менее или равно "<b>%d</b>"'), $value2);
+			}
+			
+			$descr_str = sprintf(translate('Значение временной переменной "<b>%s</b>" %s%s'), $name, ($item['inverse'] ? translate('<b>НЕ</b>') : ''), $add);
+			break;
+		case 'SERVER':
+			global $SERVERS;
+			$known_servers = get_hash($SERVERS, 'id', 'name');
+			$descr_str = sprintf(translate('%s для сервера "%s"'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')), $known_servers[intval($item['field1'])]);
+			break;
+		case 'WORLD':
+			global $SITE_CFG;
+			$known_worlds = get_hash($SITE_CFG, 'world', 'name');
+			$descr_str = sprintf(translate('%s для мира "%s"'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')), $known_worlds[intval($item['field1'])]);
+			break;
+		case 'CRIME':
+			global $crime_type_info;
+			$crime_hash = get_hash($crime_type_info);
+			$descr_str = sprintf(translate('%s при проклятии "%s"'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')), $crime_hash[intval($item['field1'])]);
+			break;
+
+		// Пол персонажа
+		case 'GENDER':
+			$descr_str = sprintf(translate('%s, если пол персонажа %s'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')), $gender_info[intval($item['field1'])]);
+			break;
+		case 'INCOME':
+		    $amount_str = '';
+	        
+		    if (mb_strlen($item['value1'])) {
+		        $amount_str .= sprintf(translate(' от %s'),$item['value1']);
+		    }
+	        if (mb_strlen($item['value2'])) {
+		        $amount_str .= sprintf(translate(' до %s'),$item['value2']);
+		    }
+		    
+		    $descr_str = sprintf(translate('%s, если персонаж заплатил%s'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')), $amount_str);
+			break;
+		case 'MOUNTUSED':
+		    $descr_str = sprintf(translate('%s, если игроком в этом бою уже вызывалось ездовое животное'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено'))); 
+		    break;
+		case 'FIGHT':
+		    $descr_str = sprintf(translate('%s, если персонаж находится в бою'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено'))); 
+		    break;
+		case 'GREAT_BATTLE':
+		    $descr_str = sprintf(translate('%s, если персонаж находится в великой битве'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено'))); 
+		    break;
+		case 'INSTANCE':
+			if ($item['field1']) {
+				$instance = instance_artikul_get(intval($item['field1']));
+				$instance_str = '"'.$instance['title'].'"';
+			} else {
+				$instance_str = '';
+			}
+		    $descr_str = sprintf(translate('%s, если персонаж находится в инстансе %s'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')), $instance_str); 
+		    break;
+		case 'CASTLE_TOWER':
+			$area = area_get(intval($item['field1']));
+		    $descr_str = sprintf(translate('%s, если клан персонажа владеет локацией башни "%s"'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')), $area['title']); 
+		    break;
+//		case 'MAILRU_ASSOC':
+//		    $descr_str = sprintf(translate('%s, если персонаж ассоциирован с Моим Миром'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')));
+//		    break;
+		case 'COMPARE_STATS':
+			$stat1 = intval($item['field1']);
+			$stat2 = intval($item['field2']);
+			$rule = intval($item['value1']);
+			if (!$stat1 || !$stat2) {
+				$descr_str = translate('Сравнение статистики характеристик');
+				break;
+			}
+			$stat1_title = $user_stat_skill_hash[$stat1]['title'];
+			$stat2_title = $user_stat_skill_hash[$stat2]['title'];
+			$rule_title = $rule ? (($rule > 0) ? translate('большей') : translate('меньшей')) : translate('равной');
+			$inverse = $item['inverse'] ? translate('Отсутствие') : translate('Наличие');
+			$descr_str = sprintf(translate('%s статистики характеристики "%s" %s статистики характеристики "%s"'), $inverse, $stat1_title, $rule_title, $stat2_title);
+			break;
+		case 'UAGENT_ISCLIENT':
+			$descr_str = sprintf(translate('%s, если пользователь играет через клиент'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')));
+			break;
+		case 'GREAT_FIGHT_WIN':
+			$t = array();
+			$great_fight_type_hash = array(0 => translate('поражения'), 1 => translate('победы'));
+			$type = intval($item['field1']);
+			$descr_str = sprintf(translate('%s %s в убийствах враждебной расы за день'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')), $great_fight_type_hash[$type]);
+			break;
+		case 'BUILDING':
+			$min = $max = $any_level = '';
+			if (!strlen($item['value1']) && !strlen($item['value2'])) $any_level = translate('любого');
+			if ($item['value2'] != $item['value1']){
+				if (strlen($item['value1'])) {
+					$min = translate(' от ');
+					$min .= $item['value1'];
+				}
+				if (strlen($item['value2'])) {
+					$max = translate(' до ');
+					$max.= $item['value2'];
+				}
+			} else { $min = $item['value1']; $max ='';}
+			$descr_str = sprintf(translate('Игрок %s имеет здание "%s" %s %s%s уровня'),
+				$item['inverse'] ? translate(' не'): '',
+				$building_types[$item['field2']]['title'],
+				$any_level,
+				$min, $max
+			);
+			break;
+		case 'ESTATE_CNT':
+			$descr_str = sprintf(translate('%s, если у игрока от %s до %s участков'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')), $item['value1'], $item['value2']); 
+			break;
+		case 'AVATAR':
+			$avatar_artikul = user_avatar_artikul_get($item['value1']);
+			$descr_str = sprintf(translate('%s образа "%s"'), (!$item['inverse'] ? translate('наличие'): translate('отсутствие')), $avatar_artikul['title']);
+			break;
+        case 'FON':
+            $fon_artikul = user_fon_artikul_get($item['value1']);
+            $descr_str = sprintf(translate('%s фона "%s"'), (!$item['inverse'] ? translate('наличие'): translate('отсутствие')), $fon_artikul['title']);
+            break;
+        case 'SMILE':
+            $smile_artikul = smile_get($item['value1']);
+            $descr_str = sprintf(translate('%s смайлика "%s"'), (!$item['inverse'] ? translate('наличие'): translate('отсутствие')), $smile_artikul['tag']);
+            break;
+		case 'WORK_CNT':
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s энергии(труда) %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),implode(' ',$t));
+			break;
+		case 'GLOBAL_SKILL':
+			$global_skill = global_skill_get(array('id' => $item['field1']));
+			$t = array();
+			if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+			if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+			$descr_str = sprintf(translate('%s глобальной характеристики "%s" %s'), (!$item['inverse'] ? translate('наличие') : translate('отсутствие')), $global_skill['title'], implode(' ', $t));
+			break;
+		case 'TEAM1_SIZE':
+			$descr_str = sprintf(translate('%s, если первая команда имеет от %s до %s участников'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')), $item['value1'], $item['value2']);
+			break;
+		case 'TEAM2_SIZE':
+			$descr_str = sprintf(translate('%s, если вторая команда имеет от %s до %s участников'), (!$item['inverse'] ? translate('разрешено') : translate('запрещено')), $item['value1'], $item['value2']);
+			break;
+        case 'ADV_MEDAL':
+            $adv_medal_id = intval($item['field1']);
+            $adv_medal = adv_medal_get($adv_medal_id);
+            $t = array();
+            if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+            if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+            if (!$t) $t[] = translate('любого');
+            $descr_str = sprintf(translate('%s ордена %s %s у персонажа'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')), $adv_medal['title'],implode(' ',$t));
+            break;
+        case 'COMPANION_SKILL':
+            $skill = skill_get($item['field1']);
+            $t = array();
+            if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+            if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+            $descr_str = sprintf(translate('%s характеристики тени "%s" %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),$skill['title'],implode(' ',$t));
+            break;
+        case 'COMPANION_LEVEL':
+            $t = array();
+            if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от %d'),$item['value1']);
+            if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до %d'),$item['value2']);
+            $descr_str = sprintf(translate('%s уровня тени %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),implode(' ',$t));
+            break;
+        case 'COMPANION_RANK':
+            $t = array();
+            if (mb_strlen($item['value1'])) $t[] = sprintf(translate('от "%s"'),$rank_info[$item['value1']]['title']);
+            if (mb_strlen($item['value2'])) $t[] = sprintf(translate('до "%s"'),$rank_info[$item['value2']]['title']);
+            $descr_str = sprintf(translate('%s звания у тени %s'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')),implode(' ',$t));
+            break;
+        case 'USER_REFERRAL':
+            $descr_str = sprintf(translate('%s игрока который пригласил в игру'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')));
+            break;
+        case 'CLAN_LOGO':
+            $descr_str = sprintf(translate('%s у клана игрока лого'),(!$item['inverse'] ? translate('наличие'): translate('отсутствие')));
+            break;
+	}
+	return $descr_str;
+}
+
+function restriction_get_description(&$restriction, $item=false) {
+	$descr_str = $item ? restriction_item_get_description($item): $restriction['title'];
+	$t = array();
+	if ($restriction['time_start']) $t[] = sprintf(translate('с %s'),date("d.m.Y H:i",$restriction['time_start']));
+	if ($restriction['time_end']) $t[] = sprintf(translate('до %s'),date("d.m.Y H:i",$restriction['time_end']));
+	if ($t) $descr_str .= ' '.sprintf(translate('(время действия %s)'),implode(' ',$t));
+	return $descr_str;
+}
+
+function restriction_copy($param, $parent_id) {
+	$param['object_id'] = $parent_id;
+	$old_id = $param['id'];
+	unset($param['id']);
+	$new_id = restriction_save($param);
+	if (!$new_id) return false;
+
+	$restriction_items = restriction_item_list($old_id);
+	foreach ($restriction_items as $restriction_item) {
+		restriction_item_copy($restriction_item, $new_id);
+	}
+
+	return $new_id;
+}
+
+function restriction_item_copy($param, $parent_id){
+	$param['restriction_id'] = $parent_id;
+	$old_id=$param['id'];
+	unset($param['id']);
+	$new_id = restriction_item_save($param);
+	if (!$new_id) return false;
+
+	return $new_id;
+}
+?>

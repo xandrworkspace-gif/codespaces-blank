@@ -1,0 +1,90 @@
+<? # $Id: FIGHT_HELP.action,v 1.11 2010-02-15 10:07:58 s.ignatenkov Exp $
+
+// действие помощь в бою, пользователь, выполняя это действие, будет привлечен 
+// в бой за определнную команду. На самом деле алгоритм подразумевает нападение на члена 
+// противоположной команды
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if ($session_user['flags2'] & USER_FLAG2_ACTING_GUARD) {
+	$out['error'] = translate('Персонаж находится при исполнении обязанностей стража!');
+	return;
+}
+$fight_id = $in['fight'];
+// Персонаж который позвал на помощь
+$inviting_user = user_get(false,trim($in['target_nick']));/// user_get(false,trim($target_nick);
+if (!$fight_id && $in['no_action'] && $inviting_user['fight_id']) {
+	$fight_id =  $inviting_user['fight_id'];
+}
+if (!$inviting_user) { 
+	$out['error'] = translate('Пользователь не найден!');
+	return;
+}
+if (!user_is_online($inviting_user['id'])) {
+	$out['error'] = translate('Пользователь отсутствует в игре!');
+	return;
+}
+require_once("lib/fight.lib");
+$fight = fight_get($fight_id);
+if (!$fight || ($fight['status'] != FIGHT_STATUS_RUNNING)) {
+	$out['error'] = translate('Бой уже закончен!');
+	return;
+}
+
+$fight_user_list = fight_user_list($fight['id']);
+$list_usrs = make_hash($fight_user_list, 'user_id');
+unset($list_usrs[0]); // исключаем ботов
+$users_team_list = $in['target_user'] ? $list_usrs : $fight_user_list;
+$list_team = make_hash($users_team_list, 'team', true);
+$inviting_team = $list_usrs[ $inviting_user['id'] ]['team'];
+if (!$inviting_team) {
+	$out['error'] = translate('Бой уже закончен!');
+	return;
+}
+//Выбираем противника на которого нападем
+$enemy_team = ($inviting_team % 2)+ 1; // Lol synops 1%2=1, 2%2=0; потом +1
+$enemies = $list_team[$enemy_team];
+$enemy = reset($enemies);
+$target = false;
+if ($enemy) {
+	if ($enemy['user_id'])
+		$target = user_get(array('id'=>$enemy['user_id']));
+	else
+		$target = bot_get(array('id'=>$enemy['bot_id']));
+}
+if (!$target) {
+	$out['error'] = translate('Бой уже закончен!'); 
+	return;
+}
+global $session_user;
+
+if (empty($in['confirmed']) && $fight['level'] && !($fight['flags'] & FIGHT_FLAG_NORESTRICT)) {
+	$fight_out = fight_attack($session_user, $target,array('test_only' => true));
+	if ($fight_out['status'] != true) {
+		$out['error'] = $fight_out['error'] ? $fight_out['error'] : translate('Неизвесная ошибка!'); 
+		return;
+	}
+	
+	$out['status'] = ACTION_STATUS_OK;
+	$out['url_success'] = '/area.php';
+	$out['param_success'] = array(
+		'great_fight' => 1,
+		'action' => $action['code'],
+		'in' => $in,
+	);
+	return;
+}
+
+if (!$in['no_action']) {
+	// Выполняем действие
+	$fight_param = false;
+	//$fight_out = fight_attack($session_user, $target, $fight_param );
+	if ($target['object_class'] == OBJECT_CLASS_USER) {
+		if (!$in['nick']) $in['nick'] = $target['nick'];
+		$out = action_do('ATTACK', $subject, $target, $in);
+	} else {
+		$out = action_do('ATTACK_BOT', $subject, $target, $in);
+	}
+}?>

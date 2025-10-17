@@ -1,0 +1,60 @@
+<? # $Id: PET_FEED.action,v 1.5 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "Покормить питомца"
+// Параметры:
+//	$in['amount'] - кол-во порций кормежки
+
+require_once('lib/pet.lib');
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+
+$pet_id = intval($in['ref']);
+
+if (!$pet_id) {
+	$out['error'] = translate('Вы должны выбрать питомца!');
+	return;
+}
+
+$pet = pet_get($pet_id);
+if (!$pet) {
+	pet_undress($subject['id']);
+	$out['error'] = translate('Нет такого питомца!');
+	return;
+}
+
+$pet_artikul = pet_artikul_get($pet['artikul_id']);
+$food_artifact = artifact_get(array('artikul_id' => $pet_artikul['food_artikul_id'], 'user_id' => $session_user['id']));
+
+$amount = min(intval($in['amount']), $food_artifact['cnt']);
+if ($amount <= 0) {
+	$out['error'] = translate('Указано неверное количество!');
+	return;
+}
+
+$result = pet_feed($pet, $amount);
+
+if ($result === false) {
+	$out['error'] = translate('Не удалось покормить питомца!');
+	return;
+} elseif ($result === 0) {
+	$out['error'] = translate('Ваш питомец уже сыт!');
+	return;
+}
+
+if ($result < $food_artifact['cnt']) {
+	artifact_save(array(
+		'id' => $food_artifact['id'],
+		'cnt' => $food_artifact['cnt'] - $result,
+	));
+	action_object_delete(OBJECT_CLASS_ARTIFACT, $food_artifact);
+} else {
+	artifact_delete($food_artifact);
+}
+
+$out['status'] = ACTION_STATUS_OK;
+?>

@@ -1,0 +1,186 @@
+<?php
+
+define('TABLE_DAY_PROMOCODE', 'day_promocode');
+define('TABLE_DAY_PROMOCODE_CLIENT', 'day_promocode_client');
+
+define('DAY_PROMOCODE_FLAG_DISABLED', 0x00001);
+
+$day_promocode_flags_hash = array(
+    DAY_PROMOCODE_FLAG_DISABLED => 'Отключен',
+);
+
+//////////////////////////////////
+
+function day_promocode_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_DAY_PROMOCODE,$ref,$add);
+}
+
+function day_promocode_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_DAY_PROMOCODE,$ref,$add);
+}
+
+function day_promocode_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_DAY_PROMOCODE, $ref, $add);
+}
+
+function day_promocode_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_DAY_PROMOCODE,$param);
+}
+
+function day_promocode_delete($ref, $add='') {
+    global $db_diff;
+    common_delete($db_diff,TABLE_DAY_PROMOCODE,$ref,$add);
+    return true;
+}
+
+//////////////////////////////////
+
+function day_promocode_client_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_DAY_PROMOCODE_CLIENT,$ref,$add);
+}
+
+function day_promocode_client_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_DAY_PROMOCODE_CLIENT,$ref,$add);
+}
+
+function day_promocode_client_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_DAY_PROMOCODE_CLIENT, $ref, $add);
+}
+
+function day_promocode_client_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_DAY_PROMOCODE_CLIENT,$param);
+}
+
+function day_promocode_client_delete($ref, $add='') {
+    global $db_diff;
+    common_delete($db_diff,TABLE_DAY_PROMOCODE_CLIENT,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////
+
+define('DAY_PROMOCODE_OUT_BADIP', 1);
+define('DAY_PROMOCODE_OUT_NOSETT', 2);
+define('DAY_PROMOCODE_OUT_HAVECODE', 3);
+define('DAY_PROMOCODE_OUT_LIMITEXPIRE', 4);
+define('DAY_PROMOCODE_OUT_NOCODE', 5);
+define('DAY_PROMOCODE_OUT_ERROR', 6);
+define('DAY_PROMOCODE_OUT_OK', 100);
+
+$day_promocodes_out = array(
+    DAY_PROMOCODE_OUT_BADIP => 'Недопустимый IPV6 адрес.',
+    DAY_PROMOCODE_OUT_NOSETT => 'Не настроено.',
+    DAY_PROMOCODE_OUT_HAVECODE => 'Сегодня вы уже получали код.',
+    DAY_PROMOCODE_OUT_LIMITEXPIRE => 'Сегодня уже были получены все коды.',
+    DAY_PROMOCODE_OUT_NOCODE => 'Не настроены коды',
+    DAY_PROMOCODE_OUT_ERROR => 'Ошибка',
+);
+
+function day_promocode_generate($check = false) {
+    $out['sig'] = false;
+    $client_ip = $_SERVER['REMOTE_ADDR'];
+    if(filter_var($client_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+        $out['sig'] = DAY_PROMOCODE_OUT_BADIP;
+        return $out;
+    }
+    if(!(defined('DAY_PROMOCODE_COUNT') && DAY_PROMOCODE_COUNT)) {
+        $out['sig'] = DAY_PROMOCODE_OUT_NOSETT;
+        return $out;
+    }
+    $client = day_promocode_client_get(array('ip' => $client_ip));
+    if($client) {
+        $out['code'] = $client['code'];
+        $out['sig'] = DAY_PROMOCODE_OUT_HAVECODE;
+        return $out;
+    }
+    $codes_count = day_promocode_client_count();
+    if($codes_count >= DAY_PROMOCODE_COUNT) {
+        $out['sig'] = DAY_PROMOCODE_OUT_LIMITEXPIRE;
+        return $out;
+    }
+    $day_promocodes = make_hash(day_promocode_list(false, sql_pholder(' AND !(flags & ?#DAY_PROMOCODE_FLAG_DISABLED)')));
+    if(!$day_promocodes) {
+        $out['sig'] = DAY_PROMOCODE_OUT_NOCODE;
+        return $out;
+    }
+    $day_promocode_id = array_rand($day_promocodes);
+    if(!$day_promocode_id) {
+        $out['sig'] = DAY_PROMOCODE_OUT_NOCODE;
+        return $out;
+    }
+
+    if($check) {
+        $out['sig'] = DAY_PROMOCODE_OUT_OK;
+        return $out;
+    }
+
+    $save_tries = 1;
+    do {
+        $code_md5 = strtoupper(md5(uniqid($client_ip.rand(), true)));
+        $code = mb_substr($code_md5,0,4)."-".mb_substr($code_md5,4,4)."-".mb_substr($code_md5,8,4)."-".mb_substr($code_md5,12,4);
+        $code_md5 = strtoupper(md5(uniqid($client_ip.rand(), true)));
+        $code .= '-'.mb_substr($code_md5,0,4)."-".mb_substr($code_md5,4,4);
+        $status = day_promocode_client_save(array(
+            'ip' => $client_ip,
+            'promocode_id' => $day_promocode_id,
+            'code' => $code,
+            'dtime' => mktime(23,59,59) + 1,
+            '_noerr' => true,
+        ));
+        if ($save_tries > 10) break;
+        $save_tries++;
+    } while (!$status);
+    if(!$status) {
+        $out['sig'] = DAY_PROMOCODE_OUT_ERROR;
+    }
+    $out['code'] = $code;
+    $out['sig'] = DAY_PROMOCODE_OUT_OK;
+    return $out;
+}
+
+function day_promocode_generate_force($check = false) {
+    $out['sig'] = false;
+    $day_promocodes = make_hash(day_promocode_list(false, sql_pholder(' AND !(flags & ?#DAY_PROMOCODE_FLAG_DISABLED)')));
+    if(!$day_promocodes) {
+        $out['sig'] = DAY_PROMOCODE_OUT_NOCODE;
+        return $out;
+    }
+    $day_promocode_id = array_rand($day_promocodes);
+    if(!$day_promocode_id) {
+        $out['sig'] = DAY_PROMOCODE_OUT_NOCODE;
+        return $out;
+    }
+    $save_tries = 1;
+    do {
+        $code_md5 = strtoupper(md5(uniqid('CLI-NET'.rand(), true)));
+        $code = mb_substr($code_md5,0,4)."-".mb_substr($code_md5,4,4)."-".mb_substr($code_md5,8,4)."-".mb_substr($code_md5,12,4);
+        $code_md5 = strtoupper(md5(uniqid('CLI-NET'.rand(), true)));
+        $code .= '-'.mb_substr($code_md5,0,4)."-".mb_substr($code_md5,4,4);
+        $status = day_promocode_client_save(array(
+            'promocode_id' => $day_promocode_id,
+            'code' => $code,
+            'dtime' => mktime(23,59,59) + 1,
+            '_noerr' => true,
+        ));
+        if ($save_tries > 10) break;
+        $save_tries++;
+    } while (!$status);
+    if(!$status) {
+        $out['sig'] = DAY_PROMOCODE_OUT_ERROR;
+    }
+    $out['code'] = $code;
+    $out['sig'] = DAY_PROMOCODE_OUT_OK;
+    return $out;
+}
+
+function day_promocode_cron(){
+    day_promocode_client_delete(false, sql_pholder(' AND dtime <= ?', time_current()));
+}

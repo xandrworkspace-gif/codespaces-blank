@@ -1,0 +1,3743 @@
+<? # $Id: bonus.lib,v 1.252 2010-03-02 13:21:53 i.hrustalev Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/dialog.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/bonus_cache.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/smile.lib");
+require_once("/home/admin/web/dwar.fun/public_html/include/constant.inc");
+require_once("/home/admin/web/dwar.fun/public_html/tpl/mailer.tpl");
+require_once("/home/admin/web/dwar.fun/public_html/tpl/common.tpl");
+
+// Имена и поля таблиц
+define('TABLE_BONUSES','bonuses');
+define('FIELD_BONUSES','');
+define('TABLE_BONUS_ITEMS','bonus_items');
+define('FIELD_BONUS_ITEMS','');
+define('TABLE_BONUS_ITEM_STAT','bonus_item_stat');
+define('FIELD_BONUS_ITEM_STAT','');
+define('TABLE_BONUS_TYPES','bonus_types');
+define('FIELD_BONUS_TYPES','');
+
+define('TABLE_BONUS_GENERAL_STAT','bonus_general_stat');
+
+define('BONUS_GENERAL_STAT_ARTIFACT_GET', 1);
+define('BONUS_GENERAL_STAT_ARTIFACT_LOST', 2);
+define('BONUS_GENERAL_STAT_MONEY_GET', 3);
+define('BONUS_GENERAL_STAT_MONEY_LOST', 4);
+define('BONUS_STATUS_OK', 0);
+define('BONUS_STATUS_ERROR', -1);
+
+define('BONUS_FLAG_FOR_CLAN_HEAD',           0x0002); // Выдача бонуса главе клана
+define('BONUS_FLAG_FOR_REFERRER',            0x0004); // Выдача бонуса пригласившему
+define('BONUS_FLAG_DIALOG',            0x0008); // проверка Помощника
+define('BONUS_FLAG_MSGALL', 		0x0020); // Сообщение о выдаче всем.
+define('BONUS_FLAG_NOMESSAGE', 		0x0040); // Не выводить сообщения
+define('BONUS_FLAG_FCHECK_RESTICTIONS', 		0x0080); // Проверять ограничения на этапе отбора (только для необходимых бонусов "много жрет ресурсов")
+define('BONUS_FLAG_STAT', 		0x0100); // Писать общую статистику по этому бонусу (Деньги, Артифакты)
+
+define('BONUS_ITF_RELATIVE',          0x000001);
+define('BONUS_ITF_HAVESKILL',         0x000002);
+define('BONUS_ITF_NOGIVE',            0x000004);
+define('BONUS_ITF_BOE',               0x000008);
+define('BONUS_ITF_LOGSERV',           0x000010);
+define('BONUS_ITF_USERATTACK',        0x000020);
+define('BONUS_ITF_USERAVAIL',         0x000040);
+define('BONUS_ITF_DURAB30',           0x000080);
+define('BONUS_ITF_PRVFIGHT',          0x000100);
+define('BONUS_ITF_PARTY',             0x000200);
+define('BONUS_ITF_INSTANCE_ARTIFACT', 0x001000);
+define('BONUS_ITF_INSLOT',            0x002000);
+define('BONUS_ITF_TIME',              0x004000);
+define('BONUS_ITF_RECIEVER_ID',		  0x008000);
+define('BONUS_ITF_PERCENT',           0x010000);
+define('BONUS_ITF_NOSELL',            0x020000);
+define('BONUS_ITF_F_ATTACK',          0x040000);
+define('BONUS_ITF_F_INSTSKILL',       0x080000);
+define('BONUS_ITF_TIME_VALIDITY',     0x100000);
+
+define('PETS_ENTITY_USER_EFFECTED_ART_ID', 7838); //Эликсир призрачного видения
+
+define('BONUS_PVP_WIN_MASK', 'BONUS_PVP_LEVEL_%d_WIN');
+define('BONUS_PVP_LOSE_MASK', 'BONUS_PVP_LEVEL_%d_LOSE');
+
+// Зависимости
+require_once("/home/admin/web/dwar.fun/public_html/lib/area.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/skill.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/artifact.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/party.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/action.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/combo.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/bot.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/chat.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/clan.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/castle.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/event.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/log.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/quest.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/instance.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/fbfeed.lib");
+require_once('/home/admin/web/dwar.fun/public_html/tpl/common.tpl');
+require_once('/home/admin/web/dwar.fun/public_html/lib/clan_stat.lib');
+require_once("/home/admin/web/dwar.fun/public_html/lib/castle_tower.lib");
+require_once('/home/admin/web/dwar.fun/public_html/lib/user_stat.lib');
+require_once("/home/admin/web/dwar.fun/public_html/lib/mailru_api.lib");
+require_once('/home/admin/web/dwar.fun/public_html/lib/user_avatar.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/user_fon.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/user_cloak.lib');
+require_once("/home/admin/web/dwar.fun/public_html/lib/global_skill.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/adv_medal.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/user_ref.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/user_glory.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/activity.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/rolling_item.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/user_guide.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/day_promocode.lib");
+require_once('/home/admin/web/dwar.fun/public_html/lib/lite_pass.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/squest.lib');
+
+$bonus_itf_hash = array(
+	BONUS_ITF_RELATIVE => translate('"Характеристика/Вр.переменнная/Статистика/Изменить HP/Изменить MP/Глобал.хар-ка" - относительно'),
+	BONUS_ITF_PERCENT => translate('"Изменить HP/Изменить MP" - процентно'),
+	BONUS_ITF_HAVESKILL => translate('"Характеристика/Вр.переменнная/Статистика" - если существует'),
+	BONUS_ITF_TIME => translate('"Характеристика" - относительно текущего времени'),
+	BONUS_ITF_F_INSTSKILL => translate('"Характеристика" - принудительно отдать инстансу'),
+	BONUS_ITF_NOGIVE => translate('"Артефакт" - нельзя передавать'),
+	BONUS_ITF_NOSELL => translate('"Артефакт" - нельзя сдавать в скупку'),
+	BONUS_ITF_BOE => translate('"Артефакт" - становится непередаваемым после надевания'),
+	BONUS_ITF_DURAB30 => translate('"Артефакт" - 30% прочности'),
+	BONUS_ITF_PARTY => translate('"Артефакт" - Давать в рюкзак группы'),
+	BONUS_ITF_INSTANCE_ARTIFACT => translate('"Артефакт"/"Полное излечение" - Только для предметов/травм, созданных в инстансе'),
+	BONUS_ITF_USERATTACK => translate('"Атака бота" - нападение на бота'),
+	BONUS_ITF_USERAVAIL => translate('"Атака бота" - персонаж вне боя'),
+	BONUS_ITF_PRVFIGHT => translate('"Атака бота" - закрытый бой'),
+	BONUS_ITF_F_ATTACK => translate('"Атака бота" - напасть не считая огранки локации'),
+	BONUS_ITF_INSLOT => translate('"Замена артикула" - одетый предмет'),
+	BONUS_ITF_LOGSERV => translate('Лог-сервис'),
+	BONUS_ITF_RECIEVER_ID => translate('Подменить получателя артефакта'),
+	BONUS_ITF_TIME_VALIDITY => translate('Применять время жизни из бонуса'),
+);
+
+global $global_event_artikul_bonus_ids;
+$global_event_artikul_bonus_ids = null;
+
+function bonus_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_BONUSES,$ref,$add);
+}
+
+function bonus_list($type_id=false, $add='') {
+	global $db_2;
+	$ref = false;
+	if ($type_id) $ref['type_id'] = $type_id;
+	return common_list($db_2,TABLE_BONUSES,$ref,$add);
+}
+
+function bonus_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_BONUSES, $ref, $add);
+}
+
+function bonus_save($param) {
+	global $db_2;
+	// 23393 Повторить оптимизации по bonus_apply аналогично socdwar
+
+	$bonus_id = $param['id'];
+	$res = common_save($db_2,TABLE_BONUSES,$param,FIELD_BONUSES);
+	if (!$bonus_id ) $bonus_id = intval($res);
+	if ($bonus_id)
+		bonus_set_for_cache_update($bonus_id);
+	else
+		error_log("Failed to update bonus cache function ".__FUNCTION__);
+	return $res;
+}
+
+function bonus_delete($ref) {
+	global $db_2;
+	// 23393 Повторить оптимизации по bonus_apply аналогично socdwar
+	$bonus_id = is_array($ref) ? $ref['id'] : $ref;
+	if (!$bonus_id)
+		return false;
+	bonus_cache_section_start();
+	common_delete($db_2,TABLE_BONUSES,$ref);
+	bonus_item_delete(false,$ref);
+	bonus_set_for_cache_update($bonus_id);
+	bonus_cache_section_finish();
+	return true;
+}
+
+function bonus_item_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_BONUS_ITEMS,$ref,$add);
+}
+
+function bonus_item_list($bonus_id, $add='', $field_list='*') {
+	global $db_2;
+	if (!$bonus_id && !$add) return false;
+	$ref = false;
+	if ($bonus_id) {
+		$ref = array('bonus_id' => $bonus_id);
+	}
+	return common_list($db_2,TABLE_BONUS_ITEMS,$ref,$add,$field_list);
+}
+
+function bonus_item_save($param) {
+	global $db_2;
+	if (!$param['id'] && !$param['bonus_id'])
+		return false;
+
+	$res = common_save($db_2,TABLE_BONUS_ITEMS,$param,FIELD_BONUS_ITEMS);
+	// 23393 Повторить оптимизации по bonus_apply аналогично socdwar
+	$bonus_id = intval($param['bonus_id']);
+	if (!$bonus_id) {
+		$bonus_item = bonus_item_get($param['id']);
+		$bonus_id =$bonus_item['bonus_id'];
+	}
+	if ($bonus_id)
+		bonus_set_for_cache_update($bonus_id);
+	else
+		error_log("Failed to update bonus cache function ".__FUNCTION__);
+	return $res;
+}
+
+function bonus_set_for_cache_update($bonus_ids) {
+	global $db_2;
+	if (empty($bonus_ids)) return;
+	if (!is_array($bonus_ids)) $bonus_ids = array($bonus_ids);
+
+	common_save($db_2, TABLE_BONUSES, array('_add' => sql_pholder(' AND id in (?@)', $bonus_ids), '_set' => 'needs_update = 1'));
+}
+
+function bonus_item_delete($ref=false, $bonus_id=false) {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($bonus_id) $ref['bonus_id'] = $bonus_id;
+	if (!$ref) return false;
+	bonus_cache_section_start();
+	$data = common_list($db_2,TABLE_BONUS_ITEMS,$ref);
+	foreach ($data as $k=>$item) $data[$k]['object_class'] = OBJECT_CLASS_BONUS_ITEM;
+	restriction_objects_list($data);
+	foreach ($data as $item) {
+		foreach ($item['object_restrictions'] as $restriction) restriction_delete($restriction['id']);
+	}
+	// 23393 Повторить оптимизации по bonus_apply аналогично socdwar
+	if ( !$bonus_id && $ref['id']) {
+		$bonus_item = bonus_item_get($ref['id']);
+		$bonus_id = $bonus_item['bonus_id'];
+	}
+
+	$res = common_delete($db_2,TABLE_BONUS_ITEMS,$ref);
+	if ($bonus_id)
+		bonus_set_for_cache_update($bonus_id);
+	else
+		error_log("Failed to update bonus cache function ".__FUNCTION__);
+
+	bonus_cache_section_finish();
+	return $res;
+}
+
+function bonus_type_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_BONUS_TYPES,$ref,$add);
+}
+
+function bonus_type_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_BONUS_TYPES,false,$add);
+}
+
+
+function bonus_type_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_BONUS_TYPES, $ref, $add);
+}
+
+function bonus_type_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_BONUS_TYPES,$param,FIELD_BONUS_TYPES);
+}
+
+function bonus_type_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_BONUS_TYPES,$ref,$add);
+}
+
+
+function bonus_item_stat_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_BONUS_ITEM_STAT,$ref,$add);
+}
+
+function bonus_item_stat_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_BONUS_ITEM_STAT,false,$add);
+}
+
+function bonus_item_stat_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_BONUS_ITEM_STAT,$param,FIELD_BONUS_ITEM_STAT);
+}
+
+function bonus_item_stat_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_BONUS_ITEM_STAT,$ref,$add);
+}
+
+function bonus_temporary_var_get($var_name) {
+	global $bonus_temporary_variables;
+
+	if (!is_array($bonus_temporary_variables)) {
+		error_log(sprintf('bonus_temporary_var_get: Use bonus_temporary_variables without initialization. var_name: "%s"', $var_name));
+		return false;
+	}
+
+	if (isset($bonus_temporary_variables[$var_name])) {
+		return $bonus_temporary_variables[$var_name];
+	} else {
+		return '';
+	}
+}
+
+function bonus_temporary_var_set($var_name, $var_value) {
+	global $bonus_temporary_variables;
+
+	if (!is_array($bonus_temporary_variables)) {
+		error_log(sprintf('bonus_temporary_var_set: Use bonus_temporary_var_set without initialization. var_name: "%s". value: "%s"', $var_name, $var_value));
+		return false;
+	}
+
+	$bonus_temporary_variables[$var_name] = $var_value;
+}
+
+function bonus_temporary_variable_reset() {
+	global $bonus_temporary_variables;
+
+	if (!isset($bonus_temporary_variables)) {
+		$bonus_temporary_variables = array();
+	}
+}
+
+// ================================================================================
+
+// Функция проверяет возможность выдачи bonus item и, если возможено, изменяет статистику выдачи
+function bonus_item_stat_check(&$item) {
+	if (!$item) return false;
+	$bkey_info = date_bkey($item['per_unit']);
+	$bkey = $bkey_info[0];
+	if (!$bkey) return true;
+	$stat = bonus_item_stat_get(array('item_id' => $item['id'], 'bkey' => $bkey));
+	if (!$stat) {
+		bonus_item_stat_save(array(
+			'_noerr' => true,
+			'item_id' => $item['id'],
+			'bkey' => $bkey,
+			'dtime' => $bkey_info[1] ? time_current() + 86400 + $bkey_info[1] : 0,
+		));
+	}
+	return bonus_item_stat_save(array(
+		'_cnt' => true,
+		'_set' => "cnt=cnt+1",
+		'_add' => sql_pholder(" AND item_id=? AND bkey=? AND cnt<?",$item['id'],$bkey,$item['per_value']),
+	));
+}
+
+function bonus_item_stat_rollback(&$item) {
+	if (!$item) return false;
+	$bkey_info = date_bkey($item['per_unit']);
+	$bkey = $bkey_info[0];
+	if (!$bkey) return true;
+	return bonus_item_stat_save(array(
+		'_cnt' => true,
+		'_set' => "cnt=cnt-1",
+		'_add' => sql_pholder(" AND item_id=? AND bkey=? AND cnt>0",$item['id'],$bkey),
+	));
+}
+
+// Функция выдачи бонуса объекту:
+// $object - структура с установленным полем object_class
+// $in:
+// 'no_chat'
+// 'user_ids'
+// 'activator_id'
+function bonus_apply(&$object, $bonus_id, $in=false) {
+	$res = bonus_cache_get($bonus_id);
+	if (!$res)
+		return false;
+	list($bonus, $bonus_hash) = $res;
+
+	bonus_temporary_variable_reset();
+	return bonus_cache_apply($object, $bonus, $bonus_hash, $in);
+}
+
+// Функция выдачи бонуса многократно:
+// $object - структура с установленным полем object_class
+// $in:
+// 'no_chat'
+// 'user_ids'
+// 'activator_id'
+function bonus_apply_many(&$object, $bonus_id, $in=false, $cnt = 1) {
+	$res = bonus_cache_get($bonus_id);
+	if (!$res)
+		return false;
+	list($bonus, $bonus_hash) = $res;
+	if($cnt > 1){
+		for($i=1;$i<$cnt;$i++){
+			bonus_temporary_variable_reset();
+			bonus_cache_apply($object, $bonus, $bonus_hash, $in);
+			#logfile(DEBUG_FILE_LOG_DEV, $i);
+		}
+		#logfile(DEBUG_FILE_LOG_DEV, '+');
+		return bonus_cache_apply($object, $bonus, $bonus_hash, $in);
+	}else{
+		#logfile(DEBUG_FILE_LOG_DEV, 'one');
+		return bonus_cache_apply($object, $bonus, $bonus_hash, $in);
+	}
+}
+
+// Внимание: Если вы собираете добавить новый тип бонуса в switch, который
+// будет добалять действие в цепочку выдачи бонусов $bonus_chain,
+// не забудте добавить новый тип бонуса в $bonus_cache_chain_types в bonus_cache.lib
+// иначе будут неприятные баги -)
+function bonus_cache_apply(&$object, $bonus, $bonus_hash, $in=false, $main_bonus = array()) {
+	global $quality_info;
+	global $global_event_artikul_bonus_ids;
+
+	if(!$main_bonus) $main_bonus = $bonus;
+	if ($bonus['id'] == 1 && $object['level'] > 1) {
+		// В последнее время участились случаи сброса уровня персонажей.
+		// Игрокам 1+ уровня, по непонятным причинам выдается бонус рождения, и уровень персонажа устанавливается в "1".
+		$nn = NODE_SWITCH();
+		ob_start();
+		global $session_user;
+		echo str_repeat('=',80),"\n";
+		if ($session_user) {
+			NODE_PUSH(null,$session_user['id']);
+			echo "session_user:\n";
+			var_export($session_user);
+			echo "\n";
+			echo "user_achievement:\n";
+			require_once('lib/achievement.lib');
+			$achiv = user_achievement_list(array('user_id' => $session_user['id']));
+			var_export($achiv);
+			echo "user_stat:\n";
+			require_once('lib/user_stat.lib');
+			$stat = user_stat_list(array('user_id' => $session_user['id']));
+			var_export($stat);
+			echo "\n";
+			NODE_POP();
+		} else {
+			echo "session_user: not defined\n";
+		}
+		echo "node: ", $nn, "\n";
+		echo "backtrace:\n";
+		debug_print_backtrace();
+		echo str_repeat('=',80),"\n\n\n";
+		$log = ob_get_clean();
+
+		$fh = fopen(SERVER_ROOT.PATH_LOGS.'bonus_backtrace.log',"a");
+		fwrite($fh, $log);
+		fclose($fh);
+	}
+
+	global $artikul_hash, $profession_info, $rank_info, $combo_info, $class_info, $quality_info;
+	$party_flags = array();
+	if (intval($in['bonus_apply_call_level'])) $in['bonus_apply_call_level'] += 1;
+	else $in['bonus_apply_call_level'] = 1;
+	$out['status'] = BONUS_STATUS_ERROR;
+	if (!$bonus)
+		return $out;
+
+	if($object['object_class'] == OBJECT_CLASS_USER){
+		NODE_SWITCH(false, $object['id']);
+	}
+
+	if (($object['object_class'] == OBJECT_CLASS_USER) && ($bonus['flags'] & BONUS_FLAG_FOR_CLAN_HEAD)) {
+		if (!$object['clan_id']) return $out;
+		$clan_head_user = user_get(clan_leader_id_get($object['clan_id']));
+		if (!$clan_head_user) return $out;
+		NODE_PUSH(null, $clan_head_user['id']);
+		$cur_object = $clan_head_user;
+	} elseif (($object['object_class'] == OBJECT_CLASS_USER) && ($bonus['flags'] & BONUS_FLAG_FOR_REFERRER)) {
+		if (!$object['referrer_id']) return $out;
+		$referrer = user_get($object['referrer_id']);
+		if (!$referrer) return $out;
+		NODE_PUSH(null, $referrer['id']);
+		$cur_object = $referrer;
+	} else {
+		$cur_object = $object;
+	}
+
+	if ($cur_object['language']) translate_default_language_push($cur_object['language']);
+
+	$item_list = $bonus['bonus_item_list'];
+	$item_keys = array();
+	$drop_keys = array();
+	$weight_sum = 0;
+	foreach ($item_list as $k=>$item) {
+		if ($cur_object['object_class'] == OBJECT_CLASS_USER) {
+			if (($item['gender'] && ($item['gender'] != $cur_object['gender'])) || ($item['kind'] && ($item['kind'] != $cur_object['kind']))) continue;
+		} elseif ($cur_object['object_class'] == OBJECT_CLASS_PARTY) {
+			if ($item['kind'] && ($item['kind'] != $cur_object['kind'])) continue;
+		}
+		if($bonus['flags'] & BONUS_FLAG_FCHECK_RESTICTIONS) {
+			if (!bonus_item_stat_check($item)) continue;
+
+			if(!isset($check_object_list)) {
+				$check_object_list = array();
+				restriction_get_dependent($cur_object,$check_object_list);
+			}
+
+			$item['object_class'] = OBJECT_CLASS_BONUS_ITEM;
+			$out_restriction = restriction_check_bonus(array($item), $check_object_list);
+			if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) continue;
+		}
+		if ($item['drop_weight'] <= 0) {
+			$item_keys[] = $k;
+			continue;
+		}
+		$drop_keys[] = $k;
+		$weight_sum += $item['drop_weight'];
+	}
+	if ($drop_keys && ($bonus['drop_cnt'] > 0)) {
+		for ($i=0; $i<$bonus['drop_cnt']; $i++) {
+			$r = rand(1,$weight_sum);
+			$w = 0;
+			foreach ($drop_keys as $k) {
+				$w += $item_list[$k]['drop_weight'];
+				if ($r > $w) continue;
+				$item_keys[] = $k;
+				break;
+			}
+		}
+	}
+
+	$bonus_chain = array();
+	$out['status'] = BONUS_STATUS_OK;
+	if(!isset($check_object_list)) {
+		$check_object_list = array();
+		restriction_get_dependent($cur_object,$check_object_list);
+	}
+	foreach ($item_keys as $k) {
+		$item = $item_list[$k];
+		if (!bonus_item_stat_check($item)) continue;
+		$item['object_class'] = OBJECT_CLASS_BONUS_ITEM;
+		$out_restriction = restriction_check_bonus(array($item),$check_object_list);
+
+		if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) {
+			bonus_item_stat_rollback($item);
+			continue;
+		}
+
+		switch ($item['type']) {
+			case 'NOTHING':    // НИЧЕГО
+				break;
+
+			case 'ARTIFACT':    // артефакт
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_PARTY))) continue 2;
+				$artikul_id = intval($item['field']);
+				$n = intval($item['value1']);
+				if (in_array($artikul_id, array(4933,4934,1108,4758,4759)) && !($item['flags'] & BONUS_ITF_LOGSERV)) {
+					logfile(SERVER_ROOT.'/logs/mutherfuckers.log', sprintf("backtrace:%s\nartikul_id: %d\nscript: %s\nreferer: %s", var_export(debug_backtrace(),1), $artikul_id, $_SERVER['PHP_SELF'], $_SERVER['HTTP_REFERER']));
+				}
+				$party_obj = null;
+				if ($item['flags'] & BONUS_ITF_PARTY && $cur_object['object_class'] == OBJECT_CLASS_USER) {
+					$party_obj = party_get($cur_object['party_id']);
+					$party_flags[$party_obj['id']] = $party_obj['id'];
+				}
+				$artikul = cache_fetch($artikul_hash,$artikul_id,'artifact_artikul_get');
+				//Проверка может нужно сроллить
+				$force_flags = 0;
+				if ($item['flags'] & BONUS_ITF_NOGIVE) $force_flags |= ARTIFACT_FLAG_NOGIVE;
+				if ($item['flags'] & BONUS_ITF_BOE) $force_flags |= ARTIFACT_FLAG_BOE;
+				if ($item['flags'] & BONUS_ITF_DURAB30) $force_flags |= ARTIFACT_FLAG_DURAB30;
+				if ($item['flags'] & BONUS_ITF_NOSELL) $force_flags |= ARTIFACT_FLAG_NOSELL;
+
+				//Оставим эту реализацию в случае чего лучше уж её! Она глобальней!
+				/*
+				if($in['rolling_active'] == true && $cur_object['object_class'] == OBJECT_CLASS_USER && $cur_object['instance_id'] && $n > 0) {
+					if($artikul['quality'] >= 1) {
+						$instance_root = instance_get_root($cur_object['instance_id']);
+						if($instance_root['dun_active']) {
+							$instance_user_ids = get_hash(instance_user_list(array('instance_id' => $instance_root['id']), sql_pholder(' AND dmg > 0'), 'id,user_id'), 'user_id', 'user_id');
+							if(count($instance_user_ids) > 1) {
+								$artikul_validity = -1;
+								if ($item['flags'] & BONUS_ITF_TIME_VALIDITY) $artikul_validity = intval($item['value3']);
+								rolling_create($artikul_id, $instance_user_ids, $n, $force_flags, $artikul_validity, mt_rand(90,100));
+								continue; //ГЫГЫ ошибся тогда
+							}
+						}
+					}
+				}
+				*/
+
+				if (($cur_object['object_class'] == OBJECT_CLASS_PARTY || $party_obj)) {
+					if ($cur_object['object_class'] == OBJECT_CLASS_PARTY) {
+						$party_flags[$cur_object['id']] = $cur_object['id'];
+					}
+					if ($n == 0) {
+						$out['status'] = BONUS_STATUS_ERROR;
+					} else {
+						if($artikul['flags'] & ARTIFACT_FLAG_HIDDEN) { //Скрытые артефакты выдавать нельзя!
+							continue;
+						}
+						$party = $party_obj ? $party_obj : party_get($cur_object['id']);
+						$party_id = intval($party['id']);
+
+						$artikul_validity = -1;
+						if ($item['flags'] & BONUS_ITF_TIME_VALIDITY) $artikul_validity = intval($item['value3']);
+
+						/*
+						if($in['rolling_active'] == true && $party['flags'] & PARTY_FLAG_ROLLING) {
+							$party_user_ids = get_hash(party_member_list($party_id,PM_STATUS_ACTIVE),'user_id','user_id');
+							if(count($party_user_ids) > 1) {
+								rolling_create($artikul_id, $party_user_ids, $n, $force_flags, $artikul_validity, mt_rand(90,100));
+								continue; //ГЫГЫ ошибся тогда
+							}
+						}
+						*/
+
+						$artikul = party_artikul_get(false, sql_pholder(' AND artikul_id=? AND party_id=? AND force_flags=?', $artikul_id, $party_id, $force_flags));
+						$param = array(
+							'party_id' => $party_id,
+							'artikul_id' => $artikul_id,
+							'force_flags' => $force_flags,
+							'artikul_validity' => $artikul_validity,
+							'stime' => time_current(),
+						);
+						if ($artikul) {
+							$param['id'] = $artikul['id'];
+							$param['_set'] = 'n=n+('.$n.')';
+						} else {
+							$param['n'] = $n;
+						}
+						party_artikul_save($param);
+						$out['artikuls'][$artikul_id] += $n;
+						$out['artikuls_received'][$artikul_id] += $n;
+						break;
+					}
+				} elseif ($cur_object['object_class'] == OBJECT_CLASS_USER) { // OBJECT_CLASS_USER
+					// если передан параметр receiver_id, отдаем другому пользователю
+					$old_object = $cur_object;
+					if (isset($in['receiver_id']) && intval($in['receiver_id']) && ($item['flags'] & BONUS_ITF_RECIEVER_ID)) {
+						$tmp_object = user_get(intval($in['receiver_id']));
+						if (!$tmp_object) continue 2;
+						$cur_object = $tmp_object;
+					}
+
+					$slot_id = $item['value2'] ? $item['value2'] : false;
+					if ($n > 0) {	// выдаем
+						/*
+						if($global_event_artikul_bonus_ids == null) {
+							$global_event_artikul_bonus_ids = global_event_type_element_ids(GLOBAL_EVENT_ACTION_GETARTIFACT);
+						}
+						*/
+						$force_param = array();
+						if ($slot_id == 'TEMP_EFFECT') { // проставить время жизни для временных эффектов
+							$artikul = cache_fetch($artikul_hash,$artikul_id,'artifact_artikul_get');
+
+							$renewal_effect = false;
+							//Нужное для баффов
+							if ($artikul && ($artikul['flags2'] & ARTIFACT_FLAG2_EFFECT_UNLIMIT) && $artikul['type_bafs_id']) {
+								$artifact_type_bafs = artifact_type_bafs_get($artikul['type_bafs_id']);
+								if($artifact_type_bafs){
+									$bafs = make_hash(json_decode($artifact_type_bafs['bafs'],true));
+									$artikul_ids = array_keys($bafs);
+									if($artikul_ids){
+										$user_bafs = make_hash(user_get_artifact_list($cur_object['id'], $slot_id, sql_pholder(' AND type_bafs_id = ? AND artikul_id IN (?@)', $artikul['type_bafs_id'], $artikul_ids)));
+									}
+
+									$g_dela = false;
+									$g_data = array();
+									foreach ($user_bafs as $user_baf){
+										if($user_baf['artikul_id'] == $artikul['id'] && $bafs[$artikul['id']] && ($user_baf['flags2'] & ARTIFACT_FLAG2_EFFECT_UNLIMIT)){
+											//Только продлеваем значение, и уходим
+											$user_baf['time_expire'] += intval($artikul['param1']);
+											$user_baf['cnt'] = 0;
+											$saved = artifact_save($user_baf);
+											if(!$saved) $out['status'] = BONUS_STATUS_ERROR;
+											$g_dela = true;
+											$renewal_effect = true;
+											break;
+										}else{
+											$g_data[$user_baf['artikul_id']] = $user_baf;
+										}
+									}
+
+									if(count($g_data)){
+										$out['error'] = translate('На вас уже наложена магия этого типа!');
+										$out['status'] = BONUS_STATUS_ERROR;
+										break;
+									}
+
+									if($g_dela) break;
+								}
+							}
+
+							if ($artikul['param1'] <= 0) {
+								$out['status'] = BONUS_STATUS_ERROR;
+								break;
+							} else {
+								$force_param['time_expire'] = time_current() + intval($artikul['param1']);
+								$force_param['cnt'] = 0;
+							}
+						}
+						if ($slot_id == 'EFFECT') { // проставить номер слота для эффектов
+							$artikul = cache_fetch($artikul_hash,$artikul_id,'artifact_artikul_get');
+							$slot_num_max = user_get_slot_num_max($cur_object['id'], 'EFFECT');
+							$slot_num = false;
+							$weight = max(1,$artikul['weight']);
+							$cnt_max = intval(SLOT_WEIGHT_MAX/$weight);
+							if (!$slot_num) { // карман не задан, выбираем сами
+								$artifact_list = user_get_artifact_list($cur_object['id'],$artikul['slot_id']);
+								foreach ($artifact_list as $artifact) {
+									if ($artifact['artikul_id'] != $artikul['artikul_id']) continue;
+									if ($artifact['cnt'] >= $cnt_max) continue;
+									$slot_num = $artifact['slot_num'];
+								}
+								if (!$slot_num) { // все еще не нашли подходящий карман
+									$slot_nums = get_hash($artifact_list,'slot_num','slot_num');
+									$t = array_diff(range(1,($slot_nums?max($slot_nums):0)+1),$slot_nums);
+									$slot_num = reset($t);
+								}
+							}
+							$slot_num = max($slot_num,1);//,$slot_num_max);
+							$cnt_avail = max($cnt_max-$n,0); // сколько можем еще одеть
+							if ($cnt_avail < 0 || $slot_num > $slot_num_max) {
+								$slot_id = '';
+								$slot_num = false;
+							} else {
+								$force_param['slot_num'] = $slot_num;
+							}
+						}
+						if($force_flags) $force_param['flags'] = $force_flags;
+						if ($item['flags'] & BONUS_ITF_TIME_VALIDITY) {
+							$force_param['time_expire'] = (intval($item['value3']) > 0 ? time_current() + intval($item['value3']) : 0);
+						}
+						// Если пользователь получает предмет в инстансе
+						if ($cur_object['instance_id']) $force_param['flags'] |= ARTIFACT_FLAG_CREATED_IN_INSTANCE;
+						// Если у пользователя надета проф.сумка и можно туда положить предмет, то кладем в нее
+						$into_profbag = false;
+						if (!$slot_id && $cur_object['object_class'] == OBJECT_CLASS_USER) {
+							$artikul = cache_fetch($artikul_hash,$artikul_id,'artifact_artikul_get');
+							$into_profbag = user_check_prof_bag($artikul, $cur_object, $n);
+						}
+						$storage = ($into_profbag) ? ARTIFACT_STORAGE_TYPE_PR_BAG : ARTIFACT_STORAGE_TYPE_USER;
+						NODE_PUSH(null, $cur_object['id']);
+						$status = artifact_add($artikul_id,$n,$cur_object['id'],false,$slot_id,$force_param,$storage);
+						NODE_POP();
+
+						if ($item['value4'] != '' && $item['value4'] > 0 && $status && $artikul['id'] && !$artikul['cnt']) {
+							$cur_artifact = artifact_get($status);
+							$artifact_random_skills = artifact_random_skill_get(intval($item['value4']));
+							if($cur_artifact && $artifact_random_skills) {
+								artifact_save(array('id' => $status, 'artikul_skills' => 0));
+								artifact_random_skills_set($artifact_random_skills, $cur_artifact);
+							}
+						}
+
+						if($status && $artikul['type_id'] == ARTIFACT_TYPE_ID_AWARD && $artikul['medal_id'] != 0){
+							user_friend_trigger($cur_object, FRIEND_SETTING_MEDAL_FLAG, array('artikul_id' => $artikul_id, 'artikul' => $artikul)); //Друг получил медаль оповестить
+
+							user_ref_triggered($cur_object, USER_REF_TRIGGER_GIVE_MEDAL, 1, $artikul['quality']); //Триггер игрок получил медаль!
+							user_ref_stat_uniform($cur_object, USER_REF_STAT_GIVE_MEDAL, $artikul_id); //Реферал получил медаль! ЛОГ
+
+							user_clan_stat_archive($cur_object, CLAN_STAT_TYPE_USER_MEDAL, $artikul_id);
+						}
+
+						if ($status !== false) {
+							if($artikul['type_id'] == ARTIFACT_TYPE_ID_INJURY && $item['flags'] & BONUS_ITF_TIME_VALIDITY && intval($item['value3']) > 0) {
+								if($cur_object['injury_time'] < intval($item['value3']) + time_current()){
+									$cur_object['injury_time'] = intval($item['value3']) + time_current();
+									user_save(array(
+										'id' => $cur_object['id'],
+										'injury_time' => $cur_object['injury_time'],
+									));
+								}
+							}
+
+							//Полученные артефакты
+							if($in['artifacts_received_stat']) {
+								if(is_array($status)) { foreach ($status as $_artid) $out['artifacts_received'][$_artid]++; }else{ $out['artifacts_received'][$status]++; }
+							}
+
+							$out['artikuls'][$artikul_id] += $n;
+							$out['artikuls_received'][$artikul_id] += $n;
+
+							if ($slot_id == 'EFFECT') {
+								chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$cur_object['id'],array('func' => "updateSwf({'items':''})",));
+							}
+							if ($slot_id == 'TEMP_EFFECT') {
+								global $quality_info;
+								// Обновляем страницу для пользователя
+								// Добавляем в список для альтов эффектов
+								$artifact_effect = artifact_get(array('id'=> $status));
+								$effect = json_encode(array_merge(array(
+									'title' => $artikul['title'],
+									'time_left' => html_period_str($artifact_effect['time_expire'] - time_current()),
+									'time_left_sec' => $artifact_effect['time_expire'] - time_current(),
+									'color' => $quality_info[$artikul['quality']]['color'],
+								), $artifact_effect));
+								chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $cur_object['id'], array('func' => "updateSwf({'lvl':'', 'inventory': ''})",));
+							}
+							if (!in_array($slot_id, array('EFFECT', 'TEMP_EFFECT'))) {
+								artifact_bag_send_diff($cur_object['id'], $status);
+							}
+							// лог-сервис -----------------------
+							if ($item['flags'] & BONUS_ITF_LOGSERV) {
+								logserv_log_operation(array(
+									'artikul' => $artikul_id,
+									'force_flags' => $force_param['flags'],
+									'cnt' => $n,
+									'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+								),$cur_object);
+							}
+							// ----------------------------------
+						} else {
+							// артефакт не выдался, логируем
+							$msg = 'QUEST_DEBUG: $cur_object: '.var_export($cur_object, true).', bonus: '.var_export($bonus, true).', bonus_item: '.var_export($item, true);
+							$msg .= "\n".'artikul_id: '.var_export($artikul_id, true).', n: '.var_export($n, true).', slot_id: '.var_export($slot_id, true).', force_param: '.var_export($force_param, true);
+							$msg .= "\nbacktrace: ".var_export(debug_backtrace(true), true);
+							error_log($msg);
+						}
+					} elseif ($n < 0) { // забираем
+						$n = -$n;
+						$remove_param = array();
+						if ($item['flags'] & BONUS_ITF_INSTANCE_ARTIFACT) {
+							$remove_param['for_created_in_instance_only'] = 1;
+						}
+						NODE_PUSH(null, $cur_object['id']);
+						$cnt = artifact_remove($artikul_id,$n,$cur_object['id'],false,$slot_id,$remove_param);
+						NODE_POP();
+						if ($cnt) {
+							$out['artikuls'][$artikul_id] -= $cnt;
+							$out['artikuls_lost'][$artikul_id] += $cnt;
+
+							if ($slot_id == 'EFFECT') {
+								chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$cur_object['id'],array('func' => "updateSwf({'items':''})",));
+							}
+
+							// лог-сервис -----------------------
+							if ($item['flags'] & BONUS_ITF_LOGSERV) {
+								logserv_log_operation(array(
+									'artikul' => $artikul_id,
+									'cnt' => -$cnt,
+									'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+								),$cur_object);
+							}
+						}
+					} else $out['status'] = BONUS_STATUS_ERROR;
+					$cur_object = $old_object;
+				}
+				break;
+
+			case 'SKILL':   // установить характеристику
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_INSTANCE))) continue 2;
+				$skill_param = array();
+				if ($item['flags'] & BONUS_ITF_RELATIVE) $skill_param['relative'] = true;
+				if ($item['flags'] & BONUS_ITF_TIME) $skill_param['relative_time'] = true;
+				if ($item['flags'] & BONUS_ITF_HAVESKILL) $skill_param['exit_noskill'] = true;
+				if ($item['value2']) $skill_param['duration'] = $item['value2'];
+
+				$object_id = $cur_object['id'];
+
+				NODE_PUSH(null, $object_id);
+				if($item['flags'] & BONUS_ITF_F_INSTSKILL && $cur_object['object_class'] == OBJECT_CLASS_USER) {
+					if(!$cur_object['instance_id']) break;
+					$instance = instance_get($cur_object['instance_id']);
+					if(!$instance) break;
+					$cur_object = $instance;
+					$object_id = $cur_object['id'];
+				}
+
+				if (($cur_object['object_class'] == OBJECT_CLASS_INSTANCE) && $cur_object['root_id']) $object_id = $cur_object['root_id'];	// характеристика меняется на корневом инстансе
+				if (($cur_object['object_class'] == OBJECT_CLASS_USER) && ($item['flags'] & BONUS_ITF_LOGSERV)) {
+					$skill_old = skill_object_get($cur_object['object_class'],$cur_object,array('skill_id' => $item['field']));
+				}
+
+				$status = skill_object_set_value($cur_object['object_class'],$object_id,$item['field'],$item['value1'],$skill_param);
+				NODE_POP();
+
+				$skills_proff_x2 = array('CURED_WEIGHT');
+				if($cur_object['object_class'] == OBJECT_CLASS_USER && in_array($item['field'], $skills_proff_x2) && $item['value1'] == 1 && $skill_param['relative']) {
+					$user_premium = user_premium_get($cur_object['id']);
+					if($user_premium['vars'][P_PROFESSIONS] && $status) {
+						skill_object_set_value($cur_object['object_class'],$object_id,$item['field'],1,$skill_param);
+						chat_msg_send_system('Вы получили дополнительно +1 к профессии благодаря премиуму', CHAT_CHF_USER, $cur_object['id']);
+					}
+				}
+
+				if (($cur_object['object_class'] == OBJECT_CLASS_USER) && $status) {
+
+					// лог-сервис -----------------------
+					if ($item['flags'] & BONUS_ITF_LOGSERV) {
+						$skill = skill_object_get($cur_object['object_class'],$object_id,array('skill_id' => $item['field']));
+						if ($skill) $skill = array_merge(skill_get($skill['skill_id']),$skill);
+
+						$note = sprintf(translate('Изменение характеристики "%s" (было: %d, стало: %d)'),$skill['title'],$skill_old['value'],$skill['value']);
+						logserv_log_note(array(
+							'note' => $note,
+							'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+						),$cur_object);
+					}
+					// ----------------------------------
+
+					$out['skills'][$item['field']] += $item['value1'];
+				}
+				break;
+
+			case 'SKILL_DELETE':   // удалить характеристику
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				NODE_PUSH(null, $cur_object['id']);
+				$status = skill_object_delete(OBJECT_CLASS_USER,$cur_object,array('skill_id' => $item['field']));
+				NODE_POP();
+				// лог-сервис -----------------------
+				if ($status && ($item['flags'] & BONUS_ITF_LOGSERV)) {
+					$skill = skill_get($item['field']);
+					logserv_log_note(array(
+						'note' => sprintf(translate('Удаление характеристики "%s"'),$skill['title']),
+						'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+					),$cur_object);
+				}
+				// ----------------------------------
+				break;
+
+			case 'STAT':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$stat_param = array();
+				if ($item['flags'] & BONUS_ITF_RELATIVE) $stat_param['relative'] = true;
+				if ($item['flags'] & BONUS_ITF_HAVESKILL) $stat_param['exit_nostat'] = true;
+
+				$user_id = $cur_object['id'];
+
+				$object_id = intval($item['field']);
+				$type_id = intval($item['value2']);
+				$value = intval($item['value1']);
+
+				$op_type = USER_STAT_OP_SET;
+				if ($user_id && ($item['flags'] & BONUS_ITF_LOGSERV)) {
+					$stat_old = user_stat_get(array('user_id' => $user_id, 'type_id' => $type_id, 'object_id' => $object_id));
+					$descr = user_stat_get_description($stat_old);
+				}
+
+				NODE_PUSH(null, $user_id);
+				$status = user_stat_update($user_id, $type_id, $object_id, $value, $op_type, $stat_param);
+				if ($status) {
+					// изменение статистики в инстансах по полученным характеристикам
+					if ($cur_object['instance_id'] && ($type_id == USER_STAT_TYPE_SKILL) && ($item['flags'] & BONUS_ITF_RELATIVE)) {
+						$flds = array(
+							USER_STAT_SKILL_HONOR => 'honor',
+							USER_STAT_SKILL_EXP => 'exp',
+						);
+						$fld = $flds[$object_id];
+						if ($fld) {
+							$instance_root = instance_get_root($cur_object['instance_id']);
+							if ($instance_root && ($value > 0)) {
+								instance_user_save(array(
+									'_set' => $fld.'='.$fld.'+('.$value.')',
+									'_add' => sql_pholder(' AND instance_id = ? AND user_id = ? ', $instance_root['id'], $cur_object['id']),
+								));
+							}
+						}
+					}
+					// лог-сервис -----------------------
+					if ($item['flags'] & BONUS_ITF_LOGSERV) {
+						$note = sprintf(translate('Изменение статистики характеристики "%s" (было: %d, стало: %d)'), $descr, $stat_old['value'], ($item['flags'] & BONUS_ITF_RELATIVE ? ($stat_old['value'] + $value) : $value));
+						logserv_log_note(array(
+							'note' => $note,
+							'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+						),$cur_object);
+					}
+					// ----------------------------------
+
+					$out['stats'][$type_id][$object_id] += $value;
+
+				}
+				NODE_POP();
+				break;
+			case 'STAT_DELETE':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+
+				$user_id = $cur_object['id'];
+				$object_id = $item['field'];
+				$type_id = $item['value2'];
+
+				$ref = array(
+					'user_id' => $user_id,
+					'type_id' => $type_id,
+					'object_id' => $object_id,
+				);
+
+				if ($item['flags'] & BONUS_ITF_LOGSERV) {
+					$descr = user_stat_get_description(user_stat_get($ref));
+				}
+				NODE_PUSH(null, $user_id);
+				$status = user_stat_delete($ref);
+				NODE_POP();
+
+				// лог-сервис -----------------------
+				if ($status && ($item['flags'] & BONUS_ITF_LOGSERV)) {
+					logserv_log_note(array(
+						'note' => sprintf(translate('Удаление статистики "%s"'), $descr),
+						'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+					),$cur_object);
+				}
+				// ----------------------------------
+
+				break;
+
+			case 'ACTION':   // действие
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				NODE_PUSH(null, $cur_object['id']);
+				action_object_save(OBJECT_CLASS_USER,$cur_object['id'],array(
+					'user_id' => $cur_object['id'],
+					'action_id' => $item['field'],
+					'n' => intval($item['value1']),
+				));
+				NODE_POP();
+				break;
+
+			case 'MONEY':    // деньги
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_PARTY))) continue 2;
+				$money_type = intval($item['field']);
+				$amount = $item['value1'];
+				if ($cur_object['object_class'] == OBJECT_CLASS_PARTY) {	// OBJECT_CLASS_PARTY
+					$party_flags[$cur_object['id']] = $cur_object['id'];
+					$status = false;
+					if ($money_type == MONEY_TYPE_GAME) {
+						$status = party_save(array(
+							'id' => $cur_object['id'],
+							'_set' => "money=money+(".money_floatval($amount).")",
+						));
+					}
+				} elseif ($cur_object['object_class'] == OBJECT_CLASS_USER) { // OBJECT_CLASS_USER
+					$operations = ($money_type == MONEY_TYPE_GAME) ? array(MONEY_STAT_OPERATION_RECEIVE,MONEY_STAT_OPERATION_PURE_RECEIVE) : false;
+					$status = user_make_payment($money_type,$cur_object['id'],$amount,sprintf('bonus_apply(): MONEY (bonus_id=%d, user_id=%d)',$bonus['id'],$cur_object['id']), false, $operations);
+					// лог-сервис -----------------------
+					if ($status && ($item['flags'] & BONUS_ITF_LOGSERV)) {
+						logserv_log_operation(array(
+							'money_type' => $money_type,
+							'amount' => $amount,
+							'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+						),$cur_object);
+					}
+					// ----------------------------------
+				}
+				if (!$status) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$out['money'][$money_type] += $amount;
+				break;
+			case 'CASTLE_TAX':    // Замковый налог
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+
+				$castle_id = intval($item['field']);
+				$castle = castle_get($castle_id);
+				if (!$castle) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$operations = array(MONEY_STAT_OPERATION_LOST,MONEY_STAT_OPERATION_PURE_LOST);
+				$status = user_make_payment(MONEY_TYPE_GAME,$cur_object['id'],- CASTLE_TAX,sprintf('bonus_apply(): CASTLE_TAX (bonus_id=%d, user_id=%d)',$bonus['id'],$cur_object['id']), false, $operations);
+				if (!$status) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$castle_info = castle_info_get(array('castle_id' => $castle_id));
+
+				if ($castle_info) castle_info_save(array('_add' => ' AND id='.$castle_info['id'], '_set' => 'money = money + '.CASTLE_TAX*(1 - CASTLE_TAX_ADMIN)));
+				break;
+			case 'CASTLE_OWNER':    // Владелец замка
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+
+				if (!$cur_object['clan_id']) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$castle_id = intval($item['field']);
+				$castle = castle_get($castle_id);
+				if (!$castle) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$clan = clan_get($cur_object['clan_id']);
+				if (!$clan) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				clan_save(array('id' => $clan['id'], 'castle_id' => $castle_id));
+				break;
+			case 'CASTLE_SKILL':   // установить характеристику замка
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$skill_param = array();
+				if ($item['flags'] & BONUS_ITF_RELATIVE) $skill_param['relative'] = true;
+				if ($item['flags'] & BONUS_ITF_HAVESKILL) $skill_param['exit_noskill'] = true;
+				if (!$cur_object['clan_id']) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$clan = clan_get($cur_object['clan_id']);
+				if (!$clan || !$clan['castle_id']) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$castle = castle_get($clan['castle_id']);
+				if (!$castle || !$castle['castle_area_id']) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$area = area_get($castle['castle_area_id']);
+				if (!$area) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+
+				NODE_PUSH($area['node_num']);
+				skill_object_set_value(OBJECT_CLASS_AREA,$castle['castle_area_id'],$item['field'],$item['value1'],$skill_param);
+				NODE_POP();
+				break;
+			case 'EVENT_TASK':    // Выполнение задачи этапа события
+				# Параметры:
+				# 	$in['user_ids'] - ID пользователей
+
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_PARTY))) continue 2;
+				$task_id = intval($item['field']);
+				$value = intval($item['value1']);
+
+				$event_point_task = event_point_task_get($task_id);
+				if (!$event_point_task || !$event_point_task['point_id']) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+
+				if ($cur_object['object_class'] == OBJECT_CLASS_PARTY) {	// В группе выдаём случайному пользователю в этом бою
+					$user_ids = get_hash(party_member_list($cur_object['id'],PM_STATUS_ACTIVE),'user_id','user_id');
+					if (is_array($in['user_ids'])) $user_ids = array_intersect($user_ids,$in['user_ids']);
+					$target_object = user_get(array_rand($user_ids));
+				} else $target_object = $cur_object;
+
+				$event = event_get(array('point_id' => $event_point_task['point_id']), sql_pholder(' AND kind IN (0,?)',$target_object['kind']));
+				if (!$event) continue 2;
+
+				$event_point = event_point_get($event_point_task['point_id']);
+				if (!$event_point || !event_lock($event_point['id'])) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+
+				do {
+					// Проверка личного максимального значения
+					if ($event_point_task['max_user_value']) {
+						$event_point_task_user = event_point_task_user_get(array(
+							'task_id' => $event_point_task['id'],
+							'user_id' => $target_object['id'],
+							'artikul_id' => $event['artikul_id'],
+						));
+						if ($event_point_task_user && ($event_point_task['max_user_value'] <= $event_point_task_user['value'])) {
+							$out['status'] = BONUS_STATUS_ERROR;
+							break;
+						}
+					}
+					$event_point_task_value_hash = get_hash(event_point_task_user_list(array('task_id' => $event_point_task['id'], 'artikul_id' => $event['artikul_id']),' GROUP BY 1','task_id,SUM(value) as value'),'task_id','value');
+					if ($event_point_task['max_value'] > $event_point_task_value_hash[$event_point_task['id']]) { // Есть возможность добавить значение для задания
+						// Есть возможность добавить значение меньше, чем хотелось бы
+						if ($event_point_task['max_value'] < ($event_point_task_value_hash[$event_point_task['id']] + $value))
+							$value = $event_point_task['max_value'] - $event_point_task_value_hash[$event_point_task['id']];
+						if (!event_point_task_user_save(array(
+							'_cnt' => true,
+							'_set' => sql_pholder('value = value + ?',$value),
+							'_add' => sql_pholder(' AND user_id=? AND task_id=? AND artikul_id=?',$target_object['id'],$task_id,$event['artikul_id']),
+						))) event_point_task_user_save(array(
+							'user_id'    => $target_object['id'],
+							'task_id'    => $task_id,
+							'value'      => $value,
+							'artikul_id' => $event['artikul_id'],
+						));
+
+						// Если изменение значения привело к выполнению задачи, необходимо проверить не привело ли оно к выполнению всех задач данного этапа события, и если привело, то выполнить бонус
+						if ($event_point_task['max_user_value'] && ($event_point_task['max_user_value'] <= ($value + $event_point_task_value_hash[$event_point_task['id']]))) {
+							$event_point_tasks = make_hash(event_point_task_list(array('point_id' => $event_point['id'])));
+							$event_point_user_tasks = make_hash(event_point_task_user_list(array(
+								'task_id' => array_keys($event_point_tasks),
+								'user_id' => $target_object['id'],
+								'artikul_id' => $event['artikul_id'],
+							)),'task_id');
+							$complete = true;
+							foreach ($event_point_tasks as $event_point_task) {
+								if (intval($event_point_task['max_user_value']) > intval($event_point_user_tasks[$event_point_task['id']]['value'])) {
+									$complete = false;
+									break;
+								}
+							}
+							if ($complete) bonus_apply($target_object,$event_point['bonus_id'],$in);
+
+							lite_pass_user_action($target_object, LITE_PASS_ACTION_EVENT_GET);
+							squest_trigger($target_object, SQUEST_ACTION_EVENT_GET, $event['id']);
+
+						}
+					}
+				} while (0);
+				event_unlock($event_point['id']);
+				break;
+			case 'QUEST_POINT_END':    // Завершить этап квеста
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$quest_point_id = intval($item['field']);
+				$error = false;
+				if (!quest_done($quest_point_id,$quest_point_id,$cur_object,$error,true)){
+					//$out['status'] = BONUS_STATUS_ERROR;
+				}
+
+				break;
+			case 'QUEST_USER_DELETE':    // Удалить квест юзера
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$quest_id = intval($item['field']);
+				$error = false;
+				$time_delete = intval($item['value1']);
+				if($time_delete) $time_delete = time_current() + $time_delete;
+
+				quest_user_delete(array('quest_id' => $quest_id, 'user_id' => $cur_object['id']), ($time_delete ? ' AND dtime > '.$time_delete : ''));
+
+				break;
+			case 'SLOT_CLEAN':    // Очистка слота
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				NODE_PUSH(null, $cur_object['id']);
+				$artifacts = artifact_list(false, $cur_object['id'], $item['value2']);
+				if (!$artifacts) break;
+				foreach ($artifacts as $artifact) {
+					$stack_update = false;
+					if ($artifact['cnt'] > 0) {
+						$check_artifact = artifact_get(false,sql_pholder(" AND artikul_id=? AND user_id=? AND slot_id='' AND (time_expire = 0 OR time_expire > ?)",$artifact['artikul_id'],$cur_object['id'], time_current()));
+						if ($check_artifact) {
+							$stack_update = true;
+							artifact_change_cnt($check_artifact['id'],$artifact['cnt'], '', array(
+								'time_expire' => intval($artifact['time_expire']),
+							));
+							artifact_delete($artifact);
+						}
+					}
+					if (!$stack_update) {
+						artifact_save(array(
+							'id' => $artifact['id'],
+							'slot_id' => '',
+							'slot_num' => 0,
+						));
+					}
+				}
+				NODE_POP();
+				chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$cur_object['id'],array('func' => "updateSwf({'items':''})"));
+				break;
+			case 'CURE':    // Полностью вылечить
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				NODE_PUSH(null, $cur_object['id']);
+				$injury_hash = make_hash(artifact_list(false,$cur_object['id'],null,false,false,' AND type_id='.ARTIFACT_TYPE_ID_INJURY));
+				foreach ($injury_hash as $artifact_id => $artifact) {
+					if ($item['flags'] & BONUS_ITF_INSTANCE_ARTIFACT) {
+						if ($artifact['flags'] & ARTIFACT_FLAG_CREATED_IN_INSTANCE) {
+							artifact_delete($artifact);
+							unset($injury_hash[$artifact_id]);
+						}
+					}
+					else {
+						artifact_delete($artifact);
+						unset($injury_hash[$artifact_id]);
+					}
+				}
+
+				$injury_time = 0;
+				if (count($injury_hash) > 0) { // если остались не снятые травмы, надо пересчитать время
+					foreach ($injury_hash as $artifact_id => $artifact) {
+						$injury_time = max($injury_time, $artifact['time_expire']);
+					}
+				}
+				user_save(array(
+					'id' => $cur_object['id'],
+					'injury_time' => $injury_time,
+				));
+				NODE_POP();
+				break;
+			case 'LEARN_SPELL':    // Выучить заклинание
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				NODE_PUSH(null, $cur_object['id']);
+				if (spell_user_get(array('user_id' => $cur_object['id'], 'artikul_id' => $item['field']))) {
+					NODE_POP();
+					break;
+				}
+				$spell_artikul = artifact_artikul_get($item['field']);
+				if (!$spell_artikul) {
+					NODE_POP();
+					break;
+				}
+				spell_user_save(array(
+					'user_id' => $cur_object['id'],
+					'artikul_id' => $item['field'],
+					'class' => $spell_artikul['class'],
+				));
+				NODE_POP();
+				break;
+
+			case 'NOTIFICATION':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				// Пока делаем просто перевод
+				// Потом нужно перевести на локализованные бродкасты
+				$msg_text = $item['value2'];
+				$param['user_id']=$cur_object['id'];
+				//
+				chat_msg_send_system($msg_text, CHAT_CHF_USER, $cur_object['id']);
+				//chat_msg_send_broadcast($msg_text,LOUDSPEAKER_ID,true,$item['value1'],array('do_translate' => true, 'translate_params' => array('#NICK#' => $cur_object['nick']), 'apply_tags' => true, 'tags_params' => $param));
+				break;
+
+			case 'FBFEED':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				break;
+				if (!($cur_object['flags'] & USER_FLAG_ASSOC_FB)) break;
+
+				//					$auth = auth_get($cur_object['id']);
+				//					$auth['fb_id'];
+
+				$fbfeed_id = $item['field'];
+				chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$cur_object['id'],array(
+					'func' => 'fb_feed('.fbfeed_json($fbfeed_id, $cur_object).')',
+				));
+				break;
+
+			case 'BONUS':    // выдать бонус этому объекту
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_PARTY))) continue 2;
+				$bonus_id = intval($item['field']);
+				$bonus_chain[$bonus_id][] = $cur_object;
+				break;
+
+			case 'BONUS_INSTANCE':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_PARTY))) continue 2;
+				$bonus_id = intval($item['field']);
+				$instance_id = 0;
+				if ($cur_object['object_class'] == OBJECT_CLASS_USER) {
+					$instance_id = $cur_object['instance_id'];
+				} elseif ($cur_object['object_class'] == OBJECT_CLASS_PARTY) {
+					if ($in['instance_id']) { // пропихнули параметр
+						$instance_id = $in['instance_id'];
+					}
+				}
+				if ($instance_id) {
+					$instance_root = instance_get_root($instance_id);
+					$bonus_chain[$bonus_id][] = $instance_root;
+				}
+				break;
+			case 'BONUS_PARTY':    // выдать бонус членам группы
+				# Параметры:
+				# 	$in['user_ids'] - ID пользователей
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_PARTY))) continue 2;
+				$bonus_id = intval($item['field']);
+				if ($cur_object['object_class'] == OBJECT_CLASS_USER) {	// если пользователю, то считаем его группой из него самого
+					$party_flags[$cur_object['id']] = $cur_object['id'];
+					$bonus_chain[$bonus_id][] = $cur_object;
+					break;
+				}
+				$user_ids = get_hash(party_member_list($cur_object['id'],PM_STATUS_ACTIVE),'user_id','user_id');
+				if (is_array($in['user_ids'])) $user_ids = array_intersect($user_ids,$in['user_ids']);
+				shuffle($user_ids);
+				$cnt = intval($item['value1']);
+				$i = 0;
+				foreach ($user_ids as $user_id) {
+					if (($cnt > 0) && ($i >= $cnt)) break;
+					$user = user_get($user_id);
+					NODE_PUSH(null,$user['id']);
+					$out_bonus = bonus_apply($user,$bonus_id,$in);
+					NODE_POP();
+					if ($out_bonus['items'] <= 0) continue;	// считаем ничего не выдано
+					$t = array();
+					if ($out_bonus['artikuls']) {
+						foreach ($out_bonus['artikuls'] as $artikul_id=>$amount) {
+							if ($amount <= 0) continue;
+							$artikul = cache_fetch($artikul_hash,$artikul_id,'artifact_artikul_get');
+							if ($artikul['flags'] & ARTIFACT_FLAG_HIDDEN) continue;
+							$t[] = $artikul['title'].sprintf(translate(' <b>%d шт</b>'),$amount);
+						}
+					}
+					if ($out_bonus['money']) {
+						foreach ($out_bonus['money'] as $money_type=>$amount) {
+							if ($amount <= 0) continue;
+							$t[] = html_money_str($money_type,$amount);
+						}
+					}
+					if ($t) chat_msg_send_system(sprintf(translate('Игрок %s получил: %s'),html_user_info($user),implode($t,', ')),CHAT_CHF_USER,$user_ids);
+					$i++;
+				}
+				break;
+
+			case 'BONUS_CLAN':    // выдать бонус членам клана
+				# Параметры:
+				# 	$in['user_ids'] - ID пользователей
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_CLAN))) continue 2;
+				$bonus_id = intval($item['field']);
+				if ($cur_object['object_class'] == OBJECT_CLASS_USER) {
+					if ($cur_object['clan_id']) {
+						$cur_object = clan_get($cur_object['clan_id']);
+					} else {
+						break;
+					}
+				}
+				$user_ids = get_hash(clan_member_list($cur_object['id'],CM_STATUS_ACTIVE),'user_id','user_id');
+				if (is_array($in['user_ids'])) $user_ids = array_intersect($user_ids,$in['user_ids']);
+				shuffle($user_ids);
+				$cnt = rand(intval($item['value1']), intval($item['value2']));
+				$user_hash = make_hash(user_list(array('id'=>$user_ids)));
+				$i = 0;
+				foreach ($user_ids as $user_id) {
+					if (($cnt > 0) && ($i >= $cnt)) break;
+					$user = $user_hash[$user_id];
+					NODE_PUSH(null,$user['id']);
+					$out_bonus = bonus_apply($user,$bonus_id,$in);
+					NODE_POP();
+					if ($out_bonus['items'] <= 0) continue;	// считаем ничего не выдано
+					$t = array();
+					if ($out_bonus['artikuls']) {
+						foreach ($out_bonus['artikuls'] as $artikul_id=>$amount) {
+							if ($amount <= 0) continue;
+							$artikul = cache_fetch($artikul_hash,$artikul_id,'artifact_artikul_get');
+							if ($artikul['flags'] & ARTIFACT_FLAG_HIDDEN) continue;
+							$t[] = $artikul['title'].sprintf(translate(' <b>%d шт</b>'),$amount);
+						}
+					}
+					if ($out_bonus['money']) {
+						foreach ($out_bonus['money'] as $money_type=>$amount) {
+							if ($amount <= 0) continue;
+							$t[] = html_money_str($money_type,$amount);
+						}
+					}
+					if ($t) chat_msg_send_system(sprintf(translate('Игрок %s получил: %s'),html_user_info($user),implode($t,', ')),CHAT_CHF_USER,$user_id);
+					$i++;
+				}
+				// лог-сервис -----------------------
+				logserv_log_note(array(
+					'note' => sprintf(translate('Выдан бонус членам клана "%s"'),$cur_object['title']),
+					'comment' => sprintf(translate('Клановый бонус "%s"'),$bonus['title']),
+				),$cur_object);
+				// ----------------------------------
+				break;
+
+			case 'AREA':    // переместить
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$area = area_get($item['field']);
+				if (!$area) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$user_area = area_get($cur_object['area_id']);
+				$param = array(
+					'id' => $cur_object['id'],
+					'area_id' => $area['id'],
+					'area_ftime' => 0,
+					'instance_id' => 0,
+					'raid_id' => 0,
+					'trade_id' => $area['trade_id'],
+					'flags2' => $cur_object['flags2'] & ~USER_FLAG2_IN_ESTATE,
+				);
+
+				// снимаем невидимость после перехода на "вражескую локацию"
+				if ($cur_object['invisibility_time']) {
+					if ((($area['flags'] & AREA_FLAG_NO_INVISIBLE_MAGMAR) && ($cur_object['kind'] == KIND_MAGMAR)) ||
+						(($area['flags'] & AREA_FLAG_NO_INVISIBLE_HUMAN) && ($cur_object['kind'] == KIND_HUMAN))) {
+						$param['invisibility_time'] = 0;
+						chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $cur_object['id'], array('func' => "updateSwf({'lvl':''})"));
+					}
+				}
+
+				//user_change_chat_channels($cur_object, $param);
+				user_save($param);
+				foreach ($param as $key => $value) $cur_object[$key] = $value;
+				break;
+
+			case 'COMBO':   // выдать комбо
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$combo_id = intval($item['field']);
+				$level = intval($item['value1']);
+				$combo = false;
+				$combo_user_list = combo_user_list(false,$cur_object['id']);
+				$combo_ids = get_hash($combo_user_list,'id','combo_id');
+				$seq_hash = get_hash($combo_user_list,'id','seq');
+				if ($combo_id && !in_array($combo_id,$combo_ids)) {
+					$combo = $combo_info[$combo_id];
+				} elseif ($level > 0) {
+					$combo_list = array();
+					foreach ($combo_info as $combo) {
+						if (($combo['level'] == $level) && $combo['active']) {
+							$combo_list[$combo['id']] = $combo;
+						}
+					}
+
+					if ($combo_list) {
+						$combo = $combo_list[array_rand($combo_list)];
+					}
+				}
+				$seq = combo_generate_seq($combo['size'],$seq_hash);
+				if (!$combo || !$seq) {
+					if(!$in['ignore_combo_error']) {
+						$out['status'] = BONUS_STATUS_ERROR;
+					}
+					break;
+				}
+				combo_user_save(array(
+					'_mode' => CSMODE_REPLACE,
+					'combo_id' => $combo['id'],
+					'user_id' => $cur_object['id'],
+					'seq' => $seq,
+					'used' => $combo_id ? 1: 0,
+					'shown' => 1,
+				));
+				break;
+
+			case 'COMBO_DISCOVER':   // открыть комбо
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$level = intval($item['value1']);
+				$combo_user_list = combo_user_list(false,$cur_object['id']," AND used=0",true);
+				$id = false;
+				shuffle($combo_user_list);
+				foreach ($combo_user_list as $combo_user) {
+					if ($combo_user['level'] != $level) continue;
+					$id = $combo_user['id'];
+					break;
+				}
+				if (!$id) break;
+				//Все предыдущие комбпо пожалуй дефолтными не считать)
+				combo_user_save(array(
+					'_mode' => CSMODE_UPDATE,
+					'user_id' => $cur_object['id'],
+					'def' => 0,
+				));
+				combo_user_save(array(
+					'id' => $id,
+					'used' => 1,
+					'def' => 1,
+				));
+				break;
+
+			case 'COMBO_CLEAR':   // сбросить комбо
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+
+				$combo_id = intval($item['field']);
+				if($combo_id){
+					combo_user_delete(array('combo_id' => $combo_id, 'user_id' => $cur_object['id']));
+				}else{
+					combo_user_delete(array('user_id' => $cur_object['id']));
+				}
+				break;
+
+			case 'PROFESSION':   // выдать профессию
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$profession_id = intval($item['field']);
+				$profession = $profession_info[$profession_id];
+				$user_professions = intval($cur_object['profession']);
+
+				if ($profession_id & $user_professions) { // уже есть такая профессия?
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				} else { // уже есть изученная профессия такого типа?
+					if(!$item['value1']){
+						foreach ($profession_info as $item) {
+							if (intval($item['id']) & $user_professions) {
+								if ($profession['type'] == $item['type']) {
+									$out['status'] = BONUS_STATUS_ERROR;
+									break 2;
+								}
+							}
+
+						}
+					}
+				}
+				user_save(array(
+					'id' => $cur_object['id'],
+					'_set' => 'profession=profession|'.$profession_id,
+				));
+				// лог-сервис -----------------------
+				logserv_log_note(array(
+					'note' => sprintf(translate('Получение профессии "%s"'),$profession['title']),
+					'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+				),$cur_object);
+				// ----------------------------------
+				break;
+
+			case 'PROFESSION_DROP':   // удалить профессию
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+
+				$profession_id = intval($item['field']);
+				$profession = $profession_info[$profession_id];
+				$user_professions = intval($cur_object['profession']);
+
+				if ($profession_id & $user_professions) {
+					user_save(array(
+						'id' => $cur_object['id'],
+						'_set' => 'profession=profession&~'.$profession_id,
+					));
+					// лог-сервис -----------------------
+					logserv_log_note(array(
+						'note' => sprintf(translate('Удаление профессии "%s"'),$profession['title']),
+						'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+					),$cur_object);
+					// ----------------------------------
+				}
+				break;
+
+			case 'BOT_ATTACK':   // атака бота
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				require_once("lib/bot.lib");
+				require_once("lib/fight.lib");
+
+				$param = array(
+					'attack_user_attack' => ($item['flags'] & BONUS_ITF_USERATTACK) > 0,
+					'attack_user_avail' => ($item['flags'] & BONUS_ITF_USERAVAIL) > 0,
+				);
+
+				// Если передали активатора
+				if (isset($in['activator_id'])) {
+					$param['activator_id'] = $in['activator_id'];
+
+					// запрет натравления мороков на невидимых игроков
+					if (user_is_invisible($cur_object) && !($cur_object['flags'] & USER_FLAG_ADMIN)) {
+						$out['status'] = BONUS_STATUS_ERROR;
+						$out['error'] = translate('Пользователь находится вне досягаемости!');
+						break;
+					}
+				}
+
+				$subject_area = area_get($cur_object['area_id']);
+				if ($subject_area['flags'] & AREA_FLAG_NO_MOROC_SET_ON){
+					$out['error'] = translate('Вы не можете натравить морока на этой локации.');
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+
+				if ($cur_object['instance_id']) {
+					$object_instance = instance_get($cur_object['instance_id']);
+					if ($object_instance['flags'] & INST_FLAG_NO_MOROC_SET_ON) {
+						$out['error'] = translate('Вы не можете натравить морока в этой локации.');
+						$out['status'] = BONUS_STATUS_ERROR;
+						break;
+					}
+				}
+
+				if ($item['flags'] & BONUS_ITF_PRVFIGHT) $param['fight_flags'] = FIGHT_FLAG_PRIVATE;
+				$bot_attack_cnt = intval($item['value1']);
+				if(!$bot_attack_cnt){
+					if (!bot_attack($cur_object,intval($item['field']),$param)) $out['status'] = BONUS_STATUS_ERROR;
+				}else{
+					for($i = 0; $i < $bot_attack_cnt; $i++){
+						if (!bot_attack($cur_object,intval($item['field']),$param)) $out['status'] = BONUS_STATUS_ERROR;
+					}
+				}
+				break;
+
+			case 'BOT_HELP':   // помощь бота в бою
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				require_once("lib/bot.lib");
+				require_once("lib/fight.lib");
+				$object_area=area_get($cur_object['area_id']);
+				$object_art = $in['object_art'];
+				$restriction_help = false; //Для ограничения призыва в бой стекающихся мороков
+
+				$fight = fight_get($cur_object['fight_id']);
+				if ($fight['flags'] & FIGHT_FLAG_NO_GREAT){
+					$out['error'] = translate('Вы не можете призвать морока в битве драконов.');
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+
+				if ($object_area['flags'] & AREA_FLAG_NO_MOROC_FIGHT && !$session_user['instance_id']){
+					$out['error'] = translate('Вы не можете призвать морока на помощь в этой локации.');
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+
+				if($fight['type'] == FIGHT_TYPE_CHAOTIC){
+					$out['error'] = translate('Вы не можете призвать морока на помощь в Хаотичных битвах.');
+					break;
+				}
+
+				if($fight['type'] == FIGHT_TYPE_ARENA){
+					$out['error'] = translate('Вы не можете призвать морока на помощь в Арене равных.');
+					break;
+				}
+
+				if($fight['type'] == FIGHT_TYPE_ADV_DUEL){
+					$out['error'] = translate('Вы не можете призвать морока на помощь в дуэли.');
+					break;
+				}
+
+				if ($cur_object['instance_id']) {
+					$object_instance = instance_get($cur_object['instance_id']);
+					if ($object_instance['flags'] & INST_FLAG_NO_MOROC_FIGHT) {
+						$out['error'] = translate('Вы не можете призвать морока в этом инстансе.');
+						$out['status'] = BONUS_STATUS_ERROR;
+						break;
+					}
+				}
+
+				$bot_help_cnt = intval($item['value1']);
+				if(!$bot_help_cnt){
+					if (!bot_help($cur_object,intval($item['field']))) $out['status'] = BONUS_STATUS_ERROR;
+				}else{
+					for($i = 0; $i < $bot_help_cnt; $i++){
+						if (!bot_help($cur_object,intval($item['field']))) $out['status'] = BONUS_STATUS_ERROR;
+					}
+				}
+				break;
+
+			case 'CLAN_LEVEL':   // выдача уровня клану
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$clan = $cur_object['clan_id'] ? clan_get($cur_object['clan_id']) : false;
+				if (!$clan || ($clan['flags'] & CLAN_FLAG_DISBANDED)) {
+					$out['status'] = BONUS_STATUS_ERROR;
+				} else {
+					if(intval($item['value1']) > $clan['level']){
+						clan_stat_archive($clan['id'], false, CLAN_STAT_TYPE_LEVEL_CL, intval($item['value1']));
+					}
+					clan_save(array('id' => $clan['id'], 'level' => intval($item['value1'])));
+					$out['status'] = BONUS_STATUS_OK;
+				}
+				break;
+
+			case 'CLAN_STAT':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+
+				$clan = $cur_object['clan_id'] ? clan_get($cur_object['clan_id']) : false;
+				if (!$clan || ($clan['flags'] & CLAN_FLAG_DISBANDED)) {
+					$out['status'] = BONUS_STATUS_ERROR;
+				} else {
+					$clan_id = $clan['id'];
+					$clan_stat_artikul_id = intval($item['field']);
+					$value = intval($item['value1']);
+
+					$clan_stat_old = clan_stat_get(array('clan_id' => $clan_id, 'clan_stat_artikul_id' => $clan_stat_artikul_id));
+					if (($item['flags'] & BONUS_ITF_HAVESKILL) && !$clan_stat_old) {
+						$out['status'] = BONUS_STATUS_ERROR;
+						break;
+					}
+
+					if ($clan_stat_old) {
+						if ($item['flags'] & BONUS_ITF_RELATIVE) {
+							$total_value = $clan_stat_old['total_value']+$value;
+							$value += $clan_stat_old['clan_value'];
+						} else {
+							$total_value = $clan_stat_old['total_value'] - $clan_stat_old['clan_value']+$value;
+						}
+						$clan_stat = array(
+							'id' => $clan_stat_old['id'],
+							'clan_value' => $value,
+							'total_value' => $total_value
+						);
+					} else {
+						$clan_stat = array(
+							'clan_id' => $clan_id,
+							'clan_stat_artikul_id' => $clan_stat_artikul_id,
+							'clan_value' => $value,
+							'total_value' => $value
+						);
+					}
+
+					$status = clan_stat_save($clan_stat);
+
+					if ($status) {
+						// лог-сервис -----------------------
+						if ($item['flags'] & BONUS_ITF_LOGSERV) {
+							$clan_stat_artikul = clan_stat_artikul_get(array('id' => $clan_stat_artikul_id));
+							$descr = $clan_stat_artikul['title'];
+							$note = sprintf(translate('Изменение клановой статистики "%s" (было: %d, стало: %d)'), $descr, $clan_stat_old['clan_value'], $value);
+							logserv_log_note(array(
+								'note' => $note,
+								'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+							),$cur_object);
+						}
+						// ----------------------------------
+					}
+					$out['status'] = BONUS_STATUS_OK;
+				}
+
+				break;
+
+			case 'RANK':   // изменение звания
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$ranks = array_keys($rank_info);
+				$rank = min(max($cur_object['rank']+intval($item['value1']),min($ranks)),max($ranks));
+				$status = user_save(array(
+					'id' => $cur_object['id'],
+					'rank' => $rank,
+				));
+				if($status) user_ref_triggered($cur_object, USER_REF_TRIGGER_RANK, 1, $rank);
+				if($status) user_ref_stat_uniform($cur_object, USER_REF_STAT_TYPE_RANK, $rank);
+				if($status) user_clan_stat_archive($cur_object, CLAN_STAT_TYPE_USER_RANK, $rank);
+				if ($status) {
+					if ($cur_object['partner_pid']) {
+						require_once(partner_path().'template.inc');
+						template_partner_pvprank($cur_object['id'], $rank, $cur_object['partner_pid']);
+					}
+					chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $cur_object['id'], array('func' => "updateSwf({'lvl':''})"));
+				}
+
+				break;
+
+			case 'BANK_CELL':   // изменить общее количество места в ячейке
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$cell = area_bank_cell_get(array('area_id' => $item['field'], 'user_id' => $cur_object['id']));
+				if (!$cell) {
+					$out['status'] = BONUS_STATUS_ERROR;
+				} else {
+					area_bank_cell_save(array(
+						'id' => $cell['id'],
+						'_set' => "num=num+(".intval($item['value1']).")",
+					));
+				}
+				break;
+
+			case 'CLASS':   // смена школы магии
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				if (!isset($class_info[$item['field']])) continue 2;
+				if (isset($class_info[$item['field']]['kind']) && ($cur_object['kind'] != $class_info[$item['field']]['kind'])) continue 2;
+				user_save(array(
+					'id' => $cur_object['id'],
+					'class' => $item['field'],
+				));
+				break;
+
+			case 'ACHIEVEMENT': // получить достижение
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				require_once("lib/achievement.lib");
+				user_achievement_done($cur_object['id'], $item['field']);
+				break;
+			case 'PET_CREATE': // Создание Пета
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$pet_id = intval($item['field']);
+				$cnt = intval($item['value1']);
+				require_once("lib/pet.lib");
+				NODE_PUSH(null, $cur_object['id']);
+				$status = pet_create($pet_id,$cur_object['id'],$cnt);
+				NODE_POP();
+				// лог-сервис -----------------------
+				logserv_log_note(array(
+					'note' => sprintf(translate('Получение питомца artikul_id=%d кол-во=%d %s'),$pet_id,$cnt,(!$status ? '['.translate('не получил').']' : '')),
+					'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+				),$cur_object);
+				// ----------------------------------
+				break;
+			case 'PET_UPGRADE':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+
+				$pet_group_id = intval($item['field']);
+				$pet_artikul_hash = make_hash(pet_artikul_list(array('group_id' => $pet_group_id)));
+
+				$pet_artikul_ids = array_keys($pet_artikul_hash);
+				NODE_PUSH(null, $cur_object['id']);
+				$pet = pet_get(array('user_id' => $cur_object['id']), sql_pholder(' AND artikul_id IN (?@)', $pet_artikul_ids));
+				if(!$pet['upgrade_artikul_id']) {
+					$pet_artikul = pet_artikul_get($pet['artikul_id']);
+					if($pet_artikul) $pet_artikul_upgrade = pet_artikul_get(false, sql_pholder(' AND level = ' . $pet_artikul['level'] . ' AND type_id = ? AND group_id = ?', ($pet_artikul['type_id'] + 1), $pet_artikul['group_id']));
+					if($pet_artikul_upgrade) $pet['upgrade_artikul_id'] = $pet_artikul_upgrade['id'];
+				}
+				if ($pet && $pet['upgrade_artikul_id']) {
+					$upgrade_artikul = pet_artikul_get($pet['upgrade_artikul_id']);
+					$status = pet_upgrade($pet, $upgrade_artikul);
+
+					// лог-сервис -----------------------
+					logserv_log_note(array(
+						'note' => sprintf(translate('Апгрейд питомца pet_id=%d'), $pet['id']),
+						'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+					),$cur_object);
+					// ----------------------------------
+				}
+				NODE_POP();
+				break;
+			case 'SET_TEMPVAR':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+
+				$name = strval($item['field']);
+				$value = intval($item['value1']);
+				$skill_id = strval($item['value2']);
+				$relative = (bool)($item['flags'] & BONUS_ITF_RELATIVE);
+				$if_set = (bool)($item['flags'] & BONUS_ITF_HAVESKILL);
+
+				if ($skill_id) {
+					// значение хар-ки
+					$skill = skill_get($skill_id);
+					$skill_info = user_get_skill_info($cur_object['id'], array($skill['id']));
+					$skill_hash = $skill_info['skills'];
+					$value = intval($skill_hash[$skill['id']]['value']);
+				}
+
+				$old_value = bonus_temporary_var_get($name);
+				if ($if_set && !isset($old_value)) {
+					break;
+				}
+
+				if ($relative) {
+					$new_value = intval($old_value) + $value;
+				} else {
+					$new_value = $value;
+				}
+
+				bonus_temporary_var_set($name, $new_value);
+				break;
+			case 'ARTIKUL_CHANGE':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$n = intval($item['value1']);
+				$source_artikul_id = intval($item['field']);
+				$target_artikul_id = intval($item['value2']);
+				$artikul_hash = make_hash(artifact_artikul_list(array('id' => array($source_artikul_id, $target_artikul_id))));
+				$source_artikul = $artikul_hash[$source_artikul_id];
+				$target_artikul = $artikul_hash[$target_artikul_id];
+				if (!$source_artikul || !$target_artikul || $n <= 0) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				if ($source_artikul['cnt'] > 0) { // стековая вещь
+					$status = false;
+					NODE_PUSH(null, $cur_object['id']);
+					$cnt = artifact_remove($source_artikul['id'], $n, $cur_object['id']);
+					if ($cnt) {
+						$status = artifact_add($target_artikul['id'], $cnt, $cur_object['id']);
+					}
+					NODE_POP();
+					if (!$status) {
+						$out['status'] = BONUS_STATUS_ERROR;
+						break;
+					}
+				} else { // обычная вещь
+					$slot = ($item['flags'] & BONUS_ITF_INSLOT) ? '*' : null;
+					NODE_PUSH(null, $cur_object['id']);
+					$artifact_list = artifact_list($source_artikul['id'], $cur_object['id'], $slot, true, false, ' LIMIT '.intval($n));
+					NODE_POP();
+					if (!$artifact_list) {
+						$out['status'] = BONUS_STATUS_ERROR;
+						break;
+					}
+					// Маска задаёт флаги, которые остаются с экземпляра
+					$mask = ARTIFACT_FLAG_NOGIVE | ARTIFACT_FLAG_BOE;
+					$target_artikul_flags = (int)$target_artikul['flags'] & ~$mask;
+					foreach ($artifact_list as $artifact) {
+						$artifact_flags = (int)$artifact['flags'] & $mask;
+						$flags = $target_artikul_flags | $artifact_flags;
+						$param = array(
+							'id'         => $artifact['id'],
+							'artikul_id' => $target_artikul['id'],
+							'type_id'    => $target_artikul['type_id'],
+							'kind_id'    => $target_artikul['kind_id'],
+							'flags'      => $flags,
+							'param1'     => $target_artikul['param1'],
+							'param2'     => $artifact['enchant_id'] ? $artifact['param2'] : $target_artikul['param2'],
+						);
+						NODE_PUSH(null, $cur_object['id']);
+						artifact_save($param);
+						NODE_POP();
+					}
+				}
+				break;
+
+			case 'USER_LEVEL':   // установить характеристику
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+
+				// Если вдруг не получили в объекте уровень, то надо обновить $cur_object
+				if (!$cur_object['level']) {
+					$cur_object = user_get($cur_object['id']);
+					$cur_object['object_class'] = OBJECT_CLASS_USER;
+				}
+
+				$object_id = $cur_object['id'];
+				$level_old = intval($cur_object['level']);
+				$level = intval($item['value1']);
+				if ($item['flags'] & BONUS_ITF_RELATIVE) {
+					$level = intval($level_old + $level);
+				}
+
+				$user_params = array(
+					'id' => $cur_object['id'],
+					'level' => $level,
+				);
+
+				//user_change_chat_channels($cur_object, $user_params);
+				$status = user_save($user_params);
+
+				if($status) user_ref_triggered($cur_object, USER_REF_TRIGGER_LEVEL, 1, $level);
+				if($status) user_ref_stat_uniform($cur_object, USER_REF_STAT_TYPE_LEVEL, $level);
+				if($status) user_clan_stat_archive($cur_object, CLAN_STAT_TYPE_USER_LEVEL, $level);
+				if ($status) {
+					NODE_PUSH(null, $cur_object['id']);
+					$artifact_list = user_get_artifact_list($cur_object['id'],'*');
+					NODE_POP();
+					$artikul_ids = get_hash($artifact_list, 'artikul_id', 'artikul_id');
+					$artikul_hash = $artikul_ids ? make_hash(artifact_artikul_list(array('id' => $artikul_ids), '', 'id, level_min, level_max')) : array();
+					foreach ($artifact_list as $artifact) {	// Снимаем предметы, которые не проходят по уровням
+						$artikul = $artikul_hash[$artifact['artikul_id']];
+						if (($artikul['level_min'] <= $level) && (($artikul['level_max'] < $artikul['level_min']) || ($artikul['level_max'] >= $level))) continue;
+						artifact_save(array(
+							'id' => $artifact['id'],
+							'slot_id' => '',
+						));
+					}
+					// партнерская программа
+					if (!($cur_object['flags'] & USER_FLAG_NOT_FINISHED_REG) && $cur_object['partner_pid']) {
+						//require_once(partner_path().'template.inc');
+						//template_partner_level($cur_object['id'], $level, $cur_object['partner_pid']);
+					}
+
+					// лог-сервис -----------------------
+					if ($item['flags'] & BONUS_ITF_LOGSERV) {
+						$note = sprintf(translate('Изменение уровня (было: %d, стало: %d)'), $level_old, $level);
+						logserv_log_note(array(
+							'note' => $note,
+							'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+						),$cur_object);
+					}
+					chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $cur_object['id'], array('func' => "updateSwf({'lvl':'', 'inventory': ''})"));
+				}
+				break;
+
+			/**
+			 * Раньше подобным способом считали эфф.регистрацию.
+			 * Сейчас этот бонус выдается при получении 2-го уровня
+			 */
+			case 'LEVELUP_WINDOW':
+				break; //Нахуй это дерьмо!
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$user_id = $cur_object['id'];
+				// делаем user_get т.к. уровень мог поменяться
+				$user = user_get($user_id);
+				$levelup_popup_alts = tpl_levelup_popup_alts($user);
+				$levelup_popup_alts = preg_replace("(\r\n|\n|\r)", "", $levelup_popup_alts);
+				$levelup_popup_alts = str_replace('\\"','',$levelup_popup_alts);
+
+				$param = array(
+					'func' => "top.eval('".$levelup_popup_alts."')",
+					'dead_time' => time_current() + 500,
+				);
+				chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$user['id'],$param);
+
+				$levelup_window = tpl_levelup_popup($user);
+				$levelup_window = preg_replace("(\r\n|\n|\r)", "", $levelup_window);
+
+				$param = array(
+					'func' => 'top.show_levelup_window(\''.$levelup_window.'\')',
+					'dead_time' => time_current() + 500,
+				);
+				chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$user['id'],$param);
+				break;
+			case 'EFF_REGISTER':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				require_once('lib/stat.lib');
+				stat_update('d_2level_cnt');
+				break;
+
+			case 'POST':
+				global $node_num;
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				require_once("lib/area_post.lib");
+				$message = $item['value2'];
+				$from_id = $item['field'];
+				$subject = $item['value1'];
+				$macros_list = array();
+				$from = user_get();
+
+				$area_id = $cur_object['area_id'];
+
+				$artifact_id = 0;
+				$money = $money_type = 0;
+				if (preg_match_all("/#[^#<>]+#/", $message, $matches)) {
+					$tags = $matches[0];
+					foreach ($tags as $tag) {
+						if (!preg_match("/#(\w+)(\[(.+)\])?#/",$tag,$matches)) continue;
+						$name = strval($matches[1]);
+						$params = $matches[3] ? explode(',',strval($matches[3])) : array();
+						switch ($name) {
+							case 'ATTACH':
+								$artikul_id = intval($params[0]);
+								$cnt = intval($params[1]);
+								if (!$cnt) $cnt = 1;
+								NODE_PUSH(null, $cur_object['id']);
+								$artifact_id = artifact_create($artikul_id, $cnt);
+								NODE_POP();
+								if (is_array($artifact_id)) $artifact_id = reset($artifact_id);
+								break;
+							case 'MONEY':
+								$money_type = intval($params[0]);
+								$money = money_floatval($params[1]);
+								if (!$money_type) $money_type = MONEY_TYPE_GAME;
+								break;
+						}
+						$message = str_replace($tag, '', $message);
+					}
+				}
+				if (!$cnt) $cnt = 0;
+				$param = array(
+					'from_id' => $from_id,
+					'to_id' => $cur_object['id'],
+					'subject' => ($subject) ? mb_substr($subject, 0, 64) : translate('Без темы'),
+					'text' => mb_substr($message, 0, 1024),
+					'type_id' => MSG_TYPE_NORMAL,
+					'stime' => time_current(),
+					'money_type' => $money_type,
+					'money' => $money,
+					'artifact_id' => $artifact_id,
+					'n' => $cnt,
+					'unread' => 1,
+					'area_id' => $area_id,
+					'stime' => time_current(),
+					'rtime' => time_current() + area_post_message_ttl(MSG_TYPE_NORMAL, true),
+					'flags' => 0,
+				);
+				$status = area_post_message_save($param);
+				if (!$status) break;
+
+				$msg_text = tpl_common_tags(sprintf(translate('Вам пришло письмо от #USER[%d]#!'), $from_id));
+				chat_msg_send_system($msg_text,CHAT_CHF_USER,$cur_object['id']);
+
+				// ставим признак, что есть новые сообщения
+				if (!($cur_object['flags'] & USER_FLAG_HAVE_NEW_MESSAGE)) {
+					user_set_flag($cur_object['id'], USER_FLAG_HAVE_NEW_MESSAGE, true);
+				}
+				break;
+			CASE 'CASTLETOWER_REQ':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				if (!$cur_object['clan_id']) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+
+				$clan = clan_get($cur_object['clan_id']);
+				if (!$clan) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				// от клана заявка может быть только на 1 локацию
+				castle_tower_request_delete(array('clan_id' => $cur_object['clan_id']));
+				castle_tower_request_save(array(
+					'tower_id' => 0,
+					'kind_id'  => $cur_object['kind'],
+					'clan_id'  => $cur_object['clan_id'],
+					'area_id'  => intval($item['field']),
+				));
+				break;
+			case 'REPLACE_SKILL':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) break;
+				if (!$item['value1'] || !$item['value2']) break;
+				NODE_PUSH(null, $cur_object['id']);
+				$skill_to_replace = skill_object_get(OBJECT_CLASS_USER, $cur_object, false, sql_pholder(' AND skill_id = ?', $item['value1']));
+				$new_skill = skill_get($item['value2']);
+				if (!$skill_to_replace || !$new_skill) {
+					NODE_POP();
+					break;
+				}
+				skill_object_set_value(OBJECT_CLASS_USER, $cur_object['id'], $item['value2'], $skill_to_replace['value']);
+				skill_object_delete(OBJECT_CLASS_USER, $cur_object, array('skill_id' => $skill_to_replace['skill_id']));
+				NODE_POP();
+				break;
+			case 'REPLACE_STAT':
+				// замена статистики (только в рамках одного типа скилла)
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) break;
+				if (!$item['field'] || !$item['value1'] || !$item['value2'] || ($item['value1'] == $item['value2'])) break;
+				$item['field'] = intval($item['field']);
+				$item['value1'] = intval($item['value1']);
+				$item['value2'] = intval($item['value2']);
+				NODE_PUSH(null, $cur_object['id']);
+				$stat_to_replace = user_stat_get(false, sql_pholder(' AND user_id = ? AND object_id = ? AND type_id = ?', $cur_object['id'], $item['value1'], $item['field']));
+				if (!$stat_to_replace) {
+					NODE_POP();
+					break;
+				}
+				user_stat_update($cur_object['id'], $item['field'], $item['value2'], $stat_to_replace['value'], USER_STAT_OP_SET);
+				user_stat_delete(array(
+					'user_id' => $cur_object['id'],
+					'object_id' => $item['value1'],
+					'type_id' => $item['field'],
+				));
+				NODE_POP();
+				break;
+			CASE 'STREAM_PUBLISH':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				//if (!($cur_object['flags'] & USER_FLAG_MAILRU_ASSOC)) break;
+				//if ($cur_object['flags'] & USER_FLAG_DENY_SOC_POPUP) break;
+
+				$soc_systems = soc_user_list(array('uid' => $cur_object['id']));
+				foreach ( $soc_systems as $k => $soc_system ) {
+					// не постим на стены если есть флаг
+					if ($soc_system['flags'] & SOC_USER_FLAG_NOWALL) {
+						unset($soc_systems[$k]);
+					}
+				}
+				if (empty($soc_systems)) continue 2;
+				$soc_system_ids = get_hash($soc_systems, 'soc_system_id', 'soc_system_id');
+
+				global $soc_systems;
+				$soc_str = '';
+				foreach ($soc_system_ids as $sys_id) {
+					if (!$soc_systems[$sys_id]['stream_publish']) continue;
+					$key = md5(sprintf('soc-system-key-hash %s %s %s %s', $cur_object['id'], $sys_id, time_current(), uniqid()));
+					soc_stream_publish_key_save(array(
+						'user_id' => $cur_object['id'],
+						'soc_system_id' => $sys_id,
+						'key' => $key,
+						'ctime' => time_current(),
+						'_mode' => CSMODE_INSERT,
+						'_add' => sql_pholder(' ON DUPLICATE KEY UPDATE `key` = ?, ctime = ?', $key, time_current())
+					));
+					$soc_str .= (strlen($soc_str) > 0 ? '\',\'' : '').$soc_systems[$sys_id]['js_prefix'].'\' : \''.$key;
+				}
+				if (!$soc_str)
+					break;
+				$soc_str = '{\'' . $soc_str . '\'}';
+
+				$img_path = ($item['field']) ? SERVER_URL.PATH_IMAGE_MISC.$item['field'] : '';
+				$action_link = '[]';
+				if (strpos($item['value2'], '#LINK#') !== false) {
+					global $PARTNERS_CFG;
+					$url = SERVER_URL;
+					if (defined('WORLD_ID')) {
+						foreach($PARTNERS_CFG['']['site_cfg'] as $domain => $site) {
+							if ($site['world'] == WORLD_ID) {
+								$url = 'http://'.$domain;
+								break;
+							}
+						}
+					}
+					$action_link = "[{'text': '".translate('Зарегистрироваться')."', 'href': '".trim($url, ' /')."/invite.php?referrer=".rawurlencode($cur_object['nick'])."&site_id=#SITEID#'}]";
+				}
+				$title = str_replace(array("\n", "\r", "'"), array(' ', '', "\'"), trim($item['value1']));
+				$text = str_replace(array("\n", "\r", "'"), array(' ', '', "\'"), trim($item['value1']));
+				$uniq_id = uniqid();
+				$param = array(
+					'func' => sprintf('top.frames[\'main_frame\'].soc_stream_post(%s, \'%s\', \'%s\', \'%s\', %s, \'%s\')', $soc_str, $title, $text, $img_path, $action_link, $uniq_id),
+					'dead_time' => time_current() + 5,
+				);
+				chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$cur_object['id'],$param);
+				break;
+			CASE 'WIDGET_PUBLISH':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$soc_system = SocialSystem::getSystem('MailRu');
+				$soc_user = soc_user_get(array('soc_system_id' => $soc_system['id'], 'uid' => $cur_object['id']));
+				if (!$soc_user) break;
+				$permission = $soc_system->get_permission($soc_user['soc_user_id'], 'widget');
+				if (!$permission['widget']) {
+					//if ($cur_object['flags'] & USER_FLAG_DENY_SOC_POPUP) break;
+					chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$cur_object['id'],array('func' => "top.frames['main_frame'].mailru_require_permission('widget','".rawurlencode(trim($item['value2']))."')",));
+					break;
+				}
+				$item['value2'] = rawurlencode($item['value2']);
+				if ($soc_user) {
+					$soc_system->widget_post($soc_user['soc_user_id'], $item['value2']);
+				}
+				break;
+			case 'SMILE':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) break;
+				$smail_tag = strval($item['field']);
+				$smile = smile_get(array('tag'=>$smail_tag));
+				if (!$smile || !($smile['flags'] & SMILE_FLAG_FROM_BONUS) ) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				NODE_PUSH(null, $cur_object['id']);
+				smile_user_save(array(
+					'_mode' => CSMODE_REPLACE,
+					'user_id' => $cur_object['id'],
+					'smile_id' => $smile['id'],
+					'stime' => time_current()
+				));
+				NODE_POP();
+				break;
+			case 'PETS_ENTITY':
+				$out['status'] = BONUS_STATUS_ERROR;
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) break;
+				$drop_artikuls = unserialize($item['value2']);
+				if (!is_array($drop_artikuls)) break;
+				// Выдача бонуса на пользователя
+				$user = $cur_object;
+				// Проверяем наличие банки и клана
+				NODE_PUSH(null, $cur_object['id']);
+				$user_effected = artifact_list(PETS_ENTITY_USER_EFFECTED_ART_ID, $user['id'], 'TEMP_EFFECT', true);
+				NODE_POP();
+				if (!$user_effected) break;
+				if (!$user['clan_id']) break;
+				// Проверяем наличие питомца (в том числе, что он сыт и одет)
+				if (!$user['pet_id']) break;
+				NODE_PUSH(null, $cur_object['id']);
+				$user_pets = make_hash(pet_list(false, $user['id']), 'id');
+				NODE_POP();
+				if (!$user_pets) break;
+				$pet = $user_pets[$user['pet_id']];
+				if(!($pet['flags'] & PET_FLAG_PUTTED_ON && $pet['satiation'] > 0)) break;
+				$pet_artikul = pet_artikul_get($pet['artikul_id']);
+				if ($pet_artikul['level'] < 5) break;
+				// Определяем, что выдавать по группе питомца
+				NODE_PUSH(null, $cur_object['id']);
+				$drop_artikul = artifact_artikul_get($drop_artikuls[$pet_artikul['group_id']]);
+				NODE_POP();
+				if (!$drop_artikul) break;
+				// Выдаем бонус по типу
+				$r = rand(1, 100);
+				switch ($pet_artikul['type_id']) {
+					case '7': // Серый
+						$amount = $pet_artikul['level'];
+						break;
+					case '8': // Зеленый
+						$amount = $pet_artikul['level'];
+						if ($r < 11) {
+							$amount += $pet_artikul['level'] * 2;
+						}
+						break;
+					case '9': // Синий
+						$amount = $pet_artikul['level'];
+						if ($r < 11) {
+							$amount += $pet_artikul['level'] * 4;
+						}
+						break;
+					case '10': // Фиолетовый
+						$amount = $pet_artikul['level'];
+						if ($r < 11) {
+							$amount += $pet_artikul['level'] * 6;
+						}
+						break;
+					case '11': // Красный
+						$amount = $pet_artikul['level'];
+						if ($r < 11) {
+							$amount += $pet_artikul['level'] * 8;
+						}
+						break;
+				}
+				if ($amount > 0) {
+					// Выдаем бонус
+					NODE_PUSH(null, $cur_object['id']);
+					$status = artifact_add($drop_artikul['id'], $amount, $user['id'], false);
+					NODE_POP();
+					if ($status) {
+						$out['status'] = BONUS_STATUS_OK;
+						$out['artikuls_received'][$drop_artikul['id']] += $amount;
+						if ($item['flags'] & BONUS_ITF_LOGSERV) {
+							logserv_log_operation(array(
+								'artikul' => $drop_artikul,
+								'force_flags' => '',
+								'cnt' => $amount,
+								'comment' => sprintf(translate('Выдана сущность "%s"'),$drop_artikul['title']),
+							), $user);
+						}
+					}
+				}
+				break;
+			case 'PETS_EXP':
+				$out['status'] = BONUS_STATUS_ERROR;
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) break;
+				$user = $cur_object;
+
+				if (!$user['pet_id']) break;
+				$pet = pet_get($user['pet_id']);
+				if (!$pet) break;
+				if(!($pet['flags'] & PET_FLAG_PUTTED_ON)) break;
+				$value = intval($item['value1']);
+				$old_exp = $pet['exp'];
+				NODE_PUSH(null, $cur_object['id']);
+				$status = pet_exp($pet, $value, $user['level']);
+				NODE_POP();
+				if ($status) {
+					$out['status'] = BONUS_STATUS_OK;
+					// лог-сервис -----------------------
+					if ($item['flags'] & BONUS_ITF_LOGSERV) {
+						$note = sprintf(translate('Изменение опыта питомца (было: %d, стало: %d)'), $old_exp, $value);
+						logserv_log_note(array(
+							'note' => $note,
+							'comment' => sprintf(translate('Бонус "%s"'), $bonus['title']),
+						),$cur_object);
+					}
+					// ----------------------------------
+				}
+				break;
+			case 'CLAN_GIFT': // подарить подарок клану
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				if (!$cur_object['clan_id']) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+			case 'GIFT': // подарить подарок
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$user = $cur_object;
+				$artikul_id = intval($item['field']);
+				if (!$artikul_id) break;
+				$artikul = artifact_artikul_get(array('id' => $artikul_id));
+
+				if ($item['value1']==="") $time_expire = time_current()+$artikul['validity'];
+				elseif (!intval($item['value1'])) $time_expire = 0;
+				else $time_expire = time_current() + intval($item['value1'])*3600*24;
+
+				$msg_parts = explode('|',$item['value2']);
+				if (count($msg_parts) == 2) {
+					if ($msg_parts[0] == '#ACTIVATOR#'){
+						$subject = user_get(array('id' => $in['activator_id']));
+					} else {
+						$subject = user_get(array('nick' => $msg_parts[0]));
+					}
+					$note = $msg_parts[1];
+				} else {
+					$note = $item['value2'];
+				}
+
+				NODE_PUSH(null, $cur_object['id']);
+				$artifact_id = artifact_create($artikul_id, 1, $subject['id']);
+				if (!$artifact_id) {
+					NODE_POP();
+					break;
+				}
+
+				artifact_save(array(
+					'id' => $artifact_id,
+					'_set'=>sql_pholder(" slot_id=?, type_id=?, kind_id=?, backgroup_id=?, ctime=?, time_expire=?, flags=(flags|".ARTIFACT_FLAG_NOGIVE.") &~ ".ARTIFACT_FLAG_USE." ",
+						'',
+						ARTIFACT_TYPE_ID_GIFT,
+						ARTIFACT_KIND_ID_GIFT,
+						ARTIFACT_BACKGROUPID_GIFT,
+						time_current(),
+						$time_expire
+					),
+				));
+				$out['artikuls_received'][$artikul_id] += 1;
+
+				$note = mb_substr(sprintf(translate('От %s.'),$subject['nick']).' '.$note,0,1024);
+				artifact_note_save(array(
+					'artifact_id' => $artifact_id,
+					'note' => $note,
+				));
+				if ($item['type'] == 'GIFT') {
+					artifact_transfer($artifact_id,$user['id']);
+				} else {
+					global $kind_info;
+					artifact_transfer($artifact_id,0,$kind_info[$cur_object['kind']]['city_area_id'],$cur_object['clan_id']);
+				}
+				NODE_POP();
+				break;
+			case 'UNLEARN_SPELL':    // Удаление заклинания
+				if (!in_array($cur_object['object_class'], array(OBJECT_CLASS_USER))) continue 2;
+				NODE_PUSH(null, $cur_object['id']);
+				spell_user_delete(array('user_id' => $cur_object['id'], 'artikul_id' => $item['field']));
+				NODE_POP();
+				break;
+			case 'MINIGAMES_MONEY':
+				$out['status'] = BONUS_STATUS_ERROR;
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) break;
+				$user_auth = auth_get($cur_object['id']);
+				if (!$user_auth) break;
+				$params = array(
+					't' => time_current(),
+					'amount' => intval($item['value1']),
+					'email' => $user_auth['email'],
+					'partner_id' => MINIGAMES_PARTNER_ID,
+				);
+				ksort($params);
+				foreach($params as $k => $v) {
+					$str .= $k . '=' . $v;
+				}
+				$params['sig'] = md5($str . MINIGAMES_PARTNER_SECRET);
+
+				$url = MINIGAMES_REQUEST_URL.common_build_request($params, 'params');
+
+				$json_result = file_get_contents($url);
+
+				logfile(SERVER_ROOT.PATH_LOGS.'minigames_bonus.log',sprintf('URL: %s RESULT: %s',$url,$json_result));
+
+				if (!$json_result) {
+					$error = 'Can`t get request to minigames';
+					error_log(sprintf('Minigames bonus error: %s', $error));
+					break;
+				}
+				$result = json_decode($json_result, true);
+				if (!$result || $result['status'] != 1) {
+					$error = $result['err'] ? $result['err'] : 'Unknown error';
+					error_log(sprintf('Minigames bonus error: %s', $error));
+					break;
+				}
+				$out['status'] = BONUS_STATUS_OK;
+				break;
+			case 'ADD_WORK':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				require_once("lib/buildings.lib");
+				$estate = estate_get(array('user_id' => $cur_object['id']));
+				if (!$estate) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$current_work = $estate['work'];
+				$delta = intval($item['value1']);
+				if ($delta < 0) {
+					$new_work = max(0,$current_work+$delta);
+				} else {
+					$new_work = min(get_max_work($cur_object['level']),$current_work+$delta);
+				}
+				estate_save(array(
+					'id' => $estate['id'],
+					'work' => $new_work,
+				));
+				chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $cur_object['id'], array('func' => "updateSwf({'lvl':''})"));
+				break;
+			case 'ESTATE_AREA':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				require_once("lib/buildings.lib");
+				$estate = estate_get(array('user_id' => $cur_object['id']));
+				$area_id = intval($item['field']);
+				if ($estate['area_id'] && $estate['area_id_second']) break;
+				if ($estate['area_id'] && !(defined('ESTATE_AREA_SECOND_ENABLE') && ESTATE_AREA_SECOND_ENABLE)) {
+					break;
+				}
+				if (!$estate) {
+					estate_save(array(
+						'user_id' => $cur_object['id'],
+						'area_id' => $area_id,
+					));
+				} else {
+					$area_field = $estate['area_id'] ? 'area_id_second' : 'area_id';
+					estate_save(array(
+						'id' => $estate['id'],
+						$area_field => $area_id,
+					));
+				}
+				break;
+			case 'GENDER_CHANGE':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				if (!$cur_object['gender']) {
+					$cur_object = user_get($cur_object['id']);
+				}
+				$gender_new = $cur_object['gender'] == 1 ? 2 : 1;
+				$gender_old = intval($cur_object['gender']);
+
+				$user_id = $cur_object['id'];
+				if ($status = user_save(array('id' => $user_id, 'gender' => $gender_new))) {
+					// лог-сервис -----------------------
+					if ($item['flags'] & BONUS_ITF_LOGSERV) {
+						$note = sprintf(translate('Изменение пола (было: %d, стало: %d)'), $gender_old, $gender_new);
+						logserv_log_note(array(
+							'note' => $note,
+							'comment' => sprintf(translate('Бонус "%s"'), $bonus['title']),
+						),$cur_object);
+					}
+					// ----------------------------------
+					chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user_id, array('func' => "updateSwf({'lvl':'', 'inventory': ''})"));
+				}
+				break;
+			case 'AVATAR':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$artikul_id = (int)$item['field'];
+				$take = (bool)$item['value1'];
+				$expire_time = (int)$item['value2'];
+				if (!$artikul_id) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$artikul = user_avatar_artikul_get($artikul_id);
+				if (!$artikul) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				if (!$take) {
+					$avatar = array(
+						'user_id' => $cur_object['id'],
+						'artikul_id' => $artikul_id,
+					);
+					if ($expire_time) $avatar['dtime'] = time_current() + $expire_time;
+					$avatar_id = user_avatar_save($avatar);
+					if (!$avatar_id) {
+						$out['status'] = BONUS_STATUS_ERROR;
+						break;
+					}
+					user_info_save(array(
+						'_set' => sql_pholder(' avatar_id = ? ', $avatar_id),
+						'_add' => sql_pholder(' AND uid = ? ', $cur_object['id']),
+					));
+					logserv_log_note(array(
+						'note' => sprintf(translate('Добавлен образ %s, срок жизни: %s'), $artikul['title'], ($expire_time ? sprintf(translate('%d секунд'), $expire_time) : translate('вечный'))),
+						'comment' => sprintf(translate('Бонус "%s"'),$bonus['title']),
+					),$cur_object);
+				} else {
+					if (!user_avatar_delete(array('user_id' => $cur_object['id'], 'artikul_id' => $artikul_id,))) {
+						$out['status'] = BONUS_STATUS_ERROR;
+						break;
+					}
+					logserv_log_note(array(
+						'note' => sprintf(translate('Удалены все образы %s'), $artikul['title']),
+						'comment' => sprintf(translate('Бонус "%s"'),$bonus['title']),
+					),$cur_object);
+				}
+				break;
+			case 'FON':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$artikul_id = (int)$item['field'];
+				$take = (bool)$item['value1'];
+				$expire_time = (int)$item['value2'];
+				if (!$artikul_id) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$artikul = user_fon_artikul_get($artikul_id);
+				if (!$artikul) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				if (!$take) {
+					$fon = array(
+						'user_id' => $cur_object['id'],
+						'artikul_id' => $artikul_id,
+					);
+					if ($expire_time) $fon['dtime'] = time_current() + $expire_time;
+					$fon_id = user_fon_save($fon);
+					if (!$fon_id) {
+						$out['status'] = BONUS_STATUS_ERROR;
+						break;
+					}
+					user_info_save(array(
+						'_set' => sql_pholder(' fon_id = ? ', $fon_id),
+						'_add' => sql_pholder(' AND uid = ? ', $cur_object['id']),
+					));
+					logserv_log_note(array(
+						'note' => sprintf(translate('Добавлен фон %s, срок жизни: %s'), $artikul['title'], ($expire_time ? sprintf(translate('%d секунд'), $expire_time) : translate('вечный'))),
+						'comment' => sprintf(translate('Бонус "%s"'),$bonus['title']),
+					),$cur_object);
+				} else {
+					if (!user_fon_delete(array('user_id' => $cur_object['id'], 'artikul_id' => $artikul_id,))) {
+						$out['status'] = BONUS_STATUS_ERROR;
+						break;
+					}
+					logserv_log_note(array(
+						'note' => sprintf(translate('Удалены все фоны %s'), $artikul['title']),
+						'comment' => sprintf(translate('Бонус "%s"'),$bonus['title']),
+					),$cur_object);
+				}
+				break;
+			case 'CLOAK':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$artikul_id = (int)$item['field'];
+				$take = (bool)$item['value1'];
+				$expire_time = (int)$item['value2'];
+				if (!$artikul_id) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				$artikul = user_cloak_artikul_get($artikul_id);
+				if (!$artikul) {
+					$out['status'] = BONUS_STATUS_ERROR;
+					break;
+				}
+				if (!$take) {
+					$cloak = array(
+						'user_id' => $cur_object['id'],
+						'artikul_id' => $artikul_id,
+					);
+					if ($expire_time) $cloak['dtime'] = time_current() + $expire_time;
+					$cloak_id = user_cloak_save($cloak);
+					if (!$cloak_id) {
+						$out['status'] = BONUS_STATUS_ERROR;
+						break;
+					}
+					user_info_save(array(
+						'_set' => sql_pholder(' cloak_id = ? ', $cloak_id),
+						'_add' => sql_pholder(' AND uid = ? ', $cur_object['id']),
+					));
+					logserv_log_note(array(
+						'note' => sprintf(translate('Добавлен плащ %s, срок жизни: %s'), $artikul['title'], ($expire_time ? sprintf(translate('%d секунд'), $expire_time) : translate('вечный'))),
+						'comment' => sprintf(translate('Бонус "%s"'),$bonus['title']),
+					),$cur_object);
+				} else {
+					if (!user_cloak_delete(array('user_id' => $cur_object['id'], 'artikul_id' => $artikul_id,))) {
+						$out['status'] = BONUS_STATUS_ERROR;
+						break;
+					}
+					logserv_log_note(array(
+						'note' => sprintf(translate('Удалены все плащи %s'), $artikul['title']),
+						'comment' => sprintf(translate('Бонус "%s"'),$bonus['title']),
+					),$cur_object);
+				}
+				break;
+			case 'HIDDEN_INFO_GRANT':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$take = (bool)$item['value1'];
+
+				user_set_flag($cur_object['id'], USER_FLAG_USER_INFO_CLOSE, !$take);
+				break;
+			case 'REMOVE_STACK': // Изъятие предметов стаками
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$out['status'] = BONUS_STATUS_ERROR;
+
+				$values = unserialize( $item['value2']);
+				if( !is_array($values)) break;
+
+				$artikul_type = intval( $item['value1']);
+				$values['items'] = intval($values['items']);
+				$values['stacks'] = intval($values['stacks']);
+
+				if( $values['items'] <=0 || $values['stacks'] <= 0) break;
+
+				NODE_PUSH(null, $cur_object['id']);
+				$remove_list = user_get_artifact_list( $cur_object['id'], '', sql_pholder( ' AND type_id=? AND cnt>=? AND slot_id="" LIMIT 0,' . $values['stacks'], $artikul_type, $values['items']));
+				NODE_POP();
+
+				if( count( $remove_list) < $values['stacks']) break;
+
+				NODE_PUSH(null, $cur_object['id']);
+				foreach( $remove_list as $artifact) {
+					if( $artifact['cnt'] > $values['items']) {
+						artifact_change_cnt( $artifact['id'], -$values['items']);
+					} else {
+						artifact_delete( $artifact);
+					}
+				}
+				NODE_POP();
+				$out['status'] = BONUS_STATUS_OK;
+
+				$bonus_id = intval($item['field']);
+				if( $bonus['id'] != $bonus_id) bonus_apply( $cur_object, $bonus_id);
+				break;
+			case 'REMOVE_STACK_FORCE': // Изъятие предметов стаками все равно
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$out['status'] = BONUS_STATUS_ERROR;
+
+				$values = unserialize( $item['value2']);
+				if( !is_array($values)) break;
+
+				$artikul_type = intval( $item['value1']);
+				$values['items'] = intval($values['items']);
+				$values['stacks'] = intval($values['stacks']);
+
+				#logfile(DEBUG_FILE_LOG_DEV,print_r($values,true));
+				#logfile(DEBUG_FILE_LOG_DEV,print_r($artikul_type,true));
+
+
+				if($values['stacks'] <= 0) break;
+
+				NODE_PUSH(null, $cur_object['id']);
+				global $db;
+				$remove_list = common_list($db,TABLE_ARTIFACTS,false,sql_pholder( ' AND (user_id = '.$cur_object['id'].' OR owner_id = '.$cur_object['id'].') AND type_id=? AND slot_id="" LIMIT 0,' . $values['stacks'], $artikul_type));
+				NODE_POP();
+
+				#logfile(DEBUG_FILE_LOG_DEV,print_r($remove_list,true));
+
+				if( count( $remove_list) < $values['stacks']) break;
+
+				NODE_PUSH(null, $cur_object['id']);
+				foreach( $remove_list as $artifact) {
+					artifact_delete( $artifact);
+				}
+				NODE_POP();
+				$out['status'] = BONUS_STATUS_OK;
+
+				$bonus_id = intval($item['field']);
+				if( $bonus['id'] != $bonus_id) bonus_apply( $cur_object, $bonus_id);
+				break;
+			case 'CHANGE_HP': // изменить HP
+				if (!in_array($cur_object['object_class'], array(OBJECT_CLASS_USER))) continue 2;
+
+				$value = intval($item['value1']);
+				if (!$value) break;
+
+				if (!user_set_hp($cur_object['id'], $value, $item['flags'] & BONUS_ITF_RELATIVE, $item['flags'] & BONUS_ITF_PERCENT)) {
+					$out['status'] = BONUS_STATUS_ERROR;
+				} else {
+					chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $cur_object['id'], array('func' => "updateSwf({'lvl':'', 'inventory': ''})",));
+				}
+				break;
+			case 'CHANGE_MP': // изменить MP
+				if (!in_array($cur_object['object_class'], array(OBJECT_CLASS_USER))) continue 2;
+
+				$value = intval($item['value1']);
+				if (!$value) break;
+
+				if (!user_set_mp($cur_object['id'], $value, $item['flags'] & BONUS_ITF_RELATIVE, $item['flags'] & BONUS_ITF_PERCENT)) {
+					$out['status'] = BONUS_STATUS_ERROR;
+				} else {
+					chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $cur_object['id'], array('func' => "updateSwf({'lvl':'', 'inventory': ''})",));
+				}
+				break;
+
+			case 'GLOBAL_SKILL': // установить глобальную характеристику
+				$res = global_skill_value_save_smart($item['field'], $item['value1'], $item['flags'] & BONUS_ITF_RELATIVE);
+				break;
+
+			case 'BLINK_BUTTON': // мигать кнопками пользовательского интерфейса
+				if (!in_array($cur_object['object_class'], array(OBJECT_CLASS_USER)))
+					continue 2;
+
+				if (!($user_info = user_info_get(array('uid' => $cur_object['id']))))
+					continue 2;
+
+				$top = (int) $item['value1'];
+				$right = (int) $item['value2'];
+
+				if ($top || $right) {
+					for ($i = 0; $i < 32; $i++) {
+						$val = 1 << $i;
+
+						if ($val & $top)
+							chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $cur_object['id'], array('func' => "getSWF('top_mnu').blinkButton(" . ($i + 1) . ", true)"));
+
+						if ($val & $right)
+							chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $cur_object['id'], array('func' => "getSWF('items_right').blinkButton(" . ($i + 1) . ", true)"));
+					}
+
+					$swf_data = json_decode($user_info['swf_data'], true);
+					if (!$swf_data || !isset($swf_data['top_buttons']))
+						$swf_data = array('top_buttons' => 0, 'right_buttons' => 0);
+
+					$swf_data['top_buttons'] |= $top;
+					$swf_data['right_buttons'] |= $right;
+
+					user_info_save(array(
+						'_mode' => CSMODE_UPDATE,
+						'uid' => $user_info['uid'],
+						'swf_data' => json_encode($swf_data),
+					));
+				}
+
+				$locations = explode(',', preg_replace('/\s+/', '', (string) ($item['field'])));
+				if (count($locations))
+					chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $cur_object['id'], array('func' => "setCookie('sess_location_blink', '" . implode('|', $locations) . "')"));
+
+				break;
+			case 'ADV_MEDAL':
+				$user = $cur_object;
+				$adv_medal_item = adv_medal_item_get($item['field']);
+				$adv_medal_user = adv_medal_user_get(array('adv_medal_id' => $adv_medal_item['adv_medal_id'], 'user_id' => $user['id']));
+				if(!$adv_medal_user) break;
+				if($adv_medal_user['level'] != ($adv_medal_item['level'] - 1)) {
+					break;
+				}
+				adv_medal_user_save(array(
+					'id' => $adv_medal_user['id'],
+					'level' => $adv_medal_item['level'],
+					'value' => $adv_medal_item['value'],
+					'picture' => $adv_medal_item['picture'],
+				));
+				break;
+			case 'COMPANION_CREATE':
+				if (!in_array($cur_object['object_class'], array(OBJECT_CLASS_USER)))
+					continue 2;
+				if($cur_object['companion_id']) break;
+				if(companion_user_get($cur_object['id'])){
+					break;
+				}
+				if($cur_object['level'] < 7) break; //Мб лучше тут)
+				companion_user_create($cur_object);
+				break;
+			case 'COMPANION_SKILL':   // установить характеристику тени
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2; //Только по юзеру
+				$skill_param = array();
+				if ($item['flags'] & BONUS_ITF_RELATIVE) $skill_param['relative'] = true;
+				if ($item['flags'] & BONUS_ITF_TIME) $skill_param['relative_time'] = true;
+				if ($item['flags'] & BONUS_ITF_HAVESKILL) $skill_param['exit_noskill'] = true;
+				if ($item['value2']) $skill_param['duration'] = $item['value2'];
+
+				if(!$cur_object['companion_id']) break;
+
+				$object_id = $cur_object['companion_id'];
+				$companion = common_object_get(OBJECT_CLASS_COMPANION, $object_id);
+				if(!$companion) break;
+
+				if (($cur_object['object_class'] == OBJECT_CLASS_USER) && ($item['flags'] & BONUS_ITF_LOGSERV)) {
+					$skill_old = skill_object_get(OBJECT_CLASS_COMPANION,$companion,array('skill_id' => $item['field']));
+				}
+
+				NODE_PUSH(null, $cur_object['id']);
+				if(in_array($item['field'], array('EXP', 'HONOR'))){
+					if(!($item['flags'] & BONUS_ITF_RELATIVE)) break;
+					switch ($item['field']){
+						case 'EXP':
+							companion_add_exp($companion['id'], $item['value1']);
+							break;
+						case 'HONOR':
+							companion_add_honor($companion['id'], $item['value1']);
+							break;
+					}
+				}else{
+					$status = skill_object_set_value(OBJECT_CLASS_COMPANION,$object_id,$item['field'],$item['value1'],$skill_param);
+				}
+				NODE_POP();
+				if (($cur_object['object_class'] == OBJECT_CLASS_USER) && $status) {
+
+					// лог-сервис -----------------------
+					if ($item['flags'] & BONUS_ITF_LOGSERV) {
+						$skill = skill_object_get(OBJECT_CLASS_COMPANION,$object_id,array('skill_id' => $item['field']));
+						if ($skill) $skill = array_merge(skill_get($skill['skill_id']),$skill);
+
+						$note = sprintf(translate('Изменение характеристики тени "%s" (было: %d, стало: %d)'),$skill['title'],$skill_old['value'],$skill['value']);
+						logserv_log_note(array(
+							'note' => $note,
+							'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+						),$cur_object);
+					}
+					// ----------------------------------
+
+					$out['skills'][$item['field']] += $item['value1'];
+				}
+				break;
+
+			case 'COMPANION_SKILL_DEL':   // удалить характеристику тени
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+
+				if(!$cur_object['companion_id']) break;
+
+				$object_id = $cur_object['companion_id'];
+				$companion = common_object_get(OBJECT_CLASS_COMPANION, $object_id);
+				if(!$companion) break;
+
+				NODE_PUSH(null, $cur_object['id']);
+				$status = skill_object_delete(OBJECT_CLASS_COMPANION,$companion,array('skill_id' => $item['field']));
+				NODE_POP();
+				// лог-сервис -----------------------
+				if ($status && ($item['flags'] & BONUS_ITF_LOGSERV)) {
+					$skill = skill_get($item['field']);
+					logserv_log_note(array(
+						'note' => sprintf(translate('Удаление характеристики тени "%s"'),$skill['title']),
+						'comment' => sprintf(translate('Бонус "%s"'), translate($bonus['title'], LOGSERV_DEFAULT_LANGUAGE)),
+					),$cur_object);
+				}
+				// ----------------------------------
+				break;
+			case 'USER_REF':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				user_ref_bonus_trigger($cur_object['id'], $item['field']);
+				break;
+			case 'USER_GLORY':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$status = user_glory_add($cur_object['id'], $item['field'], $item['value1']);
+				if(!$status) $out['status'] = BONUS_STATUS_ERROR;
+				break;
+			case 'ACTIVITY':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				if(!$item['field']) break;
+				activity_user_check(ACTIVITY_STAT_BONUS, $item['field'], $cur_object, false, $item['value1'], $item['value1']);
+				break;
+			case 'USER_GUIDE':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				if(!$item['field']) break;
+				chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $cur_object['id'], array('func' => 'guideShow('.$item['field'].');'));
+				break;
+			case 'DAY_PROMOCODE':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				$day_promocode = day_promocode_generate_force();
+				if($day_promocode['code'] && $cur_object['id']) {
+					chat_msg_send_system('<b>Вы получили промокод (используйте или передайте другому):</b> <b class="redd">'.$day_promocode['code'].'</b>', CHAT_CHF_USER, $cur_object['id']);
+				}
+				break;
+			case 'LITE_ACTION':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				lite_pass_user_action($cur_object, $item['field'], 1, LITE_PASS_TYPE_SYSTEM_BONUS);
+				break;
+			case 'SQUEST_ACTION':
+				if (!in_array($cur_object['object_class'],array(OBJECT_CLASS_USER))) continue 2;
+				squest_trigger_bonus($cur_object, $item['field']);
+				break;
+		}
+		if ($out['status'] != BONUS_STATUS_OK) {
+			if ($cur_object['language']) translate_default_language_pop();
+			return $out;
+		}
+		$out['items']++;
+	}
+
+	// Выводим сообщение в чат, если надо
+	bonus_apply_message($cur_object, $bonus, $out, $in);
+
+	// Выдаем бонусы в цепочке, если они есть
+	if ($bonus_chain) {
+
+		foreach ($bonus_chain as $bonus_id=>$objs) {
+			$chain_bonus = $bonus_hash[$bonus_id];
+			if (!$chain_bonus) {
+				error_log("logic error: Failed to get embedded bonus [$bonus_id] for bonus [".$bonus['id']."], function ".__FUNCTION__);
+				continue;
+			}
+			foreach ($objs as $obj) {
+				if (!$obj['object_class']) continue;
+				NODE_PUSH($obj['object_class'] == OBJECT_CLASS_USER ? NODE_GET($obj['id']) : NODE_SWITCH());	// node switching
+				$out_bonus = bonus_cache_apply($obj, $chain_bonus, $bonus_hash, $in);
+				/* Нужно для новой ветки пожалуй */
+				if ($out_bonus['artikuls_received']) {
+					foreach ($out_bonus['artikuls_received'] as $artikul_id=>$amount) {
+						$out['artikuls_received'][$artikul_id] += $amount;
+					}
+				}
+
+				//Полученные артефакты
+				if($out_bonus['artifacts_received'] && $in['artifacts_received_stat']) {
+					foreach ($out_bonus['artifacts_received'] as $_art_id=>$amount) {
+						$out['artifacts_received'][$_art_id] += $amount;
+					}
+				}
+
+				if ($out_bonus['money']) {
+					foreach ($out_bonus['money'] as $money_type=>$amount) {
+						$out['money'][$money_type] += $amount;
+					}
+				}
+				if ($out_bonus['skill']) {
+					foreach ($out_bonus['skill'] as $skill_id=>$val) {
+						$out['skill'][$skill_id] += $val;
+					}
+				}
+				if ($out_bonus['stat']) {
+					foreach ($out_bonus['stat'] as $type_id=>$stat) {
+						foreach ($stat as $object_id=>$val) {
+							$out['stat'][$type_id][$object_id] += $val;
+						}
+					}
+				}
+				NODE_POP();
+			}
+		}
+	}
+
+	// Устанавливаем Флаг Для  ГРуппы
+	if ($party_flags) {
+		foreach ($party_flags as $party_id) {
+			party_save(array(
+				'id' => $party_id,
+				'_set' => 'flags=(flags | '.PARTY_FLAG_NEWLOOT.')',
+			));
+			$party_user_ids = get_hash(party_member_list($party_id,PM_STATUS_ACTIVE),'user_id','user_id');
+			chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$party_user_ids,array('func' => 'updatePartyLoot()'));
+		}
+	}
+	if (($object['object_class'] == OBJECT_CLASS_USER) && (($bonus['flags'] & BONUS_FLAG_FOR_CLAN_HEAD) || ($bonus['flags'] & BONUS_FLAG_FOR_REFERRER))) {
+		NODE_POP();
+	}
+	if ($cur_object['language']) translate_default_language_pop();
+	return $out;
+}
+
+global $bonus_apply_message_hash;
+if(!$bonus_apply_message_hash) $bonus_apply_message_hash = array();
+
+function bonus_apply_message_trigger() {
+	global $bonus_apply_message_hash;
+	foreach ($bonus_apply_message_hash as $message_stack=>$message) {
+		unset($message['in']['message_stack']);
+		$out = array(
+			'items' => $message['items'],
+			'artikuls_received' => $message['artikuls_received'],
+			'artikuls_lost' => $message['artikuls_lost'],
+			'money' => $message['money'],
+		);
+		$message['bonus']['description'][md5(time())] = array('text' => 'LAST BONUS MESSAGE', 'cnt' => 1);
+		bonus_apply_message($message['object'], $message['bonus'], $out, $message['in']);
+		unset($bonus_apply_message_hash[$message_stack]);
+	}
+}
+
+function bonus_apply_message($cur_object, $bonus, $out, $in) {
+	global $bonus_apply_message_hash, $quality_info;
+	// Выводим сообщение в чат, если надо
+
+	if($in['message_stack'] && !($bonus['flags'] & BONUS_FLAG_NOMESSAGE) && in_array($cur_object['object_class'], array(OBJECT_CLASS_USER, OBJECT_CLASS_PARTY))) { //  && $cur_object['id'] == 2
+		if(trim($bonus['description'] )) {
+			if(mb_strpos($bonus['description'], '#LIST#') !== false && !$out['artikuls_received']) {
+				$bonus['description'] = ''; //Грязный или чистый хак, мне похую!
+			}
+			if(mb_strpos($bonus['description'], '#LIST-#') !== false && !$out['artikuls_lost']) {
+				$bonus['description'] = ''; //Грязный или чистый хак, мне похую!
+			}
+			$bonus['description'] = str_replace(array('Получено:', 'Получено :', 'Получено', 'получено:', 'получено', '#LIST#', '#LIST-#', '#NICK#', '#OBJECT#'), '', $bonus['description']);
+		}
+
+		$bonus_apply_message_hash[$in['message_stack']]['object'] = $cur_object;
+		$bonus_apply_message_hash[$in['message_stack']]['in'] = $in;
+
+		$bonus_messages = array();
+
+		$strip_msg = trim(strip_tags($bonus['description']));
+		if(!$strip_msg || $strip_msg == '.' || $strip_msg == '!' || $strip_msg == ',') {
+			unset($bonus['description']);
+		}
+		if($bonus['description']) {
+			if(!$bonus_apply_message_hash[$in['message_stack']]['bonus']['description'][md5($bonus['description'])]) {
+				$bonus_apply_message_hash[$in['message_stack']]['bonus']['description'][md5($bonus['description'])] = array(
+					'text' => $bonus['description'],
+					'cnt' => 1,
+				);
+			}else{
+				$bonus_apply_message_hash[$in['message_stack']]['bonus']['description'][md5($bonus['description'])]['cnt']++;
+			}
+		}
+		$bonus_apply_message_hash[$in['message_stack']]['items'] += $out['items'];
+		foreach ($out['artikuls_received'] as $artikul_id=>$amount) {
+			$bonus_apply_message_hash[$in['message_stack']]['artikuls_received'][$artikul_id] += $amount;
+		}
+		foreach ($out['artikuls_lost'] as $artikul_id=>$amount) {
+			$bonus_apply_message_hash[$in['message_stack']]['artikuls_lost'][$artikul_id] += $amount;
+		}
+		foreach ($out['money'] as $money_type=>$amount) {
+			$bonus_apply_message_hash[$in['message_stack']]['money'][$money_type] += $amount;
+		}
+		return;
+	}
+
+	if (($out['items'] > 0 || $out['artikuls_received']) && !$in['no_chat']) {
+		if (in_array($cur_object['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_PARTY,OBJECT_CLASS_INSTANCE))) {
+			$list1 = $list2 = '';
+			$t1 = $t1_ql = $t2 = array();
+			if ($out['artikuls_received']) {
+				foreach ($out['artikuls_received'] as $artikul_id=>$amount) {
+					$artikul = cache_fetch($artikul_hash,$artikul_id,'artifact_artikul_get');
+					if ($artikul['flags'] & ARTIFACT_FLAG_HIDDEN) continue;
+					$text = '<a href="#" class="b" style="color:'.$quality_info[$artikul['quality']]['color'].';" onClick="showArtifactInfo(false,'.$artikul['id'].');return false;">'.$artikul['title'].'</a>'.sprintf(translate(' <b>%d шт</b>'),abs($amount));
+					$t1_ql[$artikul['quality']][$amount][] = $text;
+				}
+			}
+			if ($out['artikuls_lost']) {
+				foreach ($out['artikuls_lost'] as $artikul_id=>$amount) {
+					$artikul = cache_fetch($artikul_hash,$artikul_id,'artifact_artikul_get');
+					if ($artikul['flags'] & ARTIFACT_FLAG_HIDDEN) continue;
+					$text = '<a href="#" class="b" style="color:'.$quality_info[$artikul['quality']]['color'].';" onClick="showArtifactInfo(false,'.$artikul['id'].');return false;">'.$artikul['title'].'</a>'.sprintf(translate(' <b>%d шт</b>'),abs($amount));
+					$t2[] = $text;
+				}
+			}
+			if ($out['money']) {
+				foreach ($out['money'] as $money_type=>$amount) {
+					if (!$amount) continue;
+					$text = html_money_str($money_type,abs($amount));
+					if ($amount < 0) $t2[] = $text;
+					else $t1_ql[99][0][] = $text;
+				}
+			}
+			if($t1_ql) {
+				ksort($t1_ql);
+				foreach ($t1_ql as $_qlty=>$item_cnt_hash) {
+					ksort($item_cnt_hash);
+					foreach ($item_cnt_hash as $items) {
+						foreach ($items as $item) {
+							$t1[] = $item;
+						}
+					}
+				}
+			}
+
+			$list1 = strval(implode(', ',$t1));
+			$list2 = strval(implode(', ',$t2));
+			$msg_text = '';
+
+			if(is_array($bonus['description'])) {
+				foreach ($bonus['description'] as $_msg) {
+					if(!$_msg['text']) continue;
+					$_msg_text = '';
+					if($_msg['text'] == 'LAST BONUS MESSAGE') {
+						if ($list1) $_msg_text .= '<b>Получено: </b>'. $list1;
+						if ($list2) $_msg_text .= '<b>Изъято: </b>'. $list2;
+						if($_msg_text && $in['premium_level']) $_msg_text = '<b class="grnn">Премиум ['.$in['premium_level'].']</b> '.$_msg_text;
+					}else{
+						$_msg_text = $_msg['text'].' '.($_msg['cnt'] > 1 ? '<b class="redd">x'.$_msg['cnt'] : '').'</b>';
+					}
+					if(!$_msg_text) continue;
+					if ($cur_object['object_class'] == OBJECT_CLASS_USER) {
+						chat_msg_send_system($_msg_text, CHAT_CHF_USER, $cur_object['id']);
+					} elseif ($cur_object['object_class'] == OBJECT_CLASS_PARTY) {
+						$user_ids = array();
+						if($in['user_ids']) {
+							$user_ids = $in['user_ids'];
+						}else {
+							$party_member_list = make_hash(party_member_list($cur_object['id'], PM_STATUS_ACTIVE),'user_id');
+							$user_ids = get_hash($party_member_list, 'user_id', 'user_id');
+						}
+						chat_msg_send_system($_msg_text, CHAT_CHF_USER, $user_ids);
+					}
+				}
+			}else{
+				if ($bonus['description']) {
+					$msg_text = translate($bonus['description']);
+					$nick2_chat = html_user_info($cur_object, array('no_user_info' => true, 'no_check_invisible' => true, 'chat_user' => true, 'chat_user_element' => 'span', 'no_marks' => true, 'norank' => true, 'ctl_menu' => true, 'url_add' => ' class="pnick" '));
+					$msg_text = str_replace('#NICK#', $nick2_chat, $msg_text);
+					if(mb_strpos($msg_text, 'NICK2') !== false) {
+						$nick2 = html_user_info($cur_object, array('no_user_info' => true, 'no_check_invisible' => true, 'no_marks' => true));
+						$nick2_chat = html_user_info($cur_object, array('no_user_info' => true, 'no_check_invisible' => true, 'chat_user' => true, 'chat_user_element' => 'span', 'no_marks' => true, 'norank' => true, 'ctl_menu' => true, 'url_add' => ' class="pnick" '));
+						$msg_text = str_replace('#NICK2#', $nick2, $msg_text);
+						$msg_text = str_replace('#NICK2CHAT#', $nick2_chat, $msg_text);
+					}
+					$param['user_id'] = $cur_object['id'];
+					$msg_text = tpl_common_tags($msg_text, $param);
+					$msg_text = str_replace('#OBJECT#', ($cur_object['object_class'] == OBJECT_CLASS_PARTY ? translate('Вашей группой') : translate('Вами')), $msg_text);
+					if (strpos($msg_text, '#LIST#') !== false) $msg_text = $list1 ? str_replace('#LIST#', $list1, $msg_text) : '';
+					$msg_text = str_replace('#LIST-#', $list2, $msg_text);
+				} else {
+					$msg_text = sprintf(($cur_object['object_class'] == OBJECT_CLASS_PARTY ? translate('Ваша группа получила бонус "%s"!') : translate('Вы получили бонус "%s"!')), translate($bonus['title']));
+					if ($list1) $msg_text .= ' (' . $list1 . ')';
+				}
+
+				if($msg_text && count($t1) > 0 && $in['add_start_msg']) {
+					$msg_text = $in['add_start_msg'].$msg_text;
+				}
+
+				if (!($bonus['flags'] & BONUS_FLAG_NOMESSAGE) && $bonus['flags'] & BONUS_FLAG_MSGALL) {
+					chat_msg_send_system($msg_text, CHAT_CHF_AREA, null, true);
+				}elseif ($cur_object['object_class'] == OBJECT_CLASS_USER) {
+					chat_msg_send_system($msg_text, CHAT_CHF_USER, $cur_object['id']);
+					if ($bonus['flags'] & BONUS_FLAG_DIALOG && $cur_object['level'] <= DIALOG_LEVEL_OFF) dialog_event_bonus($bonus['id'], $cur_object['id']);
+				} elseif ($cur_object['object_class'] == OBJECT_CLASS_PARTY) {
+					$user_ids = array();
+					if($in['user_ids']) {
+						$user_ids = $in['user_ids'];
+					}else {
+						$party_member_list = make_hash(party_member_list($cur_object['id'], PM_STATUS_ACTIVE),'user_id');
+						$user_ids = get_hash($party_member_list, 'user_id', 'user_id');
+					}
+
+					chat_msg_send_system($msg_text, CHAT_CHF_USER, $user_ids);
+				} elseif ($cur_object['object_class'] == OBJECT_CLASS_INSTANCE) {
+					chat_msg_send_system($msg_text, CHAT_CHF_AREA, CHAT_AREA_ID_INST + $cur_object['id'], true);
+				}
+
+				/*
+				if (!($bonus['flags'] & BONUS_FLAG_NOMESSAGE) && $bonus['flags'] & BONUS_FLAG_MSGALL && $bonus['description_all']) {
+					$msg_text = '';
+					if ($bonus['description_all']) {
+						$msg_text = translate($bonus['description_all']);
+						$msg_text = str_replace('#NICK#',$cur_object['nick'],$msg_text);
+						if(mb_strpos($msg_text, 'NICK2') !== false) {
+							$nick2 = html_user_info($cur_object, array('no_user_info' => true, 'no_check_invisible' => true, 'no_marks' => true));
+							$nick2_chat = html_user_info($cur_object, array('no_user_info' => true, 'no_check_invisible' => true, 'chat_user' => true, 'chat_user_element' => 'span', 'no_marks' => true, 'norank' => true, 'ctl_menu' => true, 'url_add' => ' class="pnick" '));
+							$msg_text = str_replace('#NICK2#', $nick2, $msg_text);
+							$msg_text = str_replace('#NICK2CHAT#', $nick2_chat, $msg_text);
+						}
+						$param['user_id']=$cur_object['id'];
+						$msg_text = tpl_common_tags($msg_text,$param);
+						$msg_text = str_replace('#OBJECT#', ($cur_object['object_class'] == OBJECT_CLASS_PARTY ? translate('Вашей группой') : translate('Вами')), $msg_text);
+						if (strpos($msg_text,'#LIST#') !== false) $msg_text = $list1 ? str_replace('#LIST#',$list1,$msg_text): '';
+						$msg_text = str_replace('#LIST-#',$list2,$msg_text);
+					} else {
+						$msg_text = sprintf(($cur_object['object_class'] == OBJECT_CLASS_PARTY ? translate('Ваша группа получила бонус "%s"!') : translate('Вы получили бонус "%s"!')),translate($bonus['title']));
+						if ($list1) $msg_text .= ' ('.$list1.')';
+					}
+					chat_msg_send_system($msg_text,CHAT_CHF_AREA,null,true);
+				}
+				*/
+			}
+		}
+	}
+}
+
+function bonus_item_get_description(&$item) {
+	global $quality_info, $profession_info, $class_info, $combo_info;
+	global $kind_info, $user_stat_type_hash;
+
+	$descr_str = '';
+	switch ($item['type']) {
+		default:
+			$descr_str = sprintf(translate('неизвестный тип элемента "%s"'),$item['type']);
+			break;
+		case 'NOTHING':
+			$descr_str = translate('НИЧЕГО НЕ ВЫДАВАТЬ');
+			break;
+		case 'ARTIFACT':
+			$artikul = artifact_artikul_get(intval($item['field']));
+			$slot = $item['value2'] ? slot_get($item['value2']) : false;
+			$t = array($item['value1'] >= 0 ? translate('выдать') : translate('изъять'));
+			if ($item['flags'] & BONUS_ITF_NOGIVE) $t[] = translate('без передачи');
+			if ($item['flags'] & BONUS_ITF_NOSELL) $t[] = translate('нельзя сдать в скупку');
+			if ($item['flags'] & BONUS_ITF_BOE) $t[] = translate('непередаваем после надевания');
+			if ($item['flags'] & BONUS_ITF_DURAB30) $t[] = translate('30% прочности');
+			if ($item['flags'] & BONUS_ITF_TIME_VALIDITY) $t[] = translate('применить время жизни').' "'.($item['value3'] == 0 ? 'безгранично' : html_period_str($item['value3'])).'"';
+			if ($item['value4'] != '' && $item['value4'] > 0) $t[] = 'рандомный скилл ['.$item['value4'].']';
+			$tpl = translate('артефакт <a class="imp bonus_item_artifact" href="index.php?clear_filter=1&amp;mod=artifact_artikul&amp;filter[id]=%d">%s {%1$d}</a>, %d шт (%s)');
+			$descr_str = sprintf($tpl,$artikul['id'],_artifact_artikul_title($artikul),intval($item['value1']),implode(', ',$t));
+			if ($slot) $descr_str .= ' '.sprintf(translate('(слот "%s")'),$slot['title']);
+			break;
+		case 'SKILL':
+			$skill = skill_get($item['field']);
+			$tpl = $item['flags'] & BONUS_ITF_RELATIVE ? translate('изменить характеристику "%s" на %d'): translate('установить характеристику "%s" в %d');
+			$tpl = $item['flags'] & BONUS_ITF_RELATIVE ? translate('изменить характеристику <a class="imp bonus_item_skill" href="index.php?clear_filter=1&amp;mod=skill&amp;action=edit&amp;ref=%s">%s</a> на %d'): translate('установить характеристику <a class="imp bonus_item_skill" href="index.php?clear_filter=1&amp;mod=skill&amp;action=edit&amp;ref=%s">%s</a> в %d');
+			if ($item['flags'] & BONUS_ITF_TIME) $tpl .= translate(' относительно текущего времени');
+			if ($item['flags'] & BONUS_ITF_F_INSTSKILL) $tpl .= translate(' (отдать инстансу)');
+			$descr_str = sprintf($tpl,$skill['id'],$skill['title'],$item['value1']);
+			if ($item['flags'] & BONUS_ITF_HAVESKILL) $descr_str .= translate(', если существует');
+			break;
+		case 'SKILL_DELETE':
+			$skill = skill_get($item['field']);
+			$tpl = translate('удалить характеристику <a class="imp bonus_item_skill" href="index.php?clear_filter=1&amp;mod=skill&amp;action=edit&amp;ref=%s">%s</a>');
+			$descr_str = sprintf($tpl,$skill['id'],$skill['title']);
+			break;
+		case 'ACTION':
+			$action = action_get($item['field']);
+			$descr_str = sprintf(translate('действие <a class="imp bonus_item_action" href="index.php?clear_filter=1&amp;mod=action&amp;action=edit&amp;ref=%d">%s</a>'),$action['id'],$action['title']);
+			if ($item['value1']) $descr_str .= sprintf(translate(', %d шт'),intval($item['value1']));
+			break;
+		case 'STAT':
+			$tpl = $item['flags'] & BONUS_ITF_RELATIVE ? translate('изменить статистику "%s" на %d') : translate('установить статистику "%s" в %d');
+
+			$stat = array(
+				'object_id' => intval($item['field']),
+				'type_id' => intval($item['value2']),
+			);
+
+			$descr = user_stat_get_description($stat);
+			$descr_str = sprintf($tpl, $descr, $item['value1']);
+			if ($item['flags'] & BONUS_ITF_HAVESKILL) $descr_str .= translate(', если существует');
+			break;
+		case 'STAT_DELETE':
+			$stat = array(
+				'object_id' => intval($item['field']),
+				'type_id' => intval($item['value2']),
+			);
+			$descr = user_stat_get_description($stat);
+
+			$descr_str = sprintf(translate('удалить статистику "%s"'), $descr);
+			break;
+		case 'MONEY':
+			$descr_str = sprintf(translate('деньги, %s %s'),html_money_str(intval($item['field']),$item['value1']),($item['value1'] >= 0 ? translate('выдать') : translate('изьять')));
+			break;
+		case 'BONUS':
+			$bonus = bonus_get(intval($item['field']));
+			$descr_str = sprintf(translate('выдать бонус <a class="imp bonus_item_bonus" href="index.php?clear_filter=1&amp;mod=bonus&amp;filter[id]=%d">%s {%1$d}</a> тому же объекту'), $bonus['id'], $bonus['title']);
+			break;
+		case 'BONUS_INSTANCE':
+			$bonus = bonus_get(intval($item['field']));
+			$descr_str = sprintf(translate('выдать бонус <a class="imp bonus_item_bonus" href="index.php?clear_filter=1&amp;mod=bonus&amp;filter[id]=%d">%s {%1$d}</a> текущему инстансу'),$bonus['id'],$bonus['title']);
+			break;
+		case 'BONUS_PARTY':
+			$bonus = bonus_get(intval($item['field']));
+			$descr_str = sprintf(translate('выдать бонус <a class="imp bonus_item_bonus" href="index.php?clear_filter=1&amp;mod=bonus&amp;filter[id]=%d">%s {%1$d}</a> членам группы (%s)'),$bonus['id'], $bonus['title'],($item['value1'] > 0 ? sprintf(translate('не более %d случайных'),$item['value1']) : translate('всем')));
+			break;
+		case 'BONUS_CLAN':
+			$bonus = bonus_get(intval($item['field']));
+			$descr_str = sprintf(translate('выдать бонус <a class="imp bonus_item_bonus" href="index.php?clear_filter=1&amp;mod=bonus&amp;filter[id]=%d">%s</a> членам клана (%s)'),$bonus['id'], $bonus['title'],($item['value1'] > 0 ? sprintf(translate('от %d до %d случайных'),$item['value1'],$item['value2']) : translate('всем')));
+			break;
+		case 'AREA':
+			$area = area_get($item['field']);
+			$descr_str = sprintf(translate('переместить в <a class="imp bonus_item_area" href="index.php?clear_filter=1&amp;mod=area&amp;action=edit&amp;ref=%d&amp;parent=%d">%s {%1$d}</a>'),$area['id'],$area['parent_id'],implode(' / ',get_hash(array_reverse(area_chain(intval($area['id']))))));
+			break;
+		case 'COMBO':
+			$combo_id = intval($item['field']);
+			$level = intval($item['value1']);
+			if ($combo_id) {
+				$combo = $combo_info[intval($item['field'])];
+				$descr_str = sprintf(translate('выдать комбо "%s"'),$combo['title']);
+			} else $descr_str = sprintf(translate('выдать любое комбо %d уровня'),$level);
+			break;
+		case 'COMBO_DISCOVER':
+			$descr_str = sprintf(translate('открыть неизвестное комбо %d уровня'),intval($item['value1']));
+			break;
+		case 'COMBO_CLEAR':
+			$descr_str = translate('сброс комбо');
+			break;
+		case 'PROFESSION':   // выдать профессию
+			$descr_str = sprintf(translate('выдать профессию "%s"'),$profession_info[$item['field']]['title']);
+			break;
+		case 'PROFESSION_DROP':   // удалить профессию
+			$descr_str = sprintf(translate('отказ от профессии "%s"'),$profession_info[$item['field']]['title']);
+			break;
+		case 'BOT_ATTACK':   // атака бота
+			$artikul = bot_artikul_get(intval($item['field']));
+			$descr_str = sprintf(translate('атака бота <a class="imp bonus_item_bot" href="index.php?clear_filter=1&amp;mod=bot_artikul&amp;filter[id]=%d">%s {%1$d}</a> '.($item['value1'] ? $item['value1'].' шт.' : '')),$artikul['id'],_bot_artikul_title($artikul));
+			break;
+		case 'BOT_HELP':   // помощь бота в бою
+			$artikul = bot_artikul_get(intval($item['field']));
+			$descr_str = sprintf(translate('помощь бота <a class="imp bonus_item_bot" href="index.php?clear_filter=1&amp;mod=bot_artikul&amp;filter[id]=%d">%s {%1$d}</a> в бою '.($item['value1'] ? $item['value1'].' шт.' : '')),$artikul['id'],_bot_artikul_title($artikul));
+			break;
+		case 'CLAN_LEVEL':   // выдача уровня клану
+			$descr_str = sprintf(translate('установить уровень клана в "%s"'),intval($item['value1']));
+			break;
+		case 'CLAN_STAT':	// выдача клановой статистики
+			$tpl = $item['flags'] & BONUS_ITF_RELATIVE ? translate('изменить статистику "%s" на %d') : translate('установить статистику "%s" в %d');
+			$clan_stat_artikul = clan_stat_artikul_get(array('id' => intval($item['field'])));
+			$descr_str = sprintf($tpl, $clan_stat_artikul['title'], $item['value1']);
+			if ($item['flags'] & BONUS_ITF_HAVESKILL) $descr_str .= translate(', если существует');
+			break;
+		case 'RANK':   // изменить звание
+			$descr_str = sprintf(translate('изменить звание на %d %s'),$item['value1'],common_decline($item['value1'],translate('пункт'),translate('пункта'),translate('пунктов')));
+			break;
+		case 'BANK_CELL':   // изменить общее кол-во мест в банковской ячейке
+			$bank = area_get($item['field']);
+			$descr_str = sprintf(translate('изменить кол-во места в банковской ячейке в "%s" на %d'), $bank['title'], $item['value1']);
+			break;
+		case 'CLASS':   // смена школы магии
+			$descr_str = sprintf(translate('сменить школу магии на "%s"'),$class_info[$item['field']]['title']);
+			break;
+		case 'CASTLE_TAX':   // замковый налог
+			$castle = castle_get($item['field']);
+			$descr_str = sprintf(translate('сборы замка <a class="imp bonus_item_castle" href="index.php?clear_filter=1&amp;mod=castle&amp;filter[id]=%d">%s {%1$d}</a> за посещение территорий'),$castle['id'],$castle['title']);
+			break;
+		case 'CASTLE_OWNER':   // владелец замка
+			$castle = castle_get($item['field']);
+			$descr_str = sprintf(translate('владелец замка <a class="imp bonus_item_castle" href="index.php?clear_filter=1&amp;mod=castle&amp;filter[id]=%d">%s {%1$d}</a>'),$castle['id'],$castle['title']);
+			break;
+		case 'CASTLE_SKILL': // выдача характеристики замку
+			$skill = skill_get($item['field']);
+			$tpl = $item['flags'] & BONUS_ITF_RELATIVE ? translate('изменить характеристику замка "%s" на %d'): translate('установить характеристику замка "%s" в %d');
+			$descr_str = sprintf($tpl,$skill['title'],$item['value1']);
+			if ($item['flags'] & BONUS_ITF_HAVESKILL) $descr_str .= translate(', если существует');
+			break;
+		case 'SLOT_CLEAN':   // очистка слота
+			$descr_str = sprintf(translate('очистка слота "%s"'),$item['value2']);
+			break;
+		case 'CURE':   // полное лечение
+			$descr_str = translate('полное лечение');
+			break;
+		case 'LEARN_SPELL':   // выучить заклинание
+			$spell = artifact_artikul_get($item['field']);
+			$descr_str = sprintf(translate('выучить заклинание "%s"'),$spell['title']);
+			break;
+		case 'EVENT_TASK': // значение задачи этапа события
+			$task = event_point_task_get($item['field']);
+			$point = event_point_get($task['point_id']);
+			$tpl = sprintf(translate('изменить значение задачи "%s" этапа "%s" на %d'),$task['title'],$point['title'],$item['value1']);
+			$descr_str = sprintf($tpl,$skill['title'],$item['value1']);
+			if ($item['value2']) $descr_str .= translate(', если данный этап активен');
+			break;
+		case 'NOTIFICATION': // Сообщение в чат
+			$descr_str = sprintf(translate('отправить сообщение в чат: "%s"'), $item['value2']);
+			if ($item['value1']) $descr_str.=sprintf(translate('; только для расы "%s"'),$kind_info[$item['value1']]['title']);
+			break;
+		case 'FBFEED':
+			$descr_str = sprintf(translate('опубликовать в facebook feed #%s'), $item['field']);
+			break;
+		case 'QUEST_POINT_END': // завершить этап квеста
+			$quest_point = quest_point_get($item['field']);
+			$quest = quest_get($quest_point['quest_id']);
+			$descr_str = sprintf(translate('завершить этап "%s" квеста "%s"'),$quest_point['title'],$quest['title']);
+			break;
+		case 'QUEST_USER_DELETE':
+			$quest = quest_get($item['field']);
+			$descr_str = sprintf(translate('Удалить квест у игрока "['.$quest['id'].']%s"'),$quest['title']);
+			break;
+		case 'ACHIEVEMENT': // получить достижение
+			require_once('lib/achievement.lib');
+			$achievement = achievement_get($item['field']);
+			$descr_str = sprintf(translate('получить заслугу <a class="imp bonus_item_achievement" href="index.php?clear_filter=1&amp;mod=achievement&amp;filter[id]=%d">%s {%1$d}</a>'),$achievement['id'],$achievement['title']);
+			break;
+		case 'PET_CREATE':
+			$pet_id = intval($item['field']);
+			$cnt = intval($item['value1']);
+			require_once("lib/pet.lib");
+			$pet = pet_artikul_get($pet_id);
+			$descr_str = sprintf(translate('Выдать Питомца <a class="imp bonus_item_pet" href="index.php?clear_filter=1&amp;mod=pet_artikul&amp;filter[id]=%d">%s {%1$d}</a> %dшт.'),$pet['id'],$pet['title'],$cnt);
+			break;
+		case 'PET_UPGRADE':
+			$pet_group_id = intval($item['field']);
+			require_once("lib/pet.lib");
+			$pet_group = pet_group_get($pet_group_id);
+			$descr_str = sprintf(translate('Произвести апгрейд питомца группы "%s"'), $pet_group['title']);
+			break;
+		case 'SET_TEMPVAR':
+			$name = strval($item['field']);
+			$value = intval($item['value1']);
+			$skill_id = strval($item['value2']);
+			$relative = (bool)($item['flags'] & BONUS_ITF_RELATIVE);
+			$if_set = (bool)($item['flags'] & BONUS_ITF_HAVESKILL);
+
+			if ($skill_id) {
+				$skill = skill_get($skill_id);
+			} else {
+				$skill = false;
+			}
+
+			if (!$relative) {
+				$text = translate('Установить временной переменной "<b>%s</b>" значение %s');
+			} else {
+				if ($value > 0 || $skill) {
+					$text = translate('Прибавить к значению временной переменной "<b>%s</b>" значение %s');
+				} elseif ($value < 0) {
+					$text = translate('Отнять от значения временной переменной "<b>%s</b>" значение %s');
+					$value = abs($value);
+				} else {
+					$descr_str = translate('Не изменять значение временной переменной');
+					break;
+				}
+			}
+
+			if ($if_set) {
+				$add = translate(', если переменная установлена ранее');
+			} else {
+				$add = '';
+			}
+
+			if ($skill) {
+				$text_value = sprintf('%s "<b>%s</b>"', translate('характеристики'), $skill['title']);
+			} else {
+				$text_value = sprintf('"<b>%s</b>"', $value);
+			}
+
+			$descr_str = sprintf($text.'%s', $name, $text_value, $add);
+			break;
+		case 'ARTIKUL_CHANGE':
+			$source_artikul_id = intval($item['field']);
+			$target_artikul_id = intval($item['value2']);
+			$artikul_hash = get_hash(artifact_artikul_list(array('id' => array($source_artikul_id, $target_artikul_id))));
+			$descr_str = sprintf(translate('Замена артикула <a class="imp bonus_item_artikul" href="index.php?clear_filter=1&amp;mod=artifact_artikul&amp;filter[id]=%d">%s {%1$d}</a> на <a class="imp" href="index.php?clear_filter=1&amp;mod=artifact_artikul&amp;filter[id]=%d">%s {%2$d}</a>'),
+				$source_artikul_id, $artikul_hash[$source_artikul_id],
+				$target_artikul_id, $artikul_hash[$target_artikul_id]);
+			break;
+		case 'USER_LEVEL':   // выдача уровня пользователю
+			$tpl = $item['flags'] & BONUS_ITF_RELATIVE ? translate('изменить уровень пользователя на %d'): translate('установить уровень пользователья в %d');
+			$descr_str = sprintf($tpl, intval($item['value1']));
+			break;
+		case 'LEVELUP_WINDOW':
+			$descr_str = translate('Окно получения уровня');
+			break;
+		case 'EFF_REGISTER':
+			$descr_str = translate('Посчитать получение 2+ уровень для данного пользователя (старая эфф.регистрация)');
+			break;
+		case 'POST':
+			$descr_str = translate('сообщение в почтовый ящик');
+			break;
+		case 'CASTLETOWER_REQ':   // владелец замка
+			$area = area_get($item['field']);
+			$descr_str = sprintf(translate('Заявка на битву за локацию "%s"'),$area['title']);
+			break;
+		case 'REPLACE_SKILL':	// замена характеристики
+			$descr_str = translate('Замена скилла');
+			$skill1_id = $item['value1'];
+			$skill2_id = $item['value2'];
+			if ($skill1_id && $skill2_id) {
+				$skill1 = skill_get($skill1_id);
+				$skill2 = skill_get($skill2_id);
+				if ($skill1 && $skill2) {
+					$descr_str = sprintf(translate('Заменить скилл "%s" на "%s"'), $skill1['title'], $skill2['title']);
+				}
+			}
+			break;
+		case 'REPLACE_STAT': // замена статистики
+			$descr_str = translate('Замена статистики');
+			if ($item['field'] && $item['value1'] && $item['value2']) {
+				$stat = array(
+					'object_id' => intval($item['value1']),
+					'type_id' => intval($item['field']),
+				);
+				$descr1 = user_stat_get_description($stat);
+
+				$stat['object_id'] = intval($item['value2']);
+				$descr2 = user_stat_get_description($stat);
+
+				$descr_str = sprintf(translate('Замена типа статистики "%s": "%s" на "%s"'), $user_stat_type_hash[$item['field']], $descr1, $descr2);
+			}
+			break;
+		case 'STREAM_PUBLISH':
+			$descr_str = translate('Предложить написать в "Что нового"');
+			break;
+		case 'WIDGET_PUBLISH':
+			$descr_str = translate('Обновить виджет соц. сети');
+			break;
+		case 'SMILE':
+			$smail_tag = strval($item['field']);
+			$smile = smile_get(array('tag'=>$smail_tag));
+			if ($smile) {
+				$descr_str = sprintf(translate('Добавить смайл: %s'), rtag($smile));
+			} else $descr_str  = translate('Неизвестный смайл');
+			break;
+		case 'PETS_ENTITY':
+			$artifact_artikul = artifact_artikul_get(intval($item['field']));
+			$pet_group = pet_group_get(intval($item['value2']));
+			$descr_str = translate('Выдать сущность питомцев тому же объекту');
+			break;
+		case 'PETS_EXP':
+			$value = intval($item['value1']);
+			$descr_str = sprintf(translate('Выдать %d опыта питомцу'), $value);
+			break;
+		case 'GIFT':
+			$artikul = artifact_artikul_get(intval($item['field']));
+			$tpl = translate('Подарок <a class="imp  bonus_item_artikul" href="index.php?clear_filter=1&amp;mod=artifact_artikul&amp;filter[id]=%d">%s {%1$d}</a>, сроком жизни - %s');
+
+			if ($item['value1']==="") {
+				$expire_str = translate('взять с артикула');
+			} elseif ($item['value1'] === '0') {
+				$expire_str = translate('вечно');
+			} else {
+				$expire_str = sprintf(translate('%d дней'), $item['value1']);
+			}
+
+			$descr_str = sprintf($tpl, $artikul['id'], _artifact_artikul_title($artikul), $expire_str);
+			break;
+		case 'CLAN_GIFT':
+			$descr_str = translate('Клановый подарок');
+			break;
+		case 'UNLEARN_SPELL':
+			$artikul = artifact_artikul_get((int) $item['field']);
+			$descr_str = sprintf(translate('Удалить заклинание %s'), $artikul['title']);
+			break;
+		case 'MINIGAMES_MONEY':
+			$value = intval($item['value1']);
+			$descr_str = sprintf(translate('Выдать %d денежных едениц в минииграх'), $value);
+			break;
+		case 'ADD_WORK':
+			$descr_str = sprintf(translate('Изменить энергию на %s'), $item['value1']);
+			break;
+		case 'ESTATE_AREA':
+			$area = area_get($item['field']);
+			$descr_str = sprintf(translate('Дать участок в локации "%s"'), $area['title']);
+			break;
+		case 'AVATAR':
+			$avatar_artikul = user_avatar_artikul_get($item['field']);
+			$descr_str = sprintf(($item['value1'] ? translate('Изъять образ: %s') : translate('Выдать образ: %s')), $avatar_artikul['title']);
+			if ($item['value2'] && !$item['value1']) $descr_str .= sprintf(translate(' на срок в %s секунд'), $item['value2']);
+			break;
+		case 'FON':
+			$fon_artikul = user_fon_artikul_get($item['field']);
+			$descr_str = sprintf(($item['value1'] ? translate('Изъять фон: %s') : translate('Выдать фон: %s')), $fon_artikul['title']);
+			if ($item['value2'] && !$item['value1']) $descr_str .= sprintf(translate(' на срок в %s секунд'), $item['value2']);
+			break;
+		case 'CLOAK':
+			$cloak_artikul = user_cloak_artikul_get($item['field']);
+			$descr_str = sprintf(($item['value1'] ? translate('Изъять плащ: %s') : translate('Выдать плащ: %s')), $cloak_artikul['title']);
+			if ($item['value2'] && !$item['value1']) $descr_str .= sprintf(translate(' на срок в %s секунд'), $item['value2']);
+			break;
+		case 'HIDDEN_INFO_GRANT':
+			if (!$item['value1']) {
+				$descr_str = translate('Выдать пользователю право скрывать информацию по желанию.');
+			} else {
+				$descr_str = translate('Изъять у пользователя право скрывать информацию по желанию.');
+			}
+			break;
+		case 'GENDER_CHANGE':
+			$descr_str = translate('Изменить пол на противоположный');
+			break;
+		case 'REMOVE_STACK':
+			$artifact_type = artifact_type_get( false, sql_pholder( " AND id=?", intval( $item['value1'])));
+			$descr_str = sprintf( translate( "Изъять %d стэков по %d артефактов типа '%s'"), intval( $item['value2']['stacks']), intval( $item['value2']['items']), $artifact_type['title']);
+			break;
+		case 'REMOVE_STACK_FORCE':
+			$artifact_type = artifact_type_get( false, sql_pholder( " AND id=?", intval( $item['value1'])));
+			$descr_str = sprintf( translate( "Изъять %d стэков по %d артефактов типа '%s' все равно епт"), intval( $item['value2']['stacks']), intval( $item['value2']['items']), $artifact_type['title']);
+			break;
+		case 'CHANGE_HP':
+			$descr_str = (($item['flags'] & BONUS_ITF_RELATIVE) ? translate('Изменить HP на ') : translate('Установить HP в ')) . $item['value1'] . (($item['flags'] & BONUS_ITF_PERCENT) ? '%' : '');
+			break;
+		case 'CHANGE_MP':
+			$descr_str = (($item['flags'] & BONUS_ITF_RELATIVE) ? translate('Изменить MP на ') : translate('Установить MP в ')) . $item['value1'] . (($item['flags'] & BONUS_ITF_PERCENT) ? '%' : '');
+			break;
+		case 'GLOBAL_SKILL':
+			$global_skill = global_skill_get(array('id' => $item['field']));
+			$tpl = $item['flags'] & BONUS_ITF_RELATIVE ? translate('изменить характеристику "%s" на %d'): translate('установить характеристику "%s" в %d');
+			$tpl = $item['flags'] & BONUS_ITF_RELATIVE ? translate('изменить характеристику <a class="imp bonus_item_skill" href="index.php?clear_filter=1&amp;mod=global_skill&amp;action=edit&amp;ref=%s">%s</a> на %d'): translate('установить характеристику <a class="imp bonus_item_skill" href="index.php?clear_filter=1&amp;mod=global_skill&amp;action=edit&amp;ref=%s">%s</a> в %d');
+			$descr_str = sprintf($tpl, $global_skill['id'], $global_skill['title'], $item['value1']);
+			break;
+		case 'BLINK_BUTTON':
+			global $swf_top_button_hash, $swf_right_button_hash;
+
+			$buttons = array();
+			for ($i = 0; $i < 32; $i++) {
+				$val = 1 << $i;
+				if ($val & $item['value1'])
+					$buttons[0][] = $swf_top_button_hash[$val];
+				if ($val & $item['value2'])
+					$buttons[1][] = $swf_right_button_hash[$val];
+			}
+
+			$descr_str = sprintf(translate('мигать кнопками пользовательского интерфейса [верхние: %s; правые: %s; переходы: %s]'),
+				implode(', ', $buttons[0]), implode(', ', $buttons[1]), $item['field']);
+			break;
+		case 'ADV_MEDAL':
+			$adv_medal_item = adv_medal_item_get($item['field']);
+			$descr_str = sprintf(translate('Выдать орден "%s"'), $adv_medal_item['title']);
+			break;
+		case 'COMPANION_CREATE':
+			$descr_str = 'Создать тень игроку';
+			break;
+		case 'COMPANION_SKILL':
+			$skill = skill_get($item['field']);
+			$tpl = $item['flags'] & BONUS_ITF_RELATIVE ? translate('изменить характеристику тени "%s" на %d'): translate('установить характеристику тени "%s" в %d');
+			if ($item['flags'] & BONUS_ITF_TIME) $tpl .= translate(' относительно текущего времени');
+			$tpl = $item['flags'] & BONUS_ITF_RELATIVE ? translate('изменить характеристику тени <a class="imp bonus_item_skill" href="index.php?clear_filter=1&amp;mod=skill&amp;action=edit&amp;ref=%s">%s</a> на %d'): translate('установить характеристику тени <a class="imp bonus_item_skill" href="index.php?clear_filter=1&amp;mod=skill&amp;action=edit&amp;ref=%s">%s</a> в %d');
+			$descr_str = sprintf($tpl,$skill['id'],$skill['title'],$item['value1']);
+			if ($item['flags'] & BONUS_ITF_HAVESKILL) $descr_str .= translate(', если существует');
+			break;
+		case 'COMPANION_SKILL_DEL':
+			$skill = skill_get($item['field']);
+			$tpl = translate('удалить характеристику тени <a class="imp bonus_item_skill" href="index.php?clear_filter=1&amp;mod=skill&amp;action=edit&amp;ref=%s">%s</a>');
+			$descr_str = sprintf($tpl,$skill['id'],$skill['title']);
+			break;
+		case 'USER_REF':
+			$ref_s = user_ref_awards_artikul_get($item['field']);
+			$descr_str = 'Награда рефа "'.$ref_s['title'].'"';
+			break;
+		case 'USER_GLORY':
+			global $user_glory_type_hash;
+			$descr_str = 'Счетчик свершения "'.$user_glory_type_hash[$item['field']].'" + '.($item['value1']);
+			break;
+		case 'ACTIVITY':
+			$activity_list = activity_list(array('stat' => ACTIVITY_STAT_BONUS, 'stat_id' => $item['field']));
+			$activity_list_title = array();
+			foreach ($activity_list as $activity){ $activity_list_title[] = $activity['title']; }
+			$descr_str = 'Увеличение активностей "'.implode(',',$activity_list_title).'" +'.(($item['value1'] ? $item['value1'] : ' <i title="Временно не используется!">(+'.$item['value2'].')</i>'));
+			break;
+		case 'ROLLING_ITEM':
+			$roll_artikul = rolling_artikul_get($item['field']);
+			$descr_str = 'Выдать ролл [id:'.$roll_artikul['id'].'] [art_id:'.$roll_artikul['artikul_id'].' cnt:'.$roll_artikul['artikul_cnt'].']'.($roll_artikul['artikul_id2'] ? ' [art_id2:'.$roll_artikul['artikul_id2'].' cnt:'.$roll_artikul['artikul_cnt2'].']' : '').($roll_artikul['bonus_id'] ? ' [bonus_id:'.$roll_artikul['bonus_id'].']' : '');
+			break;
+		case 'USER_GUIDE':
+			$user_guide = user_guide_get($item['field']);
+			$descr_str = 'Выдать гайд ['.$user_guide['description'].']';
+			break;
+		case 'DAY_PROMOCODE':
+			$descr_str = 'Сгенерировать промокод и отправить игроку';
+			break;
+		case 'LITE_ACTION':
+			$lite_pass_action = lite_pass_action_get($item['field']);
+			$descr_str = 'Выдать действие сезона "'.$lite_pass_action['title'].'"';
+			break;
+		case 'SQUEST_ACTION':
+			$descr_str = 'Выдать +1 задание урчи ID: "'.$item['field'].'"';
+			break;
+	}
+	return $descr_str;
+}
+
+function bonus_copy($param) {
+	require_once("lib/restriction.lib");
+	$old_id = $param['id'];
+	unset($param['id']);
+	$new_id = bonus_save($param);
+	if (!$new_id) return false;
+
+	$bonus_items = bonus_item_list($old_id,' ORDER BY id');
+	foreach($bonus_items as $bonus_item) {
+		bonus_item_copy($bonus_item, $new_id);
+	}
+
+	return $new_id;
+}
+
+function bonus_item_copy($param, $bonus_id) {
+	$param['bonus_id'] = $bonus_id;
+	$old_id = $param['id'];
+	unset($param['id']);
+	$new_id = bonus_item_save($param);
+	if (!$new_id) return false;
+
+	$restrictions = restriction_list(OBJECT_CLASS_BONUS_ITEM, $old_id);
+	foreach($restrictions as $restriction) {
+		restriction_copy($restriction, $new_id);
+	}
+
+	return $new_id;
+}
+
+
+function req_awards_lock($loc_key, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$loc_key) return false;
+	return $tq->capture('REQ_AWARDS_'.$loc_key,$timewait,$timelock);
+}
+
+function req_awards_unlock($loc_key) {
+	global $tq;
+	if (!$loc_key) return false;
+	return $tq->release('REQ_AWARDS_'.$loc_key);
+}
+
+
+function bonus_cicle_stack_overflow_check(){
+	ob_start();
+	$info = array();
+	$bonus_list = make_hash(bonus_list());
+	$bonus_item_list = make_hash(bonus_item_list(false, sql_pholder(' AND type IN (?@)', array('BONUS_INSTANCE', 'BONUS_PARTY', 'BONUS')), 'id, bonus_id,field'), 'bonus_id', true);
+	foreach ($bonus_list as $bonus){
+		$i = 0;
+		bonus_circle_items($bonus_item_list, $bonus['id'], $i, $info);
+		if($i >= 20000) echo 'Зацикливается id:'.$bonus['id'].'<br>';
+	}
+	common_fldsort($info, true, 'cnt');
+	$i = 0;
+	foreach ($info as $bonus_id=>$info){
+		echo 'id:'. $bonus_id.' вызвался '.($info['cnt'] + 15000).' раз, после чего вызов прервался намеренно.<br>';
+		if($i >= 50) break;
+		$i++;
+	}
+	return ob_get_clean();
+}
+function bonus_circle_items($bonus_item_list, $bonus_id, &$i, &$info){
+	foreach ($bonus_item_list[$bonus_id] as $bonus_item){
+		$i++;
+		if($i >= 15000) $info[$bonus_item['field']]['cnt']++;
+		if($i >= 20000) break;
+		bonus_circle_items($bonus_item_list, $bonus_item['field'], $i, $info);
+	}
+}
+?>

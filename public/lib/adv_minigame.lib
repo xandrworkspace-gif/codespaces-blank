@@ -1,0 +1,134 @@
+<?
+
+define('TABLE_ADV_MINIGAME', 'adv_minigame');
+define('TABLE_ADV_MINIGAME_USER', 'adv_minigame_user');
+
+define('ADV_MINIGAME_FLAG_ACTIVE', 0x00000001); //Награда активна
+
+define('ADV_MINIGAME_ARTIKUL_ID', 8415); //Артикул 5 дневки
+
+$adv_minigame_flags_hash = array(
+    ADV_MINIGAME_FLAG_ACTIVE => 'Награда активна',
+);
+
+$adv_mg_days = array(
+    1 => array(
+        'cards' => 1,
+        'prob_min' => 35,
+        'prob_max' => 65,
+    ),
+    2 => array(
+        'cards' => 2,
+        'prob_min' => 35,
+        'prob_max' => 65,
+    ),
+    3 => array(
+        'cards' => 3,
+        'prob_min' => 35,
+        'prob_max' => 65,
+    ),
+    4 => array(
+        'cards' => 3,
+        'prob_min' => 10,
+        'prob_max' => 50,
+    ),
+    5 => array(
+        'cards' => 3,
+        'prob_min' => 10,
+        'prob_max' => 50,
+    ),
+);
+
+$adv_minigame_prob_hash = array(
+    10 => 10,
+    20 => 20,
+    35 => 35,
+    45 => 45,
+    50 => 50,
+    65 => 65,
+    100 => 100,
+);
+
+#Работа с базой данных
+function adv_minigame_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_MINIGAME,$ref,$add);
+}
+
+function adv_minigame_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_MINIGAME,$ref,$add);
+}
+
+function adv_minigame_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_MINIGAME, $ref, $add);
+}
+
+function adv_minigame_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_MINIGAME,$param);
+}
+
+function adv_minigame_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_MINIGAME,$ref,$add);
+    return true;
+}
+
+//////////////////////////////////////
+
+function adv_minigame_user_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_MINIGAME_USER,$ref,$add);
+}
+
+function adv_minigame_user_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_MINIGAME_USER,$ref,$add);
+}
+
+function adv_minigame_user_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_MINIGAME_USER, $ref, $add);
+}
+
+function adv_minigame_user_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_MINIGAME_USER,$param);
+}
+
+function adv_minigame_user_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_MINIGAME_USER,$ref,$add);
+    return true;
+}
+
+function calculate_chanse_mg($chanse = -1, $prob = 100) {
+    if($prob == 100) $prob = 100; //Ставим глобал проб
+    $rand = mt_rand(0,$prob);
+    if($rand <= $chanse){return true;}
+    return false;
+}
+
+function adv_minigame_cron(){
+    //Сбрасывает тем кто не сыграл в одном из дней (Сбрасывает к 1 дню!)
+    adv_minigame_user_save(array(
+        '_add' => sql_pholder(' AND dtime + 86400 < ?',time_current()),
+        '_set' => sql_pholder(' day = 0, cur_game = \'\', dtime = ?, game_over = 0, gift_get = 0',(mktime(23,59,59) + 1)),
+    ));
+
+    //Сбрасывает тем кто отыграл 5 дней (Сбрасывает к 1 дню!)
+    adv_minigame_user_save(array(
+        '_add' => sql_pholder(' AND dtime < ? AND day = 5',time_current()),
+        '_set' => sql_pholder(' day = 0, cur_game = \'\', dtime = ?, game_over = 0, gift_get = 0',(mktime(23,59,59) + 1)),
+    ));
+
+    //Сбрасывает тем кто отыграл и нужно повысить день (Повышает день +1)
+    adv_minigame_user_save(array(
+        '_add' => sql_pholder(' AND dtime < ? AND day < 5',time_current()),
+        '_set' => sql_pholder(' cur_game = \'\', dtime = ?, game_over = 0',(mktime(23,59,59) + 1)),
+    ));
+}

@@ -1,0 +1,51 @@
+<?php
+
+define('TABLE_ADV_MESSAGE_LIST','adv_message');
+define('FIELD_ADV_MESSAGE_LIST','');
+
+define('ADV_MESSAGE_MAX_CNT', 3);
+
+define('ADV_MESSAGE_FLAG_ACTIVE', 0x00001); //Сообщение активно
+
+$adv_message_period = array(
+    1 => array('id' => 1, 'title' => '3 минуты', 'period' => 180),
+    2 => array('id' => 2, 'title' => '6 минут',  'period' => 360),
+    3 => array('id' => 3, 'title' => '10 минут',  'period' => 600),
+    4 => array('id' => 4, 'title' => '20 минут',  'period' => 1200),
+    5 => array('id' => 5, 'title' => '30 минут',  'period' => 1800),
+    6 => array('id' => 6, 'title' => '1 час',  'period' => 3600),
+    7 => array('id' => 7, 'title' => '3 часа',  'period' => 10800),
+);
+
+//Зависимости
+require_once("lib/chat.lib");
+
+#Работа с базой данных
+function adv_message_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_MESSAGE_LIST,$ref,$add);
+}
+
+function adv_message_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_MESSAGE_LIST,$ref,$add);
+}
+
+function adv_message_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_MESSAGE_LIST, $ref, $add);
+}
+
+function adv_message_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_MESSAGE_LIST,$param,FIELD_ADV_MESSAGE_LIST);
+}
+
+function adv_message_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_MESSAGE_LIST,$ref,$add);
+    return true;
+}
+
+#Работа с базой данных

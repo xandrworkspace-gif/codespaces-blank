@@ -1,0 +1,177 @@
+<?
+
+define('RAID_MIN_USER_LEVEL', 3);	// минимальный уровень персонажа для входа в Рейд
+
+// флаги
+define('RAID_FLAG_ADMIN',          0x0001);	// Видимый только администраторами
+define('RAID_FLAG_NO_OUT_PENALTY', 0x0002);	// Без 3-часового штрафа за бегство
+
+// статусы очереди
+define('RAID_USER_STATUS_WAITING',       0);
+define('RAID_USER_STATUS_PENDING',       1);
+define('RAID_USER_STATUS_LOCKED',        2);
+
+define('RAID_REQ_TTL',       10800); // время жизни заявки
+define('RAID_PENDING_TTL',     300); // время ожидания подтверждения заявки
+define('RAID_STAT_TTL', 7*24*60*60); // время жизни статистики
+define('RAID_LOCK_COOLDOWN', 10800); // время кулдауна на вход
+define('RAID_LOCK_ORDER',     3600); // время штрафа за неподтверждённую заявку
+
+// Имена и поля таблиц
+define('TABLE_RAIDS','raids');
+define('FIELD_RAIDS','');
+define('TABLE_RAIDS_USERS','raid_users');
+define('FIELD_RAIDS_USERS','');
+define('TABLE_RAIDS_STATS','raid_stats');
+define('FIELD_RAIDS_STATS','');
+
+
+function raid_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_RAIDS,$ref,$add);
+}
+
+function raid_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_RAIDS,$ref,$add);
+}
+
+function raid_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_RAIDS, $ref, $add);
+}
+
+function raid_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_RAIDS,$param,FIELD_RAIDS);
+}
+
+function raid_delete($ref) {
+    global $db_2;
+    if (!$ref || is_array($ref)) return false;
+    common_delete($db_2,TABLE_RAIDS,$ref);
+    raid_user_delete(array('raid_id' => $ref));
+    //raid_stat_delete(array('raid_id' => $ref));
+    return true;
+}
+
+function raid_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_RAIDS_USERS,$ref,$add);
+}
+
+function raid_user_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_RAIDS_USERS,$ref,$add,$field_list);
+}
+
+function raid_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_RAIDS_USERS,$ref,$add);
+}
+
+function raid_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_RAIDS_USERS,$param,FIELD_RAIDS_USERS);
+}
+
+function raid_user_delete($ref, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_RAIDS_USERS,$ref,$add);
+}
+
+function raid_stat_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff, TABLE_RAIDS_STATS, $ref, $add);
+}
+
+function raid_stat_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff, TABLE_RAIDS_STATS, $ref, $add);
+}
+
+function raid_stat_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_RAIDS_STATS, $ref, $add);
+}
+
+function raid_stat_save($param) {
+    global $db_diff;
+    return common_save($db_diff, TABLE_RAIDS_STATS, $param, FIELD_RAIDS_STATS);
+}
+
+function raid_stat_delete($ref, $add='') {
+    global $db_diff;
+    if ((!$ref || is_array($ref)) && !$add) return false;
+    return common_delete($db_diff, TABLE_RAIDS_STATS, $ref, $add);
+}
+
+function raid_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('BRAID_'.intval($ref),$timewait,$timelock);
+}
+
+function raid_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('BRAID_'.intval($ref));
+}
+
+
+function raid_users_unset_inactive(&$raid_users) {
+    global $NODE_NUMS;
+    $user_ids = get_hash($raid_users, 'user_id', 'user_id');
+    $session_hash = array();
+    if ($user_ids) {
+        foreach ($NODE_NUMS as $nn) {
+            if (($nn == FRIDGE_NN) || !NODE_SWITCH($nn)) continue;
+            $session_hash = array_merge($session_hash, session_list(null,null,true,sql_pholder(' AND uid IN (?@)',$user_ids),'uid',true));
+        }
+    }
+    $session_hash = get_hash($session_hash, 'uid', 'uid');
+    $delete_user_ids = array();
+    $delete_user_ids_without_penalty = array();
+    foreach ($raid_users as $k => $user) {
+        if (isset($user['server_id']) && ($user['server_id'] != SERVER_ID)) continue;
+
+        if (!$session_hash[$user['user_id']]) {
+            if ($user['status'] == RAID_USER_STATUS_PENDING) {
+                $delete_user_ids[] = $user['user_id'];
+            } else {
+                $delete_user_ids_without_penalty[] = $user['user_id'];
+            }
+            unset($raid_users[$k]);
+            unset($user_ids[$user['user_id']]);
+        }
+    }
+    if ($delete_user_ids) raid_user_save(array(
+        '_add' => sql_pholder(' AND user_id IN (?@)', $delete_user_ids),
+        '_set' => sql_pholder('dtime = ?, status = ?', time_current()+RAID_LOCK_ORDER, RAID_USER_STATUS_LOCKED),
+    ));
+    if ($delete_user_ids_without_penalty) raid_user_delete(array('user_id' => $delete_user_ids_without_penalty));
+
+    $party_member_hash = $user_ids ? get_hash(party_member_list(null,PM_STATUS_ACTIVE,sql_pholder(' AND user_id IN (?@)',$user_ids)),'user_id','party_id') : array();
+    foreach($raid_users as $k => $user) {
+        if (($raid_users[$k]['server_id'] == SERVER_ID) && isset($party_member_hash[$user['user_id']])) {
+            $raid_users[$k]['party_id'] = $party_member_hash[$user['user_id']];
+        }
+    }
+
+    return true;
+}
+
+function raid_user_send_invite($user_id, $raid_id, $instance_id, $pending_time, $server_id = SERVER_ID) {
+    $raid_user = raid_user_get(array('user_id' => $user_id));
+    if ($raid_user['raid_id'] != $raid_id) return false;
+    if ($raid_user['instance_id'] || !$instance_id) return false;
+    if ($raid_user['status'] != RAID_USER_STATUS_WAITING) return false;
+    $raid = raid_get($raid_id);
+    if (!$raid_id) return false;
+    raid_user_save(array(
+        '_add' => sql_pholder(' AND user_id=? AND raid_id=? ', $user_id, $raid_id),
+        '_set' => sql_pholder('dtime = ?, instance_id = ?, server_id = ?', $pending_time, $instance_id, $server_id),
+    ));
+    chat_msg_send_system(sprintf(translate('<b class="redd">Для того, чтобы подтвердить свое участие в Рейде, нажмите</b> <b><a href="javascript: confirm_raid(%s)">СЮДА</a></b><b> не позднее %s.</b>'),$raid['id'], date('H:i:s', $pending_time)), CHAT_CHF_USER, $user_id);
+    return true;
+}

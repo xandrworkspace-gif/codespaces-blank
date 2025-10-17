@@ -1,0 +1,35 @@
+<? # $Id: ADD_MP.action,v 1.3 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "поднять MP"
+
+if (!in_array($subject['object_class'], array(OBJECT_CLASS_USER))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if ($subject['flags'] & USER_FLAG_GHOST) {
+	$out['error'] = translate('Призрак не может использовать этот предмет!');
+	return;
+}
+
+$skill_info = user_get_skill_info($subject['id'], false, true, true, true);
+$skill_hash = &$skill_info['skills'];
+
+$add_p = $skill_hash['MPMAX']['value'] ? $action['param2'] ? $action['param1'] / $skill_hash['MPMAX']['value'] * 100 : $action['param1'] : 0;
+
+if ($add_p) {
+	$mp_t0 = intval($skill_hash['MP_T0']['value']);
+	$mp_t1 = intval($skill_hash['MP_T1']['value']);
+	
+	$cur_rat = (time_current() - $mp_t0) / ($mp_t1 - $mp_t0);
+	$new_rat = min(max($cur_rat + $add_p / 100, 0), 1);
+	$time_shift = time_current() - ($mp_t0 + $new_rat * ($mp_t1 - $mp_t0)); // отрицательное для прибавления
+	
+	skill_object_set_value(OBJECT_CLASS_USER, $subject['id'], 'MP_T0', $mp_t0 + $time_shift);
+	skill_object_set_value(OBJECT_CLASS_USER, $subject['id'], 'MP_T1', $mp_t1 + $time_shift);
+}
+
+$out['status'] = ACTION_STATUS_OK;
+$out['param_success'] = array('update_swf' => 1);
+
+chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => "updateSwf({'lvl': '', 'inventory': ''})"));

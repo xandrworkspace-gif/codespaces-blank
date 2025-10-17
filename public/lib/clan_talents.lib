@@ -1,0 +1,180 @@
+<?php
+
+define('TABLE_CLAN_TALENTS_ARTIKUL', 'clan_talents_artikul');
+define('TABLE_CLAN_TALENTS_GROUPS', 'clan_talents_groups');
+define('TABLE_CLAN_TALENTS', 'clan_talents');
+
+/*
+ * Структура clan_talents_artikul:
+ * id, AI
+ * title, Название таланта
+ * picture, Картинка
+ * num_id,
+ * group_id,
+ * type_id, Тип будет основой для функционала талантов
+ * data1, Для типа (Всякие параметры)
+ * data2, Для типа (Всякие параметры)
+ * upgrade_id, ID следующего таланта (Если нету следующего таланта, то блок закрывается и все талант активен!)
+ * artikul_id, ID артикула для прокачки
+ * artikul_cnt, Кол-во артикула для прокачки
+ * flags,
+ *
+ *
+ * Структура clan_talents:
+ * id, AI
+ * clan_id,
+ * clan_talent_id,
+ * type_id,
+ * progress, //Прогресс прокачки артикуло,
+ * complete, //Завершенность (Если прошлись по всему пути upgrade_id, то блок нужно закрыть)
+ */
+
+define('CLAN_ZSHETON_OPORY_ID', 9811);
+
+$clan_talents_artikul_ids = array(CLAN_ZSHETON_OPORY_ID); //Артикулы
+
+define('CLAN_TALENTS_SBROS_ARTIKUL_ID', 9810); //Энергетический кристалл
+define('CLAN_TALENTS_SBROS_ARTIKUL_CNT', 1); //Стоимость 1 кристалл
+
+define('CLAN_TALENT_TYPE_SBOR', 1);
+define('CLAN_TALENT_TYPE_INJURY', 2);
+define('CLAN_TALENT_TYPE_HONEXP', 3);
+define('CLAN_TALENT_TYPE_HP', 4);
+define('CLAN_TALENT_TYPE_STUN', 5);
+define('CLAN_TALENT_TYPE_DEFINED', 6);
+define('CLAN_TALENT_TYPE_ATTACK', 7);
+
+$clan_talents_skill_type_hash = array(
+    CLAN_TALENT_TYPE_SBOR => array('skill1' => 'FAILRES_CHANCE', 'skill2' => 'LUCKY_CHANCE'),
+    CLAN_TALENT_TYPE_INJURY => array('skill1' => 'INJ_PROB', 'skill2' => 'INJ_RESIST'),
+    CLAN_TALENT_TYPE_HONEXP => array('skill1' => 'EXPMOD', 'skill2' => 'HONORMOD'),
+    CLAN_TALENT_TYPE_HP => array('skill1' => 'VIT', 'skill2' => 'HPMOD'),
+    CLAN_TALENT_TYPE_STUN => array('skill1' => '', 'skill2' => ''),
+    CLAN_TALENT_TYPE_DEFINED => array('skill1' => 'PCRSTPHYSIC', 'skill2' => array('PCRSTAIRFIRE', 'PCRSTLGHSHAD', 'PCRSTWTRGRND'), 'skill3' => array('PCRSTAIRFIRE', 'PCRSTLGHSHAD', 'PCRSTWTRGRND', 'PCRSTPHYSIC')),
+    CLAN_TALENT_TYPE_ATTACK => array('skill1' => 'FIZCRITDMX', 'skill2' => 'FIZCRITDEF',),
+);
+
+$clan_talents_type_hash = array(
+    CLAN_TALENT_TYPE_SBOR => array('id' => CLAN_TALENT_TYPE_SBOR, 'title' => 'Шанс срыва/Шанс удачи', 'title1' => 'Шанс срыва', 'title2' => 'Шанс удачи', 'type_cnt' => 2, 'skill1' => 'FAILRES_CHANCE', 'skill2' => 'LUCKY_CHANCE'),
+    CLAN_TALENT_TYPE_INJURY => array('id' => CLAN_TALENT_TYPE_INJURY, 'title' => 'Травматизм/Антитравматизм', 'title1' => 'Травматизм', 'title2' => 'Антитравматизм', 'type_cnt' => 2),
+    CLAN_TALENT_TYPE_HONEXP => array('id' => CLAN_TALENT_TYPE_HONEXP, 'title' => 'Опыт/Доблесть', 'title1' => 'Опыт', 'title2' => 'Доблесть', 'type_cnt' => 2),
+    CLAN_TALENT_TYPE_HP => array('id' => CLAN_TALENT_TYPE_HP, 'title' => 'Уровень жизни/Дополнительное лечение', 'title1' => 'Уровень жизни', 'title2' => 'Дополнительное лечение', 'type_cnt' => 2),
+    CLAN_TALENT_TYPE_STUN => array('id' => CLAN_TALENT_TYPE_STUN, 'title' => 'Стан/Антистан', 'title1' => 'Стан', 'title2' => 'Антистан', 'type_cnt' => 2),
+    CLAN_TALENT_TYPE_DEFINED => array('id' => CLAN_TALENT_TYPE_DEFINED, 'title' => 'Мастерство защиты', 'title1' => 'Защита от физического урона', 'title2' => 'Защита от магического урона', 'title3' => 'Общая защита от урона', 'type_cnt' => 3),
+    CLAN_TALENT_TYPE_ATTACK => array('id' => CLAN_TALENT_TYPE_ATTACK, 'title' => 'Военное исскуство', 'title1' => 'Критический урон', 'title2' => 'Защита от полученного критического урона', 'type_cnt' => 2),
+);
+
+function clan_talents_artikul_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CLAN_TALENTS_ARTIKUL,$ref,$add);
+}
+
+function clan_talents_artikul_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_CLAN_TALENTS_ARTIKUL,$ref,$add);
+}
+
+function clan_talents_artikul_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_CLAN_TALENTS_ARTIKUL,$ref,$add,true);
+}
+
+function clan_talents_artikul_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CLAN_TALENTS_ARTIKUL,$param);
+}
+
+function clan_talents_artikul_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_CLAN_TALENTS_ARTIKUL,$ref,$add);
+}
+
+/////////////////////////////////////////////////////////////////////////
+
+function clan_talents_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CLAN_TALENTS,$ref,$add);
+}
+
+function clan_talents_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_CLAN_TALENTS,$ref,$add);
+}
+
+function clan_talents_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_CLAN_TALENTS,$ref,$add,true);
+}
+
+function clan_talents_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CLAN_TALENTS,$param);
+}
+
+function clan_talents_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_CLAN_TALENTS,$ref,$add);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+function clan_talents_groups_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_CLAN_TALENTS_GROUPS,$ref,$add);
+}
+
+function clan_talents_groups_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_CLAN_TALENTS_GROUPS,$ref,$add);
+}
+
+function clan_talents_groups_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_CLAN_TALENTS_GROUPS,$ref,$add,true);
+}
+
+function clan_talents_groups_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_CLAN_TALENTS_GROUPS,$param);
+}
+
+function clan_talents_groups_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_CLAN_TALENTS_GROUPS,$ref,$add);
+}
+
+function talent_clan_get_desc($artikul, $i){
+    $html = '';
+    switch ($artikul['type_id']){
+        case CLAN_TALENT_TYPE_SBOR:
+            if($i == 1) $html .= 'Талант увеличивает <b>Шанс успешной добычи</b> на <b>'.$artikul['data'.$i].'%.</b>';
+            if($i == 2) $html .= 'Талант дарует дополнительный <b>'.$artikul['data'.$i].'%.</b> шанс <b>утроенной добычи</b>';
+            break;
+        case CLAN_TALENT_TYPE_INJURY:
+            if($i == 1) $html .= 'Талант увеличивает <b>Вероятность нанесения травм</b> на <b>'.$artikul['data'.$i].'</b>.';
+            if($i == 2) $html .= 'Талант увеличивает <b>Защиту от травм</b> на <b>'.$artikul['data'.$i].'</b>.';
+            break;
+        case CLAN_TALENT_TYPE_HONEXP:
+            if($i == 1) $html .= 'Талант увеличивает <b>Получаемый в боях опыт</b> на <b>'.$artikul['data'.$i].'%.</b>';
+            if($i == 2) $html .= 'Талант увеличивает <b>Получаемую в боях  доблесть</b> на <b>'.$artikul['data'.$i].'%.</b>';
+            break;
+        case CLAN_TALENT_TYPE_HP:
+            if($i == 1) $html .= 'Талант увеличивает <b>Живучесть</b> на <b>'.$artikul['data'.$i].'</b>.';
+            if($i == 2) $html .= 'Талант на <b>'.$artikul['data'.$i].'%</b> увеличивает <b>количество очков здоровья, восстанавливаемых лечебными эликсирами и свитками</b>';
+            break;
+        case CLAN_TALENT_TYPE_STUN:
+            if($i == 1) $html .= 'Талант увеличивает <b>Шанс оглушения противника</b> на <b>'.$artikul['data'.$i].'%.</b>';
+            if($i == 2) $html .= 'Талант увеличивает <b>Защиту от оглушения противника</b> на <b>'.$artikul['data'.$i].'%.</b>';
+            break;
+        case CLAN_TALENT_TYPE_DEFINED:
+            if($i == 1) $html .= 'Талант снижает получаемый <b>физический урон</b> на <b>'.$artikul['data'.$i].'%.</b>';
+            if($i == 2) $html .= 'Талант снижает получаемый <b>магический урон</b> на <b>'.$artikul['data'.$i].'%.</b>';
+            if($i == 3) $html .= 'Талант снижает получаемый <b>физический и магический урон</b> на <b>'.$artikul['data'.$i].'%.</b>';
+            break;
+        case CLAN_TALENT_TYPE_ATTACK:
+            if($i == 1) $html .= 'Талант увеличивает наносимый <b>Физический критический урон</b> на <b>'.$artikul['data'.$i].'%.</b>';
+            if($i == 2) $html .= 'Талант уменьшает получаемый <b>критический физический урон</b> на <b>'.$artikul['data'.$i].'%.</b>';
+             break;
+    }
+    return $html;
+}

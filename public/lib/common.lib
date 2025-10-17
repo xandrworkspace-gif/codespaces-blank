@@ -1,0 +1,1438 @@
+<? # $Id: common.lib,v 1.135 2010-01-15 09:50:10 p.knoblokh Exp $
+
+require_once("lib/logserv.lib");
+require_once("lib/dialog.lib");
+require_once("include/profiler.inc");
+
+if (DEBUG) register_shutdown_function('log_request_statistic');
+
+// Имена и поля таблиц
+define('TABLE_SETTINGS','settings');
+define('FIELD_SETTINGS','');
+define('TABLE_DB_SETTINGS', 'db_settings');
+define('FIELD_DB_SETTINGS', '');
+define('TABLE_GEO_IP', 'geo_ip');
+define('FIELD_GEO_IP', '');
+define('TABLE_GEO_IP_REGIONS', 'geo_ip_regions');
+define('FIELD_GEO_IP_REGIONS', '');
+
+define('CSMODE_INSERT', 1);
+define('CSMODE_UPDATE', 2);
+define('CSMODE_REPLACE', 3);
+
+global $request_statistic, $current_site_domain, $current_site_base_domain;
+
+$request_statistic = array();
+$request_statistic['script'] = $_SERVER['SCRIPT_NAME'] ? $_SERVER['SCRIPT_NAME'] : $_SERVER['argv'][0];
+// ===== common database interface ========================================================================
+
+function &common_get(&$db_obj, $table_name, $ref=false, $add='', $ref_name='id', $no_cache=false, $param = array()) {
+	global $db, $db_nodes, $node_num, $request_statistic;
+	if (DEBUG) $request_statistic['get'][$table_name]++;
+	if (NODE_TABLE($table_name)) {
+		$db_obj = &$db_nodes[$node_num];
+		if (!$db_obj) { error_log('(common.lib) Node container empty!'); backtrace(true); /*return array();*/ }
+	}
+	if (!$ref && !$add) return false;
+	$index_add = isset($param['_index_hint']) ? ' '.$param['_index_hint'] : '';
+	$query = "SELECT ".($no_cache ? "SQL_NO_CACHE " : "")."* FROM ".$table_name." AS t".$index_add." WHERE 1";
+	if ($ref) {
+		if (!is_array($ref)) $ref = array($ref_name => $ref);
+		foreach ($ref as $k=>$v) $query .= is_array($v) ? sql_pholder(" AND `".$k."` IN (?@)",$v): (isset($v) ? sql_pholder(" AND `".$k."`=?",$v): " AND `".$k."` IS NULL");
+	}
+	$query .= $add." LIMIT 1";
+	if (DEBUG) $st_time = microtime(true);
+	$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'read', 'host' => $db_obj->host_name ));
+	$db_obj->db_GetQueryRow($query,$row);
+	profiler_stop($profiler);
+	translate_data_row($row, $table_name);
+	if (DEBUG) $request_statistic['time']['get'][$table_name]+= microtime(true)-$st_time;
+	return $row;
+}
+
+function &common_list(&$db_obj, $table_name, $ref=false, $add='', $field_list='*', $no_cache=false, $param = array()) {
+	global $db, $db_nodes, $node_num, $request_statistic;
+	if (DEBUG) $request_statistic['list'][$table_name]++;
+	if (NODE_TABLE($table_name)) {
+		$db_obj = &$db_nodes[$node_num];
+		if (!$db_obj) { error_log('(common.lib) Node container empty!'); backtrace(true); /*return array();*/ }
+	}
+	$index_add = isset($param['_index_hint']) ? ' '.$param['_index_hint'] : '';
+	$query = "SELECT ".($no_cache ? "SQL_NO_CACHE " : "").$field_list." FROM ".$table_name." AS t".$index_add." WHERE 1";
+	if ($ref) {
+		if (!is_array($ref)) return false;
+		foreach ($ref as $k=>$v) $query .= is_array($v) ? sql_pholder(" AND `".$k."` IN (?@)",$v): (isset($v) ? sql_pholder(" AND `".$k."`=?",$v): " AND `".$k."` IS NULL");
+	}
+	$query .= $add;
+	if (DEBUG) $st_time = microtime(true);
+	$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'read', 'host' => $db_obj->host_name ));
+	$db_obj->db_GetQueryArray($query,$data);
+	profiler_stop($profiler);
+	translate_data_all_rows($data, $table_name);
+	if (DEBUG) $request_statistic['time']['list'][$table_name]+= microtime(true)-$st_time;
+	return $data;
+}
+
+/**
+ * Принмает разделенную запятыми числовую строку и преобразует в массив. 
+ * @param string $str
+ * @return array
+ */
+function common_comma_str_to_num_arr($str) {
+	$ar_str = explode(',', $str);
+	return array_map('intval', $ar_str);
+}
+
+function common_count(&$db_obj, $table_name, $ref=false, $add='', $no_cache=false, $param = array()) {
+	global $db, $db_nodes, $node_num, $request_statistic;
+	if (DEBUG) $request_statistic['count'][$table_name]++;
+	if (NODE_TABLE($table_name)) {
+		$db_obj = &$db_nodes[$node_num];
+		if (!$db_obj) { error_log('(common.lib) Node container empty!'); backtrace(true); /*return 0;*/ }
+	}
+	$index_add = isset($param['_index_hint']) ? ' '.$param['_index_hint'] : '';
+	$query = "SELECT ".($no_cache ? "SQL_NO_CACHE " : "")."count(*) FROM ".$table_name." AS t".$index_add." WHERE 1";
+	if ($ref) {
+		if (!is_array($ref)) return false;
+		foreach ($ref as $k=>$v) $query .= is_array($v) ? sql_pholder(" AND `".$k."` IN (?@)",$v): (isset($v) ? sql_pholder(" AND `".$k."`=?",$v): " AND `".$k."` IS NULL");
+	}
+	$query .= $add;
+	$val = 0;
+	if (DEBUG) $st_time = microtime(true);
+	$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'read', 'host' => $db_obj->host_name ));
+	$db_obj->db_GetQueryVal($query,$val);
+	profiler_stop($profiler);
+	if (DEBUG) $request_statistic['time']['count'][$table_name]+= microtime(true)-$st_time;
+	return intval($val);
+}
+
+// $param:
+// '_mode' - mode
+// '_set' - UPDATE SET part
+// '_add' - query addition
+// '_cnt' - return affected rows
+// '_noerr' - don't die on error
+function common_save(&$db_obj, $table_name, $param, $table_fields='', $ref_name='id' , $add='') {
+	global $db, $db_nodes, $node_num, $request_statistic;
+	if (DEBUG) $request_statistic['save'][$table_name]++;
+	
+	if (NODE_TABLE($table_name)) {
+		$db_obj = &$db_nodes[$node_num];
+		if (!$db_obj) { error_log('(common.lib) Node container empty!'); backtrace(true); /*return false;*/ }
+	}
+	$ref_id = $param[$ref_name];
+	$set = '';
+	$cnt = false;
+	$on_duplicate = false;
+	$mode = false;
+	if (isset($param['_mode'])) { $mode = $param['_mode']; unset($param['_mode']); }
+	if (isset($param['_set'])) { $set .= $param['_set']; unset($param['_set']); }
+	if (isset($param['_add'])) { $add .= $param['_add']; unset($param['_add']); }
+	if (isset($param['_cnt'])) { $cnt = true; unset($param['_cnt']); }
+	if (isset($param['_on_duplicate'])) { $on_duplicate = $param['_on_duplicate']; unset($param['_on_duplicate']);}
+	if (isset($param['_delayed'])) { $delayed = $param['_delayed']; unset($param['_delayed']);}
+	$index_add = isset($param['_index_hint']) ? ' '.$param['_index_hint'] : '';
+	if ($set && !$ref_id && !$add) return false;	// защита!
+	if (!$mode) $mode =	$set || $add || $ref_id ? CSMODE_UPDATE : CSMODE_INSERT;
+	$res = false;
+	$die_on_error = $db_obj->die_on_error;
+	if (isset($param['_noerr'])) { $db_obj->die_on_error = false; unset($param['_noerr']); }
+	if ($table_fields) $param = get_params($param,$table_fields,true);
+	if (DEBUG) $st_time = microtime(true);
+	$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'update', 'host' => $db_obj->host_name ));
+	if ($mode == CSMODE_INSERT) {	// INSERT
+		if (NODE_IS_CROSSNODE($table_name)) $param[$ref_name] = NODE_GET_CROSSNODE_REF($table_name,$node_num);
+		$query = 'INSERT';
+		if ($delayed) $query .= ' DELAYED';
+		$query .= sql_pholder(" INTO ".$table_name." (`".implode('`,`', array_keys($param))."`) values (?@)",array_values($param));
+		if ($on_duplicate) $query .= ' ON DUPLICATE KEY UPDATE '.$on_duplicate;
+		$query .= $add;
+		$res = $db_obj->execSQL($query);
+		$ref_id = $res && ($db_obj->affected_rows() > 0) ? ($param[$ref_name] ? $param[$ref_name] : $db_obj->insert_id()) : false;
+	} elseif ($mode == CSMODE_UPDATE) {	// UPDATE
+		$query = "UPDATE ".$table_name.$index_add;
+		$t = array();
+		if ($param) $t[] = sql_pholder("?%",$param);
+		if ($set) $t[] = $set;
+		$query .= " SET ".implode(', ',$t)." WHERE 1";
+		if ($ref_id) $query .= sql_pholder(" AND `".$ref_name."`=?",$ref_id);
+		$query .= $add;
+		$res = $db_obj->execSQL($query);
+	} elseif ($mode == CSMODE_REPLACE)  {	// REPLACE
+		$query = sql_pholder("REPLACE INTO ".$table_name." SET ?%",$param);
+		$res = $db_obj->execSQL($query);
+		$ref_id = $res && ($db_obj->affected_rows() > 0) ? $db_obj->insert_id(): false;
+	}
+	profiler_stop($profiler);
+	if (DEBUG) $request_statistic['time']['save'][$table_name]+= microtime(true)-$st_time;
+	$db_obj->die_on_error = $die_on_error;
+	if (!$res) return false;
+	return $cnt ? $db_obj->affected_rows() : $ref_id;
+}
+
+function common_delete(&$db_obj, $table_name, $ref=false, $add='', $ref_name='id', $no_error = false) {
+	global $db, $db_nodes, $node_num, $request_statistic;
+	if (DEBUG) $request_statistic['delete'][$table_name]++;
+
+	if (NODE_TABLE($table_name)) {
+		$db_obj = &$db_nodes[$node_num];
+		if (!$db_obj) { error_log('(common.lib) Node container empty!'); backtrace(true); /*return false;*/ }
+	}
+	if (!$ref && !$add) return false;
+	$die_on_error = $db_obj->die_on_error;
+	if ($no_error) { $db_obj->die_on_error = false; }
+	$query = "DELETE FROM ".$table_name." WHERE 1";
+	if ($ref) {
+		if (!is_array($ref)) {
+			if (NODE_IS_CROSSNODE($table_name) && !$add) NODE_DELETE_CROSSNODE_REF($table_name,$ref);
+			$ref = array($ref_name => $ref);
+		}
+		foreach ($ref as $k=>$v) {
+			$query .= is_array($v) ? sql_pholder(" AND `".$k."` IN (?@)",$v): (isset($v) ? sql_pholder(" AND `".$k."`=?",$v): " AND `".$k."` IS NULL");
+		}
+	}
+	$query .= $add;
+	if (DEBUG) $st_time = microtime(true);
+	$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'update', 'host' => $db_obj->host_name ));
+	$db_obj->execSQL($query);
+	profiler_stop($profiler);
+	if (DEBUG) $request_statistic['time']['delete'][$table_name]+= microtime(true)-$st_time;
+	$db_obj->die_on_error = $die_on_error;
+	return $db_obj->affected_rows();
+}
+
+function common_truncate(&$db_obj, $table_name) {
+	global $db, $db_nodes, $node_num;
+	if (NODE_TABLE($table_name)) {
+		$db_obj = &$db_nodes[$node_num];
+		if (!$db_obj) { error_log('(common.lib) Node container empty!'); backtrace(true); /*return false;*/ }
+	}
+	$query = "TRUNCATE ".$table_name;
+	$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'update', 'host' => $db_obj->host_name ));
+	$db_obj->execSQL($query);
+	profiler_stop($profiler);
+	return true;
+}
+
+function common_exec_sql(&$db_obj, $query, $table_name=false) {
+	global $db_nodes, $node_num;
+	if ($table_name) {
+		if (NODE_TABLE($table_name)) {
+			$db_obj = &$db_nodes[$node_num];
+			if (!$db_obj) { error_log('(common.lib) Node container empty!'); backtrace(true); /*return false;*/ }
+		}
+	}
+	$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'update', 'host' => $db_obj->host_name ));
+	$ret = $db_obj->execSQL($query);
+	profiler_stop($profiler);
+	return $ret;
+}
+
+function common_exec_sql_retdb(&$db_obj, $query, $table_name=false) {
+    global $db_nodes, $node_num;
+    if ($table_name) {
+        if (NODE_TABLE($table_name)) {
+            $db_obj = &$db_nodes[$node_num];
+            if (!$db_obj) { error_log('(common.lib) Node container empty!'); backtrace(true); /*return false;*/ }
+        }
+    }
+    $profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'update', 'host' => $db_obj->host_name ));
+    $db_obj->execSQL($query);
+    profiler_stop($profiler);
+    return $db_obj;
+}
+
+function common_bulk_update(&$db_obj, $table_name, $ids, $field, $value='', $value_old=null, $add='') {
+	global $db, $db_nodes, $node_num;
+	if (NODE_TABLE($table_name)) {
+		$db_obj = &$db_nodes[$node_num];
+		if (!$db_obj) { error_log('(common.lib) Node container empty!'); backtrace(true); /*return false;*/ }
+	}
+	if (!$ids && !isset($value_old) && !$add) return false;
+	$query = sql_pholder("UPDATE ".$table_name." SET `".$field."`=? WHERE 1",$value);
+	if ($ids) {
+		if (!is_array($ids)) $ids = array($ids);
+		$query .= sql_pholder(" AND id IN (?@)",$ids);
+	}
+	if (isset($value_old)) $query .= sql_pholder(" AND `".$field."`=?",$value_old);
+	$query .= $add;
+	$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'update', 'host' => $db_obj->host_name ));
+	$db_obj->execSQL($query);
+	profiler_stop($profiler);
+	return $db_obj->affected_rows() > 0;
+}
+
+function common_multi_update(&$db_obj, $table_name, $data, $data_fields, $update_fields = array(), $ignore = false) {
+	global $db_nodes, $node_num;
+	if (NODE_TABLE($table_name)) {
+		$db_obj = &$db_nodes[$node_num];
+		if (!$db_obj) { error_log('(common.lib) Node container empty!'); backtrace(true); /*return false;*/ }
+	}
+	
+	if (!$data || !$data_fields) return false;
+	
+	//готовим данные для подстановки в запрос
+	$rows = array();
+	foreach($data as $data_row) {
+		$row = array();
+		foreach($data_fields as $field) {
+			if (isset($data_row[$field])) {
+				$row[$field] = "'".mysql_real_escape_string($data_row[$field])."'";
+			} else {
+				$row[$field] = 'NULL';
+			}
+		}
+		$rows[] = '('.implode(',', $row).')';
+	}
+
+	$sql = 'INSERT '.($ignore ? 'IGNORE ' : '').'INTO '.$table_name.
+		   ' ('.implode(',', $data_fields).') values '.
+		   implode(',', $rows);
+		   
+	if ($update_fields) {
+		//готовим поля для апдейта если нужно
+		$update_pieces = array();
+		foreach($update_fields as $field) {
+			if (!is_array($field)) {
+				$update_pieces[] = $field.'=values('.$field.')';
+			} else {
+				$update_pieces[] = $field['field'].'='.$field['value'];
+			}
+		}
+		
+		$sql .= ' ON DUPLICATE KEY UPDATE '.implode(',', $update_pieces);
+	}
+	$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'update', 'host' => $db_obj->host_name ));
+	$res = $db_obj->execSQL($sql);
+	profiler_stop($profiler);
+	//print_r($sql);
+	return $db_obj->affected_rows();
+}
+
+// ========================================================================================================
+
+function common_build_request($param, $arr_name='', $encode=true) {
+	if (!is_array($param)) return $encode ? urlencode($param): $param;
+	$t = array();
+	foreach ($param as $k=>$v) {
+		if ($encode) $k = urlencode($k);
+		if ($arr_name) $k = $arr_name.'['.$k.']';
+		$t[] = !is_array($v) ? $k.'='.($encode ? urlencode($v): $v): common_build_request($v,$k);
+	}
+	return implode('&',$t);
+}
+
+function common_build_url($url, $param, $encode = true) {
+	$param = common_build_request($param, '', $encode);
+	if (!$param) return $url;
+	return $url.(mb_strpos($url, '?') === false ? '?' : '&').$param;
+}
+
+function &common_get_settings($names=false) {
+	global $db_diff;
+	$query = sql_pholder("SELECT name,value FROM ?#TABLE_SETTINGS WHERE 1");
+	if ($names) {
+		if (!is_array($names)) $names = array($names);
+		$query .= sql_pholder(" AND name IN (?@)",$names);
+	}
+	$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'update', 'host' => $db_obj->host_name ));
+	$db_diff->db_GetQueryHash($query,$data);
+	profiler_stop($profiler);
+	return $data;
+}
+
+function &common_get_db_settings($names=false) {
+	global $db_diff;
+	$query = sql_pholder('SELECT name, value FROM ?#TABLE_DB_SETTINGS WHERE 1 ');
+	if ($names) {
+		if (!is_array($names)) $names = array($names);
+		$query .= sql_pholder(' AND name IN (?@) ', $names);
+	}
+	$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'update', 'host' => $db_obj->host_name ));
+	$db_diff->db_GetQueryHash($query, $data);
+	profiler_stop($profiler);	
+	return $data;
+}
+
+function common_save_settings($param, $save_file = true) {
+	global $db_diff, $tq;
+	if (!$param || !is_array($param)) return;
+	foreach ($param as $k=>$v) {
+		$query = sql_pholder('REPLACE INTO ?#TABLE_SETTINGS (name,value) VALUES (?,?)',$k,$v);
+		$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'update', 'host' => $db_obj->host_name ));
+		$db_diff->execSQL($query);
+		profiler_stop($profiler);
+	}
+	
+	// settings.inc, в который мы хотим записать установки для быстрого доступа,
+	// синхронится с разливочного сервера (dragon0, dragon1, dragon6, dragon38)
+	// есть шанс, что эта функция вызывается не оттуда, и изменения в установках не
+	// прольются на другие машины. Поэтому вызываем делаем вызов через http, который
+	// заботливый nginx автоматически редиректнет на разливочный сервер
+    if($save_file) {
+        try {
+        $error = file_get_contents((HTTP_AUTH_SETTINGS ? HTTP_AUTH_SETTINGS . (str_replace(array('http://', 'https://'), '', SERVER_URL2)) : SERVER_URL2) . 'private/save_sett.php');
+        //$error = (HTTP_AUTH_SETTINGS ? HTTP_AUTH_SETTINGS.(str_replace(array('http://', 'https://'),'',SERVER_URL2)) : SERVER_URL2).'private/save_sett.php';
+        if (trim($error)) logfile(NODE_FILE_LOG, '[sync] settings write error! ' . var_export($error, true));
+        } catch (Exception $e) {
+        }
+    }
+}
+
+function common_save_db_settings($param) {
+	global $db_diff;
+	if (!$param || !is_array($param)) return;
+	foreach ($param as $k => $v) {
+		$query = sql_pholder('REPLACE INTO ?#TABLE_DB_SETTINGS (name, value) VALUES (?, ?)', $k, $v);
+		$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'update', 'host' => $db_obj->host_name ));
+		$db_diff->execSQL($query);
+		profiler_stop($profiler);
+	}
+}
+
+function common_define_settings() {
+	
+	// Закоментировал задачу № 14034 Вынесение common_define_settings в include
+	@include_once("include/settings.inc");
+	if (defined('SETTINGS_FROM_FILE') && SETTINGS_FROM_FILE) return true;
+	
+	$data = common_get_settings();
+	foreach ($data as $k=>$v) {
+		$k = strtoupper($k);
+		if (defined($k)) continue;
+		define($k,$v);
+	}
+}
+
+function common_win_close($exit = true){
+    print('<script>window.close();</script>');
+    if($exit) exit;
+}
+
+function common_redirect($url, $param=false, $post=false) {
+	global $error;
+	$err = $error ? $error : $_GET['error'];
+	if (!$param['error'] && $err) $param['error'] = $err;
+	if (!$post) {
+		if ($param) $url = common_build_url($url,$param);
+		header("HTTP/1.1 301 Moved Permanently");
+		header("Location: ".$url);
+	} else {
+		$html = '<html><body onLoad="frm.submit()">';
+		$html .= '<form name="frm" method="post" action="'.$url.'">';
+		if ($param && is_array($param)) $html .= html_hidden($param);
+		$html .= '</form>';
+		$html .= '<noscript><button type="submit">'.translate('Продолжить').'</button></noscript>';
+		$html .= '</body></html>';
+		print $html;
+	}
+	exit;
+}
+
+function common_java_redirect($url, $param=false, $prefix=null) {
+	if ($param) $url .= '?'.common_build_request($param);
+	if (!isset($prefix)) print '<script> top.location.href="'.$url.'"; </script>';
+	else print '<script> '.($prefix ? $prefix.'.': '').'location.href="'.$url.'"; </script>';
+	exit;
+}
+
+function common_java_escape($text) {
+	$text = str_replace("\\","\\\\",$text);
+    $text = str_replace("'","\'",$text);
+    $text = str_replace('"',"\"",$text);
+    $text = preg_replace('/[\r\n]+/',"\\\r\n",$text);
+    return $text;
+}
+
+function common_lf_to_br($text) {
+	$text = preg_replace('/\r?\n/','<br>',$text);
+	return $text;
+}
+
+function common_br_to_lf($text) {
+    $text = preg_replace('/\<br\>/','&#10;',$text);
+    return $text;
+}
+
+function common_format_text($text) {
+	$text = preg_replace('/\[(\/?(b|u|i))\]/','<\\1>',$text);
+	return $text;
+}
+
+// ========================================================================================================
+
+function common_object_get($object_class, $ref) {
+	global $db, $object_table_info;
+	$ref = intval($ref);
+	$info = $object_table_info[$object_class];
+	if (!$info) return false;
+	$db_obj = &$db;
+	if ($info['db']) $db_obj = &$info['db'];
+	if (NODE_TABLE($info['table'])) {
+		$object_node = NODE_GET_BY_REF($info['table'], $ref);
+		if (!NODE_PUSH($object_node)) return false;
+	}
+	$item = common_get($db_obj,$info['table'],$ref);
+	if (NODE_TABLE($info['table'])) {
+		NODE_POP();
+	}
+	if ($item) $item['object_class'] = $object_class;
+	return $item;
+}
+
+function common_object_save($object_class, $ref, $param) {
+	global $db, $object_table_info;
+	if (!$object_class) return false;
+	$info = $object_table_info[$object_class];
+	if (!$info) return false;
+	$db_obj = &$db;
+	if ($info['db']) $db_obj = &$info['db'];
+	if (NODE_TABLE($info['table'])) {
+		$object_node = NODE_GET_BY_REF($info['table'], $ref);
+		if (!NODE_PUSH($object_node)) return false;
+	}
+	$param['id'] = $ref;
+	$res = common_save($db_obj,$info['table'],$param,$info['field']);
+	if (NODE_TABLE($info['table'])) {
+		NODE_POP();
+	}
+	return $res;
+}
+
+// ---------------------------------------------------------------
+
+function common_decline($v,$d_1,$d_234,$d_many) {
+	$s = $d_many;
+	$d = $v % 100;
+	if (($d<10) || ($d>20)) {
+		$l = $v%10;
+		if ($l == 1) $s = $d_1;
+		if (($l>=2) && ($l<=4)) $s= $d_234;
+	}
+	return $s;
+}
+
+function __common_tree_fillout(&$out, &$data, $parent_id, $pfx='') {
+	$items = array();
+	foreach ($data as $item) {
+		if ($item['parent_id'] != $parent_id) continue;
+		$items[$item['id']] = $item['title'];
+	}
+	$i = 0;
+	foreach ($items as $id=>$val) {
+		$i++;
+		$out[$id] = $pfx.'&nbsp;&nbsp;+&nbsp;'.$val;
+		__common_tree_fillout($out,$data,$id,$pfx.($i==count($items)?'&nbsp;&nbsp;&nbsp;':'&nbsp;&nbsp;|'));
+	}
+}
+
+function common_tree($arr, $root_id=0) {
+	$data = make_hash($arr,'id');
+	ksort($data);
+	$out = array();
+	if ($root_id && $data[$root_id]) $out[$root_id] = $data[$root_id]['title'];
+	__common_tree_fillout($out,$data,$root_id);
+	return $out;
+}
+
+function common_client_ip() {
+	if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+		$remote_addrs = explode(',',$_SERVER['HTTP_X_FORWARDED_FOR']);
+		if (defined('IGNORED_REMOTE_ADDRS') && strval(IGNORED_REMOTE_ADDRS)) {
+			$ignored_remote_addrs = explode(',', strval(IGNORED_REMOTE_ADDRS));
+			$ignored_remote_addr_hash = array();
+			foreach ($ignored_remote_addrs as $ignored_remote_addr) {
+				$ignored_remote_addr_hash[trim($ignored_remote_addr)] = trim($ignored_remote_addr);
+			}
+			foreach ($remote_addrs as $i => $addr) {
+				if ($ignored_remote_addr_hash[trim($addr)]) unset($remote_addrs[$i]);
+			}
+		}
+		$remote_addr = trim(end($remote_addrs));
+	} else {
+		$remote_addr = trim($_SERVER['REMOTE_ADDR']);
+	}
+    if (!$remote_addr) $remote_addr = 'undefined';
+    if (strpos($remote_addr, ':') !== false) {
+        $ipv6 = $remote_addr;
+        $remote_addr = hexdec(substr($ipv6, 0, 2)). "." . hexdec(substr($ipv6, 2, 2)). "." . hexdec(substr($ipv6, 5, 2)). "." . hexdec(substr($ipv6, 7, 2));
+    }
+	if (!$remote_addr) $remote_addr = 'undefined';
+	return $remote_addr;
+}
+
+function common_client_cid($generate=false, $set=false, $domain='') {
+	if ($generate) {
+		$t = explode('.',common_client_ip());
+		$cid = sprintf('%02X%02X%02X%02X%04X',(int)$t[0],(int)$t[1],(int)$t[2],(int)$t[3],rand(0,0xFFFF));
+		return $cid;
+	}
+	$cid = $set ? $set : $_COOKIE['cid'];
+	$cidc = md5('CMP-ID-'.$cid);
+	if ($set) {
+		common_resetcookie('cid',$cid,0x7fffffff,'/',$domain);
+		common_resetcookie('cidc',$cidc,0x7fffffff,'/',$domain);
+		$_COOKIE['cid'] = $cid;
+		$_COOKIE['cidc'] = $cidc;
+		return $cid;
+	}
+	return $cid && ($cidc == $_COOKIE['cidc']) ? $cid : false;
+}
+
+function common_pack_ip($s) {
+	$t = explode('.',$s);
+	return $t[0] + ($t[1] * 0x100) + ($t[2] * 0x10000) + ($t[3] * 0x1000000);
+}
+
+function common_unpack_ip($i) {
+	$i = floatval($i);
+	return sprintf('%d.%d.%d.%d',($i & 0xFF),(($i >> 8) & 0xFF),(($i >> 16) & 0xFF),(($i >> 24) & 0xFF));
+}
+
+function common_is_email_valid($email) {
+	return preg_match('/^([A-z0-9_\-]+\.)*[A-z0-9_\-]+@([A-z0-9][A-z0-9\-]*[A-z0-9]\.)+[A-z]{2,4}$/',$email);
+	//return preg_match('/^[^@\s]+@([^@\s.]+\.)+[^@\s.]+$/',$email);
+}
+
+function common_send_mail($user_email,$user_name='',$subj='',$msg='',$html=false) {
+	global $SMTP_MAIL;
+	if (!$SMTP_MAIL) return false;
+	require_once("include/phpmailer/PHPMailer.php");
+	static $mail = null;
+	if ($mail === null) {
+		$mail = new PHPMailer();
+		$mail->IsMail();
+		$mail->Hostname = SERVER_DOMAIN;
+		$mail->Host			= $SMTP_MAIL['host'];
+		$mail->Port			= $SMTP_MAIL['port'];
+		if($SMTP_MAIL['user'] || $SMTP_MAIL['pass']){
+            $mail->SMTPAuth = true;
+            $mail->Username = $SMTP_MAIL['user'];
+            $mail->Password = $SMTP_MAIL['pass'];
+        }
+        if($SMTP_MAIL['secu']){
+		    $mail->SMTPSecure = $SMTP_MAIL['secu'];
+        }
+        $mail->SMTPSecure = 'tls';
+        $mail->SMTPAutoTLS = true;
+		$mail->CharSet		= charset_code_html();
+        try {
+            $mail->SetFrom(MAIL_EMAIL, MAIL_USER, true);
+        } catch (Exception $e) {
+        }
+        $mail->AddReplyTo(MAIL_EMAIL, MAIL_USER);
+	}
+	$mail->SetLanguage('ru');
+	$mail->Subject			= $subj;
+	if ($html) {
+		$mail->IsHTML();
+		$mail->MsgHTML($msg);
+	} else
+		$mail->Body			= $msg;
+	$mail->AddAddress($user_email, $user_name);
+	$mail->addCustomHeader('List-Unsubscribe', SERVER_URL.'unsubscrible.php?action=unsubscrible&hash='.md5($user_email));
+	try {
+		$result = $mail->Send();
+	} catch (Exception $e) {
+		error_log('[common_send_mail:phpmailerException] '.$e->getMessage());
+		$result = false;
+	}
+	$mail->ClearAddresses();
+	return $result;
+}
+
+function common_headers() {
+	header("Expires: Mon, 26 Jul 1997 05:00:00 GMT");
+	header("Last-Modified: ".gmdate("D, d M Y H:i:s")." GMT");
+	header("Cache-Control: no-store, no-cache, must-revalidate");
+	header("Cache-Control: post-check=0, pre-check=0", false);
+	header("Pragma: no-cache");
+	header('Content-Type: text/html;charset='.charset_code_html());
+}
+
+// Общая функция инициализации в начале всех скриптов
+function common_init() {
+
+    /*if(empty($_SERVER['HTTPS']) || $_SERVER['HTTPS'] == "off"){
+        $redirect = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+        header('HTTP/1.1 301 Moved Permanently');
+        header('Location: ' . $redirect);
+        exit();
+    }*/
+
+	global $current_site_domain, $current_site_base_domain, $SITE_CFG;
+	common_headers();
+	if ($_SERVER['HTTP_X_SERVER']) {
+		$current_site_domain = $_SERVER['HTTP_X_SERVER'];
+	} else {
+		$host_parts = parse_url(SERVER_URL);
+		$current_site_domain = $host_parts['host'];
+	}
+	$current_site_base_domain_array = preg_split("/\./",$current_site_domain);
+	if (count($current_site_base_domain_array) > 2) {
+		array_shift($current_site_base_domain_array);
+		$current_site_base_domain = implode(".",$current_site_base_domain_array);
+	} else {
+		$current_site_base_domain = $current_site_domain;
+	}
+	common_define_settings();
+	
+	// Инициализируем язык только для локализаций
+	if (defined('_TRANS_LANG') && _TRANS_LANG) {
+		// Сначала пытаемся найти устаноки языка в куках или параметрах запроса
+		$current_language = false;
+		// определённый в конфиге партнёра язык - основной для загружаемой страницы, поэтому проверяем первым
+		if (defined('PARTNER_LANGUAGE') && PARTNER_LANGUAGE) $current_language = PARTNER_LANGUAGE;
+		// определённый в куках язык важнее чем настройки в конфиге, поэтому проверяем вторым
+		if ($_COOKIE['language']) $current_language = strval($_COOKIE['language']);
+		// определённый в параметрах язык важнее чем куки, поэтому проверяем третьим
+		if ($_REQUEST['language']) $current_language = strval($_REQUEST['language']);
+
+		if ($current_language && $known_languages[$current_language]) {
+			translate_default_language($current_language);
+		} elseif (defined('PROJECT_MAIN_LANGUAGE') && PROJECT_MAIN_LANGUAGE) { // если не нашли, то берём из установок проекта
+			translate_default_language(PROJECT_MAIN_LANGUAGE);
+		}
+		// перезагружаем файл с константами, чтобы применились переводы на нужный язык
+		require('include/constant.inc');
+	}
+
+
+}
+
+// Функция, которая вызывается после session_init во внутренних скриптах
+function common_redirector() {
+	global $session, $session_user,$crossserver_auth;
+	if ($crossserver_auth) return true;
+	$uid = false;
+ 	if ($session) $uid = $session['uid'];
+	$need_transfer = false;
+
+	global $soft_register_info;
+	$reg_finished = !($session_user['flags'] & USER_FLAG_NOT_FINISHED_REG);
+	if (!$reg_finished && $session_user['area_id'] != $soft_register_info['area_id']) {
+		$user_param = array(
+			'id' => $session_user['id'],
+			'area_id' => $soft_register_info['area_id'],
+			'instance_id' => 0,
+			'raid_id' => 0,
+		);
+		//user_change_chat_channels($session_user, $user_param);
+		user_save($user_param);
+		common_redirect(common_build_url($_SERVER['PHP_SELF'],$_GET+$_POST));
+	}
+
+	if (!$session_user) {
+		$redirect_url = 'index.php';
+		$nn = $_COOKIE[SESSION_COOKIE_PREFIX.'nn'];
+        $uid = $_COOKIE[SESSION_COOKIE_PREFIX.'uid'];
+        $sid = $_COOKIE[SESSION_COOKIE_PREFIX.'sid'];
+        $crc = $_COOKIE[SESSION_COOKIE_PREFIX.'crc'];
+        if (!session_crc($nn,$uid,$sid,strval($crc))) {
+        	unset($uid);
+        }
+		// тут есть вероятность, что сессия была снесена для межсерверного переезда
+	 	if ($uid) $auth = auth_get($uid);
+	 	if ($auth && $auth['current_server_id'] && ($auth['current_server_id'] != SERVER_ID)) {
+	 		// да, человечек на другом сервере
+	 		require_once('lib/crossserver.lib');
+	 		global $SERVERS;
+	 		if ($auth['server_id'] == SERVER_ID) {
+	 			// если этот сервер для него родной
+	 			$login_params = unserialize(crossserver_get_login_params($auth['current_server_id'], $auth['nick']));
+	 			if ($login_params['uid'] && $login_params['xtoken']) {
+	 				$redirect_url = common_build_url($SERVERS[$auth['current_server_id']]['url'].'login.php', $login_params);
+	 			}
+	 		} else {
+	 			// человек вернулся уже, отправим его в родной мир
+	 			$login_params = unserialize(crossserver_get_login_params($auth['server_id'], false, $auth['original_user_id']));
+	 			if ($login_params['uid'] && $login_params['xtoken']) {
+	 				$redirect_url = common_build_url($SERVERS[$auth['server_id']]['url'].'login.php', $login_params);
+	 			}
+	 		}
+	 	} 
+		common_java_redirect($redirect_url);
+	}
+}
+
+function common_show_error($error=false, $title = false) {
+	if ($_REQUEST['msg']) print "<script>showMsg2('error.php?error=".urlencode($_REQUEST['msg'])."&title=".urlencode(($_REQUEST['msg_title'] ? $_REQUEST['msg_title'] : ($title ? $title : '')))."&update_swf=".$_REQUEST['update_swf']."','".translate('Сообщение')."');</script>\n";
+	if (!$error) $error = $_REQUEST['error'];
+	$error = urlencode(trim($error));
+	if (!$error) return;
+	print "<script>showError('$error');</script>\n";
+}
+
+function common_page_limit($current, $total, $onpage) {
+    $current = intval($current);
+    $total = intval($total);
+    $onpage = intval($onpage);
+    if ($current < 0) $current = 0;
+    if ($current > $total) $current = $total;
+    return sprintf(' LIMIT %d, %d', $current*$onpage, $onpage);
+}
+
+function common_assemble_flags($flags=0) {
+	$ret = 0;
+	if (is_array($flags)) {
+		foreach ($flags as $v) $ret |= intval($v);
+	} else $ret = intval($flags);
+	return $ret;
+}
+
+function bigintval($value) {
+    $value = trim($value);
+    if (ctype_digit($value)) {
+        return $value;
+    }
+    $value = preg_replace("/[^0-9](.*)$/", '', $value);
+    if (ctype_digit($value)) {
+        return $value;
+    }
+    return 0;
+}
+
+function common_fldsort(&$arr, $desc=false, $fld='id') {
+	global $_common_fldsort_func_desc, $_common_fldsort_func_fld;
+	$_common_fldsort_func_desc = $desc;
+	$_common_fldsort_func_fld = $fld;
+	uasort($arr,'common_fldsort_func');
+}
+
+function common_multi_fldsort (&$arr, $fields) {
+	if (!is_array($arr)) return;
+	if (count($fields) == 0) return;
+	$function_body = '';
+	foreach($fields as $field) {
+		if (!is_array ($field)) {
+			$function_body .= 'if (($res=strnatcmp($a["'.$field.'"], $b["'.$field.'"])) != 0) { return $res;}';
+		} else {
+			$field_name = $field['name'];
+			if ($field['type'] == 'numeric') {
+				$function_body .= 'if (($res=$a["'.$field_name.'"]-$b["'.$field_name.'"]) != 0) ';
+			} else {
+				$function_body .= 'if (($res=strcmp($a["'.$field_name.'"], $b["'.$field_name.'"])) != 0) ';
+			}
+			if ($field['direction'] == 'desc') {
+				$function_body .= '{ return -$res;}';
+			} elseif ($field['direction'] == 'asc') {
+				$function_body .='{return $res;}';
+			}
+		}
+	}
+	$function_body .= 'return 0;';
+	$f = create_function('$a,$b', $function_body);
+	uasort($arr,$f);
+}
+
+$_common_fldsort_func_desc = false;
+$_common_fldsort_func_fld = '';
+function common_fldsort_func($a, $b) {
+	global $_common_fldsort_func_desc, $_common_fldsort_func_fld;
+	$res = $a[$_common_fldsort_func_fld]-$b[$_common_fldsort_func_fld];
+	if ($_common_fldsort_func_desc)
+		$res *= -1;
+	return $res;
+}
+
+// Для сортировки по строковым полям
+function common_sfldsort(&$arr, $fld='id', $desc=false) {
+	if (!is_array($arr)) return;
+	$f = create_function('$a,$b','return '.($desc ? '-' : '').'strcmp($a["'.$fld.'"], $b["'.$fld.'"]);');
+	uasort($arr,$f);
+}
+
+function common_fight_php() {
+	return 'fight.php?'.md5(uniqid(rand(),true));
+}
+
+// пересечение отрезков (для выяснениея соответствия по уровням)
+function segment_intercept($x1, $x2, $y1, $y2, $check_infinity=false) {
+	if ($check_infinity) {
+		$x2 = ($x2 == -1) ? 0x7fffffff : $x2;
+		$y2 = ($y2 == -1) ? 0x7fffffff : $y2;
+	}
+	return (min($x1,$x2) <= max($y1,$y2) && max($x1,$x2) >= min($y1,$y2));
+}
+
+function common_split_words($text, $width=60) {
+	return preg_replace('/(\S{'.$width.'})/','\\1 ',$text);
+}
+
+function common_short_nick($text, $len) {
+	if (mb_strlen($text) > $len+3) {
+		$text = trim(mb_substr($text,0,$len)).'...';
+	}
+	return $text;
+}
+
+function common_substr($text, $len) {
+    if (mb_strlen($text, 'utf-8') > $len+3) {
+        $text = trim(mb_substr($text,0,$len, 'utf-8')).'...';
+    }
+    return $text;
+}
+
+function log_request_statistic() {
+	global $request_statistic, $session_user;
+	$str = $request_statistic['script'];
+
+	$str .= '|' . str_replace (array ("\n", "\r"), array('\n', '\r'), serialize ($_REQUEST));
+	$str .= '|user_id:' . $session_user ['id'];
+
+	foreach (array('get','list','count','save','delete','tqd','chatd','fightd','memcached','xserver') as $type) {
+		if ($request_statistic[$type]) {
+			foreach ($request_statistic[$type] as $table => $n) {
+				$mt_time = sprintf('%.5f',$request_statistic['time'][$type][$table]);
+				$str .= '|'.$type.'/'.$table.'/'.$n.'/'.$mt_time;
+			}
+		}
+	}
+	PF_LOG(SERVER_ROOT.PATH_LOGS.'function_time.log');
+	return logfile(SERVER_ROOT.PATH_LOGS.'request_statistic.log',$str);
+}
+
+function locale_path() {
+	if (!$lang)
+		$lang = translate_default_language();
+	return PATH_LOCALE . $lang . "/";
+} 
+function locale_data_path() {
+	if (!$lang)
+		$lang = translate_default_language();
+	return PATH_DATA_LOCALE . $lang . "/";
+}
+function partner_path() {
+	global $PARTNERS_CFG;
+	return PATH_PARTNER.($PARTNERS_CFG ? $PARTNERS_CFG[PARTNER]['path'] : 'general')."/";
+}
+
+function construct_xml(&$items, $tag_name = 'item') {
+	$xml = '';
+	if ($items) foreach ($items as $item) {
+		$xml .= "\n\t".'<'.$tag_name;
+		foreach ($item as $k=>$v) $xml .= ' '.$k.'="'.htmlspecialchars($v).'"';
+		$xml .= ' />';
+	}
+	return $xml;
+}
+
+function cheater_check($user, $code) {
+	global $db_diff;
+	if (
+		!common_save($db_diff,'cheaters',array(
+			'_mode' => CSMODE_UPDATE,
+			'user_nick' => $user['nick'],
+			'user_level' => $user['level'],
+			'_set' => 'cnt=cnt+1',
+			'_add' => sql_pholder(" AND code=? AND user_id=?",$code,$user['id']),
+			'_cnt' => true,
+		))
+	) {
+		common_save($db_diff,'cheaters',array(
+			'_mode' => CSMODE_REPLACE,
+			'code' => $code,
+			'user_id' => $user['id'],
+			'user_nick' => $user['nick'],
+			'user_level' => $user['level'],
+			'cnt' => 1,
+		));
+	}
+	return true;
+}
+
+function rword($matches) {
+	$w = array(translate('радость моя'), translate('солнышко'), translate('зайчик'), translate('прелесть моя'),'пряничек', 'печенька моя');
+	return '<span class="b i">'.$w[array_rand($w)].'</span>';
+}
+
+function chat_antimat($msg_text) {
+	$msg_text = preg_replace_callback('/(^|[^а-яА-Яa-zA-Z]+)('.translate('сука|пиздец|мразь|суки|мудак|ублюдок|скотина|урод').')($|[^а-яА-Яa-zA-Z]+)/iu','rword',$msg_text);
+	$msg_text = preg_replace('/(^|[^а-яА-Яa-zA-Z]+)('.translate('хуево|хуёво|пиздато').')($|[^а-яА-Яa-zA-Z]+)/iu','<span class="b i">'.translate('кошмар').'</span>',$msg_text);
+	$msg_text = preg_replace('/(^|[^а-яА-Яa-zA-Z]+)('.translate('хуё|хуе|ебучий|бляд|fuck|пизда|залупа|хуй|хyй|xуй|xyй|бля|хуи|хуев|хуёв|пизд|муда|пидор|пидар|ебат|залуп|ебём|ебем|ебуч|хуя|ёба|еба|еби|проёб|проеб|нахуй|похуй').')/iu','<span class="b i">'.translate('(ой)').'</span>',$msg_text);
+	return $msg_text;
+}
+
+// Получить инфу о таблице. Только mysql 5.0.2+ 
+function common_table_status($db_obj, $table_name, $field_lists='*') {
+	global $db_nodes;
+	if (NODE_TABLE($table_name)) {
+		$db_obj = &$db_nodes[$node_num];
+		if (!$db_obj) { error_log('(common.lib) Node container empty!'); backtrace(true); /*return false;*/ }
+	}
+	$db_name = $db_obj->database_name;
+	$query = sql_pholder('SELECT '.$field_lists.' FROM `information_schema`.`TABLES` WHERE TABLE_SCHEMA=\''.$db_name.'\' AND TABLE_NAME=\''.$table_name.'\' LIMIT 1');
+	$profiler = profiler_start(array('context' => common_app_context(), 'container' => common_db_tag($db_obj, $table_name), 'mode' => 'update', 'host' => $db_obj->host_name ));
+	$db_obj->db_GetQueryRow($query, $result);
+	profiler_stop($profiler);
+	return $result;
+}
+
+function flash_error_log($error_destination, $error_type, $error_text, $flash_player_ver, $client_ver, $system_info, $bot_id=null, $resource_id=null) {
+	global $session_user;
+	$error_text = trim($error_text);
+	if (!$error_text) return;
+	$agent = 'Browser: '.($_SERVER['HTTP_USER_AGENT'] ? $_SERVER['HTTP_USER_AGENT'] : 'unknown');
+	$remote_addr = $_SERVER['REMOTE_ADDR'] ? $_SERVER['REMOTE_ADDR'] : 'unknown';
+	if ($error_destination==1)
+		return logfile(SERVER_ROOT.'shared/tmp/flasherrors_fight.txt',implode("\t",array(
+			"\t".$error_type,
+			$flash_player_ver,
+			$client_ver,
+			$session_user['id'],
+			$session_user['area_id'],
+			$session_user['instance_id'],
+			$session_user['fight_id'],
+			$bot_id,
+			$remote_addr,
+			"\n".$agent."\n".urldecode($error_text),
+		)));
+	elseif($error_destination==2)
+		return logfile(SERVER_ROOT.'shared/tmp/flasherrors_hunt.txt',implode("\t",array(
+			"\t".$error_type,
+			$flash_player_ver,
+			$client_ver,
+			$session_user['id'],
+			$session_user['area_id'],
+			$session_user['instance_id'],
+			$resource_id,
+			$remote_addr,
+			"\n".$agent."\n".urldecode($error_text),
+		)));	
+}
+function common_resetcookie($name, $value=null, $expire=null, $path=null, $domain=null, $secure=null, $httponly=null) {
+	       setcookie($name,     '',       1,   '/',      '');
+	return setcookie($name, $value, $expire, $path, $domain, $secure, $httponly);
+}
+
+
+function lucky_star_fill_swf_vars(&$external_swf_vars, &$multiplier, $utf8_needed=false) {
+	global $lucky_star_multipliers, $session_user;
+	require_once('lib/artifact.lib');
+
+	if (!defined('LUCKY_STAR_ACTION') || !LUCKY_STAR_ACTION) {
+		return false;
+	}
+	$show_star_banner = defined('LUCKY_STAR_BANNER') && LUCKY_STAR_BANNER;
+
+	$user_type = false;
+	$swf_vars = array();
+	// lucky star action variables
+	$lucky_star_artikul_ids = array_keys($lucky_star_multipliers);
+	$lucky_star_artikul_ids[] = LUCKY_STAR_ARTIKUL_ID;
+
+	$query_add = sql_pholder(' AND artikul_id IN (?@) ', $lucky_star_artikul_ids);
+	$lucky_star_artifacts_hash = make_hash(artifact_list(false, $session_user['id'], null, true, false, $query_add), 'artikul_id');
+
+	$lucky_star_artifact = $lucky_star_artifacts_hash[LUCKY_STAR_ARTIKUL_ID];
+	unset($lucky_star_artifacts_hash[LUCKY_STAR_ARTIKUL_ID]);
+
+	$lucky_star_baff = array_shift($lucky_star_artifacts_hash);
+	$lucky_star_baff = $lucky_star_baff['slot_id'] == 'TEMP_EFFECT' ? $lucky_star_baff : false;
+
+	unset($lucky_star_artifacts_hash);
+
+	if ($lucky_star_artifact && !$lucky_star_baff) {
+		$swf_vars['ls_expire_time'] = $lucky_star_artifact['time_expire'];
+		$swf_vars['ls_msg'] = translate('Звезда Удачи у вас в кармане!');
+		$swf_vars['ls_url'] = translate('user.php?mode=personage&submode=backpack&group=2');
+		$swf_vars['ls_hint'] = translate('В вашем рюкзаке есть Звезда удачи. Используйте ее, чтобы получить больше бриллиантов и рубинов!');
+		$swf_vars['ls_user'] = $user_type = 1;
+	} elseif ($lucky_star_baff && ($lucky_star_baff['slot_id'] == 'TEMP_EFFECT')) {
+		$swf_vars['ls_expire_time'] = $lucky_star_baff['time_expire'];
+		$swf_vars['ls_msg'] = translate('Не упусти шанс!');
+		$swf_vars['ls_url'] = translate('/info/library/index.php?obj=cat&id=97');
+		$swf_vars['ls_hint'] = translate('Вы находитесь под воздействием магии Звезды удачи.');
+		$swf_vars['ls_user'] = $user_type = 2;
+		// для вычисления размера бонуса
+		$multiplier = $lucky_star_multipliers[$lucky_star_baff['artikul_id']];
+		// для отображения
+		$swf_vars['ls_multiplier'] = $multiplier + 1;
+		artifact_artikul_get_title($lucky_star_baff);
+		$swf_vars['ls_baff_title'] = $lucky_star_baff['title'];
+	} elseif (!$lucky_star_artifact && !$lucky_star_baff && $show_star_banner) {
+		global $db_2;
+		$ref = array('user_id' => $session_user['id']);
+		$lucky_star_user = common_get($db_2, TABLE_LUCKY_STAR_USERS, $ref);
+		if (!$lucky_star_user) {
+			$swf_vars['ls_expire_time'] = 0;
+			$swf_vars['ls_msg'] = translate('Найди Звезду Удачи!');
+			$swf_vars['ls_url'] = translate('/info/library/index.php?obj=cat&id=97');
+			$swf_vars['ls_hint'] = translate('Найди Звезду Удачи! Жми сюда и узнай подробности об акции!');
+			$swf_vars['ls_user'] = $user_type = 3;
+		}
+	}
+
+	// Преобразуем в utf8 если нужно, и передадим во внешние flash vars
+	foreach ($swf_vars as $k => $v) {
+		if ($utf8_needed) $swf_vars[$k] = $v;
+		$external_swf_vars[$k] = $swf_vars[$k];
+	}
+
+	return $user_type;
+}
+
+require_once(SERVER_ROOT.locale_path().'regexp.inc');
+function common_get_regexp($key) {
+	global $regexp_hash;
+
+	if(array_key_exists($key, $regexp_hash)) {
+	  return $regexp_hash[$key];
+	}
+
+	return false;
+}
+
+if(!function_exists('json_decode')){
+	function json_decode(&$text, $bool=true) {
+		return (eval('return '.preg_replace(array('/\{|\[/','/\}|\]/','/:/'),array('array(',')','=>'),$text).';'));
+	}
+}
+function win1251($text) {
+	return iconv('UTF-8','CP1251',$text);
+}
+
+function utf16_urldecode($str) {
+	$out = '';
+	$str = explode('%u', $str);
+	for ($i = 0; $i < count($str); $i++)
+		$out .= pack('H*', $str[$i]);
+
+	$out = mb_convert_encoding($out, CHARSET_CODE_HTML, 'UTF-16');
+	return $out;
+}
+
+function utf16_urlencode($str) {
+	$out = '';
+	$str = mb_convert_encoding($str, 'UTF-16', CHARSET_CODE_HTML);
+
+	for ($i = 0; $i < mb_strlen($str, 'UTF-16'); $i++)
+		$out .= '%u' . strtoupper(bin2hex(mb_substr($str, $i, 1, 'UTF-16')));
+
+	return $out;
+}
+
+function common_humanize_filesize($filesize)
+{
+	$size_units = array(
+		0 => translate('байт'),
+		1 => translate('КБ'),
+		2 => translate('МБ'),
+		3 => translate('ГБ'),
+		4 => translate('ТБ'),
+	);
+
+	if (!is_numeric($filesize) && file_exists($filesize))
+		$filesize = filesize($filesize);
+	else
+		return false;
+
+	foreach ($size_units as $k => $units) {
+		if ($filesize/1024 < 1) return sprintf('%.1f %s', $filesize, $units);
+		else $filesize = $filesize/1024;
+	}
+
+	return sprintf('%f %s', $filesize, $units);
+}
+
+function common_num_to_roman($integer)
+{
+    $table = array('M'=>1000, 'CM'=>900, 'D'=>500, 'CD'=>400, 'C'=>100, 'XC'=>90, 'L'=>50, 'XL'=>40, 'X'=>10, 'IX'=>9, 'V'=>5, 'IV'=>4, 'I'=>1);
+    $return = '';
+    while($integer > 0)
+    {
+        foreach($table as $rom=>$arb)
+        {
+            if($integer >= $arb)
+            {
+                $integer -= $arb;
+                $return .= $rom;
+                break;
+            }
+        }
+    }
+
+    return $return;
+} 
+
+function goldpool_action_fill_swf_vars(&$vars, $main = false) {
+	if (
+		!defined('GOLDPOOL_ACTION_ON') || !GOLDPOOL_ACTION_ON ||
+		(!$main && (!defined('GOLDPOOL_ACTION_ON_AREA') || !GOLDPOOL_ACTION_ON_AREA)) ||
+		!defined('GOLDPOOL_START_TIME') || (strtotime(GOLDPOOL_START_TIME)>time_current())
+	) return false;
+
+	$cache = new Cache('GOLDPOOL_GOLD_AVAIL');
+	$avail = $cache->get();
+	$summ = intval($avail['GOLDPOOL_GOLD_AVAIL'] / ((defined('GOLDPOOL_COEF') && GOLDPOOL_COEF) ? GOLDPOOL_COEF : 1));
+	if ($avail && ($summ>0)) {
+		$vars['br_msg'] = sprintf(translate('Осталось: %s +%s%%'), $summ, GOLDPOOL_PERCENT);
+		$vars['br_cnt'] = $summ;
+		if (defined('GOLDPOOL_LINK')) {
+			$vars['br_link'] = GOLDPOOL_LINK;
+		}
+		$vars['br_pct'] = GOLDPOOL_PERCENT;
+	}
+
+	return true;
+}
+
+function common_htmlspecialchars(&$object, $exceptions=null) {
+	if (!isset($exceptions) || !is_array($exceptions)) $exceptions = array();
+	if (isset($object) && is_array($object)) foreach ($object as $item_id => $item) {
+		if (is_array($item)) {
+			common_htmlspecialchars($object[$item_id], $exceptions);
+		} elseif (!in_array($item_id, $exceptions)) {
+			$object[$item_id] = htmlspecialchars($object[$item_id]);
+		}
+	}
+}
+
+function common_strip_tags(&$object) {
+	if (isset($object) && is_array($object)) foreach ($object as $item_id => $item) {
+		if (is_array($item)) {
+			common_strip_tags($object[$item_id]);
+		} else {
+			$object[$item_id] = strip_tags($object[$item_id]);
+		} 
+	}
+}
+
+function common_tree_get_childs($arr, $parent_id){
+  $items = array();
+	foreach ($arr as $item) {
+		if ($item['parent_id'] != $parent_id) continue;
+		$items[] = $item;
+		$items=array_merge($items,common_tree_get_childs($arr, $item["id"]));
+	} 
+  return $items;	
+}
+
+// С помощью тестов было определено, что 5 уровень компрессии самы подходящий в наших условиях.
+define('GZIP_COMPRESS_LEVEL', 5);
+
+function gzip_compress($data, $level = null) {
+	if ($level === null) $level = GZIP_COMPRESS_LEVEL;
+	return gzcompress($data, $level);
+}
+
+function gzip_uncompress($data) {
+	return gzuncompress($data);
+}
+
+// Контекст вызова, используется для вывода информации в профайлере
+$_common_app_context = '';
+function common_app_context($title = null) {
+	global $_common_app_context;
+	if ($title) $_common_app_context = $title;
+	return $_common_app_context;
+}
+
+// Ассоциация базы данных и таблицы с текстовым значением. Используется для профилирования
+function common_db_tag($db, $table_name) {
+	global $db, $db_2, $db_3, $db_4, $db_auth, $db_diff, $db_metric, $db_trans;
+	if ( NODE_TABLE($table_name) ) return "node";
+
+        $alias = array("db" => $db, "db_2" => $db_2, "db_3" => $db_3, "db_4" => $db_4, "db_auth" => $db_auth, "db_diff" => $db_diff, "db_metric" => $db_metric, "db_trans" => $db_trans);
+
+        foreach($alias as $tag => $val) {
+                if ($db === $val) return $tag;
+        }
+        return "db_unknown";
+}
+
+function common_ip_info($ip) {
+	global $db_diff;
+	
+	if (!preg_match("/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/", $ip)) return false;
+	$sql = sql_pholder(' SELECT (INET_ATON(?) <= ip_max) AS valid, country_code, region_id FROM ?#TABLE_GEO_IP WHERE ip_min < INET_ATON(?) ORDER BY ip_min DESC LIMIT 1 ', $ip, $ip);
+	
+	$data = array();
+	$db_diff->db_GetQueryRow($sql, $data);
+
+	if (!$data || !$data['valid']) return false;
+	
+	$ip_info = array(
+		'country_code' => $data['country_code'],
+	);
+	
+	if ($data['region_id']) {
+		$region_info = common_get($db_diff, TABLE_GEO_IP_REGIONS, $data['region_id']);
+		if ($region_info) {
+			$ip_info['city'] = $region_info['city'];
+		}
+	}
+	
+	return $ip_info;
+}
+
+//Получение статики, константа находится в constant.inc. По умолчанию 5 варинат:)
+function static_get($file, $f_type = false){
+    if(STATIC_DEBUG_TYPE == 1 || ($f_type != false && $f_type == 1)){
+        return $file;
+    }
+    if(STATIC_DEBUG_TYPE == 2 || ($f_type != false && $f_type == 2)){
+        return $file.'?'.time().mt_rand(2000000,999999999);
+    }
+    if(STATIC_DEBUG_TYPE == 3 || ($f_type != false && $f_type == 3)){
+        return $file.'?ex='.time();
+    }
+    if(STATIC_DEBUG_TYPE == 4 || ($f_type != false && $f_type == 4)){
+        return $file.'?'.filemtime($file);
+    }
+    if(STATIC_DEBUG_TYPE == 5 || ($f_type != false && $f_type == 5)){
+        if (!defined('STATIC_CONST_SETTINGS') || !STATIC_CONST_SETTINGS){ //Если константа не берется из админки настроек
+            return $file.'?c='.STATIC_CONST;
+        }else{
+            return $file.'?c='.STATIC_CONST_SETTINGS; //Если берется)
+        }
+    }
+}
+
+function cache_const_get(){
+    return SERVER_DOMAIN.(defined('STATIC_CONST_CACHE') && STATIC_CONST_CACHE ? STATIC_CONST_CACHE : '');
+}
+
+function format_by_count($count, $form1, $form2, $form3){
+    $count = abs($count) % 100;
+    $lcount = $count % 10;
+    if ($count >= 11 && $count <= 19) return($form3);
+    if ($lcount >= 2 && $lcount <= 4) return($form2);
+    if ($lcount == 1) return($form1);
+    return $form3;
+}
+
+//Функция унсеттинга
+function unset_array(&$a,$b){
+    foreach ($a as $k=> $v){
+        if(is_array($b)){foreach ($b as $bb){unset($a[$k][$bb]);} continue;}
+        else unset($a[$k][$b]); continue;
+    }
+}
+
+function putting_array(&$a,$b,$val,$d){
+    foreach ($a as $k=> $v){
+        if(is_array($b)){foreach ($b as $bb){if(!$d){$a[$k][$bb] = $val.$a[$k][$bb];}else{$a[$k][$bb] = $a[$k][$bb].$val;}} continue;}
+        else if(!$d){$a[$k][$b] = $val.$a[$k][$b];}else{$a[$k][$b] = $a[$k][$b].$val;} continue;
+    }
+}
+
+//Конвертация флага в строку привычную JS например для передачи параметров
+function flag_hex($f){
+    return '0x'.dechex($f);
+}
+
+function common_adv_links($text = ''){
+    return true;
+    if (preg_match_all("/\b(?:[-a-zA-Z0-9_]+(?:\.|\\\.))+[-a-zA-Z]{2,4}(\/\S+)?\b/",$text,$matches)) {
+        foreach ($matches[0] as $v) {
+            if (!preg_match('/\b(?:'.ALLOW_LINKS.')\b/',trim($v))) {
+                return false;
+            }
+        }
+    }
+    if(preg_match('/\b(?:'.DISALLOW_LINKS.')\b/', $text)){
+        return false;
+    }
+
+    return true;
+}
+
+function debug_backtrace_string() {
+    $stack = '';
+    $i = 1;
+    $trace = debug_backtrace();
+    unset($trace[0]); //Remove call to this function from stack trace
+    foreach($trace as $node) {
+        $stack .= "#$i ".$node['file'] ."(" .$node['line']."): "; 
+        if(isset($node['class'])) {
+            $stack .= $node['class'] . "->"; 
+        }
+        $stack .= $node['function'] . "()" . PHP_EOL;
+        $i++;
+    }
+    return $stack;
+}
+
+function common_remove_emoji($text){
+    return preg_replace('/([0-9|#][\x{20E3}])|[\x{00ae}|\x{00a9}|\x{203C}|\x{2047}|\x{2048}|\x{2049}|\x{3030}|\x{303D}|\x{2139}|\x{2122}|\x{3297}|\x{3299}][\x{FE00}-\x{FEFF}]?|[\x{2190}-\x{21FF}][\x{FE00}-\x{FEFF}]?|[\x{2300}-\x{23FF}][\x{FE00}-\x{FEFF}]?|[\x{2460}-\x{24FF}][\x{FE00}-\x{FEFF}]?|[\x{25A0}-\x{25FF}][\x{FE00}-\x{FEFF}]?|[\x{2600}-\x{27BF}][\x{FE00}-\x{FEFF}]?|[\x{2900}-\x{297F}][\x{FE00}-\x{FEFF}]?|[\x{2B00}-\x{2BF0}][\x{FE00}-\x{FEFF}]?|[\x{1F000}-\x{1F6FF}][\x{FE00}-\x{FEFF}]?/u', '', $text);
+}
+
+function tpl_tooltip($title = '', $type = 1){
+    if($type == 1){
+        return 'data-tooltip data-tooltip-content="<div class=\'tooltip_ul\'>'.$title.'</div>"';
+    }
+}
+
+function generateRandomString($length = 10) {
+    return substr(str_shuffle(str_repeat($x='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', ceil($length/strlen($x)) )),1,$length);
+}
+
+function commonIsSecure()
+{
+    if (
+        ( ! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || ( ! empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https')
+        || ( ! empty($_SERVER['HTTP_X_FORWARDED_SSL']) && $_SERVER['HTTP_X_FORWARDED_SSL'] == 'on')
+        || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443)
+        || (isset($_SERVER['HTTP_X_FORWARDED_PORT']) && $_SERVER['HTTP_X_FORWARDED_PORT'] == 443)
+        || (isset($_SERVER['REQUEST_SCHEME']) && $_SERVER['REQUEST_SCHEME'] == 'https')
+    ) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+function entry_point_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('ENTRY_POINT_'.intval($ref),$timewait,$timelock);
+}
+
+function entry_point_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('ENTRY_POINT_'.intval($ref));
+}
+
+function canvas_all_js() {
+    ?>
+    <script type="text/javascript" src="<?=static_get('js/canvas/pixi.js');?>"></script>
+    <script type="text/javascript" src="<?=static_get('js/canvas/pixi-filters.js');?>"></script>
+    <script type="text/javascript" src="<?=static_get('js/canvas/canvas.all.js');?>"></script>
+    <script type="text/javascript" src="<?=static_get('js/canvas/canvas.path.js');?>"></script>
+    <script type="text/javascript" src="<?=static_get('js/canvas/canvas.des.path.js');?>"></script>
+    <script type="text/javascript" src="<?=static_get('js/console_log.js');?>"></script>
+    <script>
+        //canvas.Log.debug = true;
+        //BITCH
+    </script>
+    <?
+}
+
+function telegram_bot_error_send_message($text) {
+    if(!(defined('TELEGRAM_BOT_ERROR_TOKEN') && TELEGRAM_BOT_ERROR_TOKEN)) {
+        return false;
+    }
+    if(!(defined('TELEGRAM_BOT_ERROR_CHAT_ID') && TELEGRAM_BOT_ERROR_CHAT_ID)) {
+        return false;
+    }
+
+    try{
+        $website="https://api.telegram.org/bot".TELEGRAM_BOT_ERROR_TOKEN;
+        $params=[
+            'chat_id' => TELEGRAM_BOT_ERROR_CHAT_ID,
+            'text' => '['.SERVER_DOMAIN.'] '.$text,
+        ];
+        $ch = curl_init($website . '/sendMessage');
+        curl_setopt($ch, CURLOPT_HEADER, false);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, ($params));
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        $result = curl_exec($ch);
+        curl_close($ch);
+    }catch (Exception $e){}
+    return true;
+}

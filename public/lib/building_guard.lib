@@ -1,0 +1,62 @@
+<?
+
+define('TABLE_BUILDINGS_GUARD','buildings_guard');
+define('FIELD_BUILDINGS_GUARD','');
+define('TABLE_BUILDINGS_GUARD_USER','buildings_guard_user');
+define('FIELD_BUILDINGS_GUARD_USER','');
+
+////////////////////////////////////////////////////
+function building_guard_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BUILDINGS_GUARD,$ref,$add);
+}
+
+function building_guard_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_BUILDINGS_GUARD,$ref,$add);
+}
+
+function building_guard_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BUILDINGS_GUARD, $ref, $add);
+}
+
+function building_guard_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BUILDINGS_GUARD,$param,FIELD_BUILDINGS_GUARD);
+}
+
+function building_guard_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_BUILDINGS_GUARD,$ref);
+}
+
+////////////////////////////////////////////////////
+function building_guard_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BUILDINGS_GUARD_USER,$ref,$add);
+}
+
+function building_guard_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_BUILDINGS_GUARD_USER,$ref,$add);
+}
+
+function building_guard_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BUILDINGS_GUARD_USER, $ref, $add);
+}
+
+function building_guard_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BUILDINGS_GUARD_USER,$param,FIELD_BUILDINGS_GUARD_USER);
+}
+
+function building_guard_user_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_BUILDINGS_GUARD_USER,$ref);
+}

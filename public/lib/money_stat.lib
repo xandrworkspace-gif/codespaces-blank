@@ -1,0 +1,135 @@
+<? # $Id: money_stat.lib,v 1.3 2009-12-07 09:41:48 r.gogolev Exp $
+
+// Имена и поля таблиц
+define('TABLE_MONEY_STAT','money_stat');
+define('FIELD_MONEY_STAT','id, money_type, amount, sdate, operation, level, kind');
+
+define('TABLE_MONEY_STAT2','money_stat2');
+define('FIELD_MONEY_STAT2','user_id, user_level, user_rank, ingame_time, payment_time, amount');
+
+define('TABLE_BALANCE_HISTORY','balance_history');
+define('FIELD_BALANCE_HISTORY','');
+
+function money_stat_list($ref=false,$add='',$fields='*') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_MONEY_STAT,$ref,$add,$fields);
+}
+
+function money_stat_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_MONEY_STAT,$param,FIELD_MONEY_STAT);
+}
+
+function money_stat_smart_save($amount,$money_type,$operation,$level,$kind) {
+	$date = date('Y-m-d',time_current());
+	$stat = money_stat_save(array(
+		'_cnt' => true,
+		'_set' => 'amount = amount + '.$amount,
+		'_add' => sql_pholder(" AND sdate=? AND money_type=? AND operation=? AND level=? AND kind=?", $date, $money_type, $operation, $level, $kind)
+	));
+// Проверка, произошло ли обновление записи в таблице
+	if (!$stat) { // Добавление записи о текущем дне для данного типа валюты и операции, если таковой не существует
+		money_stat_save(array(
+			'_noerr'     => true,
+			'sdate'      => $date,
+			'money_type' => $money_type,
+			'operation'  => $operation,
+			'level'      => $level,
+			'kind'       => $kind
+
+		));
+		money_stat_save(array( // Повторная попытка обновления статистики
+			'_set' => 'amount = amount + '.$amount,
+			'_add' => sql_pholder(" AND sdate=? AND money_type=? AND operation=? AND level=? AND kind=?", $date, $money_type, $operation, $level, $kind)
+		));
+	}
+	return true;
+}
+
+
+
+
+// Имена и поля таблиц
+
+function money_stat2_list($ref=false, $add='', $field_list = '*') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_MONEY_STAT2, $ref, $add, $field_list);
+}
+
+function money_stat2_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_MONEY_STAT2, $param, FIELD_MONEY_STAT2);
+}
+
+function money_stat2_payment($user_id, $amount)
+{
+	$user = user_get(array('id' => $user_id));
+	
+	$param = array (
+		'user_id'      => (int)$user_id,
+		'user_level'   => (int)$user['level'],
+		'user_rank'    => (int)$user['rank'],
+		'ingame_time'  => (int)(time() - $user['time_registered']),
+		'payment_time' => time(),
+		'amount'       => (int)($amount * 100),
+	);
+	return money_stat2_save($param);
+}
+
+function balance_history_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_BALANCE_HISTORY, $ref, $add);
+}
+
+function balance_history_list($ref=false, $add='', $field_list='*') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_BALANCE_HISTORY, $ref, $add, $field_list);
+}
+
+function balance_history_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_BALANCE_HISTORY, $ref, $add);
+}
+
+function balance_history_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_BALANCE_HISTORY, $param, FIELD_BALANCE_HISTORY);
+}
+
+function balance_history_delete($ref, $add='') {
+	global $db_diff;
+	return common_delete($db_diff, TABLE_BALANCE_HISTORY, $ref, $add);
+}
+
+function balance_history_multi_update($data, $data_fields, $update_fields = array(), $ignore = false) {
+	global $db_diff;
+	return common_multi_update($db_diff, TABLE_BALANCE_HISTORY, $data, $data_fields, $update_fields, $ignore);
+}
+
+function balance_history_generate() {
+	// Функция заносит в специальную табличку баланс с изменением за последний день
+	$yesterday = mktime(0, 0, 0, date("m")  , date("d")-1, date("Y"));
+	$today = mktime(0, 0, 0, date("m")  , date("d"), date("Y"));
+	
+	$offset = 0;
+	while ($user_hash = make_hash(user_list(false, sql_pholder(' AND id > ? ORDER BY id LIMIT 1000 ', $offset), false, 'id,money'))) {
+		$user_ids = array_keys($user_hash);
+		$offset = max($user_ids);
+		
+		$current = make_hash(balance_history_list(array('user_id' => $user_ids, 'stime' => $yesterday)), 'user_id');
+		$records = array();
+		foreach ($user_hash as $user_id => $user) {
+			$cur_balance = isset($current[$user_id]) ? floatval($current[$user_id]['balance']) : 0.;
+			$records[] = array(
+				'user_id' => $user['id'],
+				'stime' => $today,
+				'balance' => $user['money'],
+				'balance_diff' => $user['money'] - $cur_balance,
+			);
+		}
+		balance_history_multi_update($records, array_keys($records[0]), null, true);
+	}
+	
+	return true;
+}
+?>

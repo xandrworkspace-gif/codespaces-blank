@@ -1,0 +1,283 @@
+<?#Дейтвие открыть все шашки 24.09.2016
+$array = array(
+#грушевое дерево
+3003 => array('from'=>3003, 'to'=>2913), //Пешка из грушевого дерева
+3111 => array('from'=>3111, 'to'=>2914), //Конь из грушевого дерева
+3112 => array('from'=>3112, 'to'=>2915), //Слон из грушевого дерева
+3113 => array('from'=>3113, 'to'=>2916), //Ладья из грушевого дерева
+3114 => array('from'=>3114, 'to'=>2917), //Ферзь из грушевого дерева
+3115 => array('from'=>3115, 'to'=>2918), //Король из грушевого дерева
+
+#медная
+3116 => array('from'=>3116, 'to'=>2919), //Медная Пешка
+3117 => array('from'=>3117, 'to'=>2920), //Медная Конь
+3118 => array('from'=>3118, 'to'=>2921), //Медная Слон
+3119 => array('from'=>3119, 'to'=>2922), //Медная Ладья
+3120 => array('from'=>3120, 'to'=>2923), //Медная Ферзь
+3121 => array('from'=>3121, 'to'=>2924), //Медная Король
+
+#фарфоровая
+3122 => array('from'=>3122, 'to'=>2925), //Фарфоровая Пешка
+3123 => array('from'=>3123, 'to'=>2926), //Фарфоровая Конь
+3124 => array('from'=>3124, 'to'=>2927), //Фарфоровая Слон
+3125 => array('from'=>3125, 'to'=>2928), //Фарфоровая Ладья
+3126 => array('from'=>3126, 'to'=>2929), //Фарфоровая Ферзь
+3127 => array('from'=>3127, 'to'=>2930), //Фарфоровая Король
+
+#яшмовая
+3128 => array('from'=>3128, 'to'=>2931),
+3129 => array('from'=>3129, 'to'=>2932),
+3130 => array('from'=>3130, 'to'=>2933),
+3131 => array('from'=>3131, 'to'=>2934),
+3132 => array('from'=>3132, 'to'=>2935),
+3133 => array('from'=>3133, 'to'=>2936),
+
+#угольная
+3134 => array('from'=>3134, 'to'=>2937),
+3135 => array('from'=>3135, 'to'=>2938),
+3136 => array('from'=>3136, 'to'=>2939),
+3138 => array('from'=>3138, 'to'=>2940),
+3140 => array('from'=>3140, 'to'=>2941),
+3141 => array('from'=>3141, 'to'=>2942),
+
+#из красного дерева
+3142 => array('from'=>3142, 'to'=>2943),
+3143 => array('from'=>3143, 'to'=>2944),
+3144 => array('from'=>3144, 'to'=>2945),
+3145 => array('from'=>3145, 'to'=>2946),
+3146 => array('from'=>3146, 'to'=>2947),
+3147 => array('from'=>3147, 'to'=>2948),
+
+#серебряная 
+3148 => array('from'=>3148, 'to'=>2949),
+3149 => array('from'=>3149, 'to'=>2950),
+3150 => array('from'=>3150, 'to'=>2951),
+3151 => array('from'=>3151, 'to'=>2952),
+3152 => array('from'=>3152, 'to'=>2953),
+3153 => array('from'=>3153, 'to'=>2954),
+
+#мраморный
+3154 => array('from'=>3154, 'to'=>2955),
+3155 => array('from'=>3155, 'to'=>2956),
+3156 => array('from'=>3156, 'to'=>2957),
+3157 => array('from'=>3157, 'to'=>2958),
+3158 => array('from'=>3158, 'to'=>2959),
+3159 => array('from'=>3159, 'to'=>2960),
+
+#малахитовый
+3160 => array('from'=>3160, 'to'=>2961),
+3161 => array('from'=>3161, 'to'=>2962),
+3162 => array('from'=>3162, 'to'=>2963),
+3163 => array('from'=>3163, 'to'=>2964),
+3164 => array('from'=>3164, 'to'=>2965),
+3165 => array('from'=>3165, 'to'=>2966),
+
+#Обсидиановая
+3166 => array('from'=>3166, 'to'=>2967),
+3167 => array('from'=>3167, 'to'=>2968),
+3168 => array('from'=>3168, 'to'=>2969),
+3169 => array('from'=>3169, 'to'=>2970),
+3170 => array('from'=>3170, 'to'=>2971),
+3171 => array('from'=>3171, 'to'=>2972),
+
+#палисандровая
+3172 => array('from'=>3172, 'to'=>2973),
+3173 => array('from'=>3173, 'to'=>2974),
+3174 => array('from'=>3174, 'to'=>2975),
+3175 => array('from'=>3175, 'to'=>2976),
+3176 => array('from'=>3176, 'to'=>2977),
+3177 => array('from'=>3177, 'to'=>2978),
+
+#золотая
+3178 => array('from'=>3178, 'to'=>2979),
+3179 => array('from'=>3179, 'to'=>2980),
+3180 => array('from'=>3180, 'to'=>2981),
+3181 => array('from'=>3181, 'to'=>2982),
+3182 => array('from'=>3182, 'to'=>2983),
+3183 => array('from'=>3183, 'to'=>2984),
+
+#из кости дургаха
+3184 => array('from'=>3184, 'to'=>2985),
+3185 => array('from'=>3185, 'to'=>2986),
+3186 => array('from'=>3186, 'to'=>2987),
+3187 => array('from'=>3187, 'to'=>2988),
+3188 => array('from'=>3188, 'to'=>2989),
+3189 => array('from'=>3189, 'to'=>2990),
+
+#изумрудная
+3190 => array('from'=>3190, 'to'=>2991),
+3191 => array('from'=>3191, 'to'=>2992),
+3192 => array('from'=>3192, 'to'=>2993),
+3193 => array('from'=>3193, 'to'=>2994),
+3194 => array('from'=>3194, 'to'=>2995),
+3195 => array('from'=>3195, 'to'=>2996),
+
+#эльдориловская
+3196 => array('from'=>3196, 'to'=>2997),
+3197 => array('from'=>3197, 'to'=>2998),
+3198 => array('from'=>3198, 'to'=>2999),
+3199 => array('from'=>3199, 'to'=>3000),
+3200 => array('from'=>3200, 'to'=>3001),
+3201 => array('from'=>3201, 'to'=>3002),
+
+#яшма аква
+5825 => array('from'=>5825, 'to'=>2931,'cupols'=>2),
+5826 => array('from'=>5826, 'to'=>2932,'cupols'=>2),
+5827 => array('from'=>5827, 'to'=>2933,'cupols'=>2),
+5828 => array('from'=>5828, 'to'=>2934,'cupols'=>2),
+5829 => array('from'=>5829, 'to'=>2935,'cupols'=>2),
+5830 => array('from'=>5830, 'to'=>2936,'cupols'=>2),
+
+#угольная аква
+5831 => array('from'=>5831, 'to'=>2937,'cupols'=>2),
+5832 => array('from'=>5832, 'to'=>2938,'cupols'=>2),
+5833 => array('from'=>5833, 'to'=>2939,'cupols'=>2),
+5834 => array('from'=>5834, 'to'=>2940,'cupols'=>2),
+5835 => array('from'=>5835, 'to'=>2941,'cupols'=>2),
+5836 => array('from'=>5836, 'to'=>2942,'cupols'=>2),
+
+#красное дерево аква
+5837 => array('from'=>5837, 'to'=>2943,'cupols'=>2),
+5838 => array('from'=>5838, 'to'=>2944,'cupols'=>2),
+5839 => array('from'=>5839, 'to'=>2945,'cupols'=>2),
+5840 => array('from'=>5840, 'to'=>2946,'cupols'=>2),
+5841 => array('from'=>5841, 'to'=>2947,'cupols'=>2),
+5842 => array('from'=>5842, 'to'=>2948,'cupols'=>2),
+
+#грушевого дерева аква
+5844 => array('from'=>5844, 'to'=>2913,'cupols'=>1),
+5846 => array('from'=>5846, 'to'=>2914,'cupols'=>1),
+5847 => array('from'=>5847, 'to'=>2915,'cupols'=>1),
+5848 => array('from'=>5848, 'to'=>2916,'cupols'=>1),
+5850 => array('from'=>5850, 'to'=>2917,'cupols'=>1),
+5851 => array('from'=>5851, 'to'=>2918,'cupols'=>1),
+
+#медная аква
+5852 => array('from'=>5852, 'to'=>2919,'cupols'=>1),
+5853 => array('from'=>5853, 'to'=>2920,'cupols'=>1),
+5854 => array('from'=>5854, 'to'=>2921,'cupols'=>1),
+5855 => array('from'=>5855, 'to'=>2922,'cupols'=>1),
+5856 => array('from'=>5856, 'to'=>2923,'cupols'=>1),
+5857 => array('from'=>5857, 'to'=>2924,'cupols'=>1),
+
+#фарфоровая аква
+5858 => array('from'=>5858, 'to'=>2925,'cupols'=>1),
+5859 => array('from'=>5859, 'to'=>2926,'cupols'=>1),
+5860 => array('from'=>5860, 'to'=>2927,'cupols'=>1),
+5861 => array('from'=>5861, 'to'=>2928,'cupols'=>1),
+5862 => array('from'=>5862, 'to'=>2929,'cupols'=>1),
+5863 => array('from'=>5863, 'to'=>2930,'cupols'=>1),
+
+#серебряный аква
+5866 => array('from'=>5866, 'to'=>2949,'cupols'=>3),
+5867 => array('from'=>5867, 'to'=>2950,'cupols'=>3),
+5868 => array('from'=>5868, 'to'=>2951,'cupols'=>3),
+5869 => array('from'=>5869, 'to'=>2952,'cupols'=>3),
+5871 => array('from'=>5871, 'to'=>2953,'cupols'=>3),
+5876 => array('from'=>5876, 'to'=>2954,'cupols'=>3),
+
+#Мраморный аква
+5877 => array('from'=>5877, 'to'=>2955,'cupols'=>3),
+5878 => array('from'=>5878, 'to'=>2956,'cupols'=>3),
+5879 => array('from'=>5879, 'to'=>2957,'cupols'=>3),
+5880 => array('from'=>5880, 'to'=>2958,'cupols'=>3),
+5881 => array('from'=>5881, 'to'=>2959,'cupols'=>3),
+5882 => array('from'=>5882, 'to'=>2960,'cupols'=>3),
+
+#Малахитовый аква
+5883 => array('from'=>5883, 'to'=>2961,'cupols'=>3),
+5884 => array('from'=>5884, 'to'=>2962,'cupols'=>3),
+5885 => array('from'=>5885, 'to'=>2963,'cupols'=>3),
+5886 => array('from'=>5886, 'to'=>2964,'cupols'=>3),
+5887 => array('from'=>5887, 'to'=>2965,'cupols'=>3),
+5888 => array('from'=>5888, 'to'=>2966,'cupols'=>3),
+
+#Обсидиановый аква
+5889 => array('from'=>5889, 'to'=>2967,'cupols'=>4),
+5890 => array('from'=>5890, 'to'=>2968,'cupols'=>4),
+5891 => array('from'=>5891, 'to'=>2969,'cupols'=>4),
+5892 => array('from'=>5892, 'to'=>2970,'cupols'=>4),
+5893 => array('from'=>5893, 'to'=>2971,'cupols'=>4),
+5894 => array('from'=>5894, 'to'=>2972,'cupols'=>4),
+
+#палисандровая аква
+5895 => array('from'=>5895, 'to'=>2973,'cupols'=>4),
+5896 => array('from'=>5896, 'to'=>2974,'cupols'=>4),
+5897 => array('from'=>5897, 'to'=>2975,'cupols'=>4),
+5898 => array('from'=>5898, 'to'=>2976,'cupols'=>4),
+5899 => array('from'=>5899, 'to'=>2977,'cupols'=>4),
+5900 => array('from'=>5900, 'to'=>2978,'cupols'=>4),
+
+#золотая аква
+5901 => array('from'=>5901, 'to'=>2979,'cupols'=>4),
+5902 => array('from'=>5902, 'to'=>2980,'cupols'=>4),
+5903 => array('from'=>5903, 'to'=>2981,'cupols'=>4),
+5904 => array('from'=>5904, 'to'=>2982,'cupols'=>4),
+5905 => array('from'=>5905, 'to'=>2983,'cupols'=>4),
+5906 => array('from'=>5906, 'to'=>2984,'cupols'=>4),
+
+#из кости дургаха аква
+5907 => array('from'=>5907, 'to'=>2985,'cupols'=>4),
+5908 => array('from'=>5908, 'to'=>2986,'cupols'=>4),
+5909 => array('from'=>5909, 'to'=>2987,'cupols'=>4),
+5910 => array('from'=>5910, 'to'=>2988,'cupols'=>4),
+5911 => array('from'=>5911, 'to'=>2989,'cupols'=>4),
+5912 => array('from'=>5912, 'to'=>2990,'cupols'=>4),
+
+#изумрудная аква
+5913 => array('from'=>5913, 'to'=>2991,'cupols'=>5),
+5914 => array('from'=>5914, 'to'=>2992,'cupols'=>5),
+5915 => array('from'=>5915, 'to'=>2993,'cupols'=>5),
+5916 => array('from'=>5916, 'to'=>2994,'cupols'=>5),
+5917 => array('from'=>5917, 'to'=>2995,'cupols'=>5),
+5918 => array('from'=>5918, 'to'=>2996,'cupols'=>5),
+
+#эльдориловская аква
+5919 => array('from'=>5919, 'to'=>2997,'cupols'=>5),
+5920 => array('from'=>5920, 'to'=>2998,'cupols'=>5),
+5921 => array('from'=>5921, 'to'=>2999,'cupols'=>5),
+5922 => array('from'=>5922, 'to'=>3000,'cupols'=>5),
+5923 => array('from'=>5923, 'to'=>3001,'cupols'=>5),
+5924 => array('from'=>5924, 'to'=>3002,'cupols'=>5),
+);
+
+$cupols = array(
+1 => 5818, // Аквакупол стабильности
+2 => 5819, // Аквакупол надежности
+3 => 5820, // Аквакупол крепости
+4 => 5821, // Аквакупол стойкости
+5 => 5822, // Аквакупол неуязвимости
+);
+
+/* if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return; */
+
+//Весь проход прошли, теперь можно производить обменушку :*
+
+
+$no_obmen = true;
+
+$artifact_list = artifact_list(false,$session_user['id']); //Получаем артефакты юзера
+if(!$artifact_list){
+	$out['error'] = 'Нет возможности.';
+	return;
+}
+foreach($artifact_list as $artifact){
+	if($array[$artifact['artikul_id']] && isset($array[$artifact['artikul_id']]) && $array[$artifact['artikul_id']]['from'] && $array[$artifact['artikul_id']]['to']){
+		$cnt = $artifact['cnt'];
+		artifact_delete($artifact['id']);
+		//Добавляем куплоа, если уместны
+		if(intval($array[$artifact['artikul_id']]['cupols']) != 0){
+			artifact_add($cupols[$array[$artifact['artikul_id']]['cupols']],$cnt,$session_user['id']);
+		}
+		artifact_add($array[$artifact['artikul_id']]['to'],$cnt,$session_user['id']);
+		$no_obmen = false;
+	}
+}
+if($no_obmen){
+	$out['error'] = 'Нет закрытых шахматных фигур.';
+	return;
+}
+
+user_make_payment(MONEY_TYPE_GAME, $session_user['id'], -100);
+
+$out['status'] = ACTION_STATUS_OK;

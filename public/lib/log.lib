@@ -1,0 +1,89 @@
+<? # $Id: log.lib,v 1.11 2008-10-29 10:59:05 a.uteshev Exp $
+
+// Имена и поля таблиц
+define('TABLE_LOG_USER_ACTIONS','log_user_actions');
+define('FIELD_LOG_USER_ACTIONS','');
+
+define('TABLE_LOG_LOCALE','log_locale');
+define('FIELD_LOG_LOCALE','');
+
+define('TABLE_LOG_QUEST_USER','log_quest_users');
+define('FIELD_LOG_QUEST_USER','');
+
+define('LOG_QUEST_USER_STATUS_STARTED',   1);	// Квест начат
+define('LOG_QUEST_USER_STATUS_FINISHED',  2);	// Квест закончен
+define('LOG_QUEST_USER_STATUS_CANCEL',    3);	// Квест отказ
+
+function log_user_action_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_LOG_USER_ACTIONS,$ref,$add);
+}
+
+function log_user_action_list($add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_LOG_USER_ACTIONS,false,$add);
+}
+
+function log_user_action_count($add='') {
+	global $db_diff;
+	return common_count($db_diff,TABLE_LOG_USER_ACTIONS,false,$add);
+}
+
+function log_user_action_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_LOG_USER_ACTIONS,$param,FIELD_LOG_USER_ACTIONS);
+}
+
+function log_user_action_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_LOG_USER_ACTIONS,$ref,$add);
+}
+
+function log_locale_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_LOG_LOCALE,$ref,$add);
+}
+
+function log_locale_list($add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_LOG_LOCALE,false,$add);
+}
+
+function log_locale_count($add='') {
+	global $db_diff;
+	return common_count($db_diff,TABLE_LOG_LOCALE,false,$add);
+}
+
+function log_locale_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_LOG_LOCALE,$param,FIELD_LOG_LOCALE);
+}
+
+function log_locale_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_LOG_LOCALE,$ref,$add);
+}
+
+// Логгирование момента получения или завершения квеста, для отчета в админке
+function log_quest_user_list($ref=false, $add='', $field_list = '*') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_LOG_QUEST_USER,$ref,$add,$field_list);
+}
+
+function log_quest_user_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_LOG_QUEST_USER,$param,FIELD_LOG_QUEST_USER);
+}
+
+function log_quest_user_get($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_LOG_QUEST_USER,$param,FIELD_LOG_QUEST_USER);
+}
+
+function log_quest_user_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_LOG_QUEST_USER,$ref,$add);
+}
+
+
+?>

@@ -1,0 +1,56 @@
+<?
+
+define('TABLE_GUIDE_CATS', 'guide_cats');
+define('TABLE_GUIDE_TEXT', 'guide_text');
+
+function guide_cats_get($ref=false) {
+    global $db_info;
+    return common_get($db_info,TABLE_GUIDE_CATS,$ref);
+}
+
+function guide_cats_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_GUIDE_CATS,$ref,$add);
+}
+
+function guide_cats_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_GUIDE_CATS,$param);
+}
+
+function guide_cats_delete($ref) {
+    global $db_info;
+    return common_delete($db_info,TABLE_GUIDE_CATS,$ref);
+}
+
+function guide_cats_count($ref) {
+    global $db_info;
+    return common_count($db_info,TABLE_GUIDE_CATS,$ref);
+}
+
+////////////////////////////
+
+function guide_text_get($ref=false) {
+    global $db_info;
+    return common_get($db_info,TABLE_GUIDE_TEXT,$ref);
+}
+
+function guide_text_list($ref=false, $add='') {
+    global $db_info;
+    return common_list($db_info,TABLE_GUIDE_TEXT,$ref,$add);
+}
+
+function guide_text_save($param) {
+    global $db_info;
+    return common_save($db_info,TABLE_GUIDE_TEXT,$param);
+}
+
+function guide_text_delete($ref) {
+    global $db_info;
+    return common_delete($db_info,TABLE_GUIDE_TEXT,$ref);
+}
+
+function guide_text_count($ref) {
+    global $db_info;
+    return common_count($db_info,TABLE_GUIDE_TEXT,$ref);
+}

@@ -1,0 +1,33 @@
+<?
+
+define('TABLE_MARRY_USER', 'marry_user');
+define('FIELD_MARRY_USER', '');
+
+#Работа с базой данных
+function marry_user_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_MARRY_USER,$ref,$add);
+}
+
+function marry_user_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_MARRY_USER,$ref,$add);
+}
+
+function marry_user_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_MARRY_USER, $ref, $add);
+}
+
+function marry_user_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_MARRY_USER,$param,FIELD_MARRY_USER);
+}
+
+function marry_user_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_MARRY_USER,$ref,$add);
+    return true;
+}
+#Работа с базой данных

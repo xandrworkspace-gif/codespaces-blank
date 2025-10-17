@@ -1,0 +1,35 @@
+<?php
+
+// Имена и поля таблиц
+define('TABLE_BLOCK_USER','block_user');
+define('FIELD_BLOCK_USER','');
+
+
+$block_user_flags_hash = array();
+
+function adv_block_user_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_BLOCK_USER,$ref,$add);
+}
+
+function adv_block_user_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_BLOCK_USER,$ref,$add,$field_list);
+}
+
+function adv_block_user_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_BLOCK_USER, $ref, $add);
+}
+
+function adv_block_user_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_BLOCK_USER,$param,FIELD_BLOCK_USER);
+}
+
+function adv_block_user_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_BLOCK_USER,$ref);
+    return true;
+}

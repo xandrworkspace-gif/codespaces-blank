@@ -1,0 +1,164 @@
+<?
+require_once("lib/fight.lib");
+
+define("FIGHT_STAT_COST",'fight_stat_cost');
+
+define('CRON_FIGHT_STAT_COST_PORTION' ,1000);
+
+define("STAT_SUM_LEVEL", 0);
+define("STAT_SUM_AREA", -1);
+define("STAT_SUM_TYPE", -1);
+
+$fight_users_uniq_ids = array();
+$full_fight_stats = array();
+$fight_stat_sum = array();
+
+function fight_stat_cost_collect($current_day) {
+	global $NODE_NUMS;
+	global $fight_users_uniq_ids , $full_fight_stats, $fight_stat_sum;
+	$current_day = intval($current_day);
+
+    $fights = array();
+
+	foreach ($NODE_NUMS as $nn) {
+		NODE_SWITCH($nn);
+		unset($fights[$nn]);
+        $fights[$nn] = array();
+		$next_id = 0;
+		do {
+			$fight_part = make_hash(fight_list(null,null,null,sql_pholder(' AND ctime >= ? AND ctime < ? AND id > ? LIMIT '.CRON_FIGHT_STAT_COST_PORTION, $current_day, $current_day, $next_id), 'id, ctime, winner_team, area_id, instance_id'),'id');
+			if (!$fight_part) break;
+			$fights[$nn] += $fight_part;
+			$next_id = max(array_keys($fight_part));
+		} while(1);
+	}
+	
+	foreach ($fights as $nn => $fight_list) {
+		NODE_SWITCH($nn);	
+		$full_fight_stats = array();
+		foreach ($fight_list as $fight) {
+			if ( !(($fight['ctime']>=$current_day) && ($fight['ctime']<$current_day+86400)) ) continue;
+			$area_id = $fight['area_id'];
+			$winner_team = $fight['winner_team'];
+			$kind_cnts = array();
+			$fight_stat = array();
+			$fight_stat_sum = array();
+			$current_day_stat = strtotime(date('Y-m-d',$fight['ctime']));
+			$fight_user_list = fight_user_list($fight['id']);
+			foreach ($fight_user_list as $fight_user) {
+				if ($fight_user['user_id']) {
+					$kind_cnts[$fight_user['user_kind']][$fight_user['team']]++;
+					$level = $fight_user['user_level'];
+					if ($fight_user['team'] == $winner_team) {
+						$fight_stat[$level]['wins']++;
+						$fight_stat[STAT_SUM_LEVEL]['wins']++;
+					} 
+					$data = explode(':',$fight_user['data']);
+					$fight_user_deaths = $data[5] ? $data[5] : 0;
+					$fight_stat[$level]['deaths'] += $fight_user_deaths;
+					$fight_stat[STAT_SUM_LEVEL]['deaths']+= $fight_user_deaths;
+					$fight_stat[$level]['fights_cnt'] ++;
+					$fight_stat[STAT_SUM_LEVEL]['fights_cnt'] ++;
+				}
+			}
+
+			$fight_f_pvp = $kind_cnts && $kind_cnts[1] && $kind_cnts[2] && (($kind_cnts[1][1] && $kind_cnts[2][2]) || ($kind_cnts[1][2] && $kind_cnts[2][1]));	// PVP-бой
+			$type = $fight_f_pvp ? 1 : 0;
+			if ($type && $fight['instance_id'])
+				$type = 2;
+
+			// Считаем уникальных юзеров для разных выборок, в том чистле и общих по уровню, локации и левелу
+			foreach ($fight_user_list as $fight_user) {
+				if ($fight_user['user_id']) {
+					$level = $fight_user['user_level'];
+
+					add_fight_stat_sum($fight_user['user_id'],$area_id, $type, $level);
+					add_fight_stat_sum($fight_user['user_id'],$area_id, $type, STAT_SUM_LEVEL);
+					add_fight_stat_sum($fight_user['user_id'],$area_id, STAT_SUM_TYPE, $level);
+					add_fight_stat_sum($fight_user['user_id'],$area_id, STAT_SUM_TYPE, STAT_SUM_LEVEL);						
+					add_fight_stat_sum($fight_user['user_id'],STAT_SUM_AREA, $type, $level);
+					add_fight_stat_sum($fight_user['user_id'],STAT_SUM_AREA, $type, STAT_SUM_LEVEL);
+					add_fight_stat_sum($fight_user['user_id'],STAT_SUM_AREA, STAT_SUM_TYPE, $level);
+					add_fight_stat_sum($fight_user['user_id'],STAT_SUM_AREA, STAT_SUM_TYPE, STAT_SUM_LEVEL);						
+				}
+			}
+
+			foreach($fight_stat as $level => $stat) {
+				add_full_fight_stat($stat, $area_id, $type, $level);
+				add_full_fight_stat($stat, $area_id, STAT_SUM_TYPE, $level);
+				add_full_fight_stat($stat, STAT_SUM_AREA, $type, $level);
+				add_full_fight_stat($stat, STAT_SUM_AREA, STAT_SUM_TYPE, $level);
+			}
+
+			foreach($fight_stat_sum as $area_id =>$area_stat) {
+				foreach($area_stat as $type_id => $type_stat) {
+					foreach($type_stat as $level => $level_stat) {
+						$full_fight_stats[$area_id][$type_id][$level]['fight_users_uniq_cnt'] += $level_stat['fight_users_uniq_cnt'];
+					}	
+				}
+			}
+
+		}
+
+		foreach($full_fight_stats as $area_id => $area_stat) {
+			foreach($area_stat as $type_id => $type_stat) {
+				foreach($type_stat as $level => $level_stat) {
+					$params = array();
+					$params['date'] = $current_day_stat;
+					$params['area_id'] = $area_id;
+					$params['type_flags'] = $type_id;
+					$params['user_level'] = $level;
+					$params['wins'] = $level_stat['wins'];
+					$params['deaths'] = $level_stat['deaths'];
+					$params['fights_cnt'] = $level_stat['fights_cnt'];
+					$params['fights_uniq_cnt'] = $level_stat['fights_uniq_cnt'];
+					$params['fight_users_uniq_cnt'] = $level_stat['fight_users_uniq_cnt'] ? $level_stat['fight_users_uniq_cnt'] : 0;
+					$params["_on_duplicate"] = sql_pholder(" wins=wins+?, deaths=deaths+?, fights_cnt=fights_cnt+?, fights_uniq_cnt=fights_uniq_cnt+?, fight_users_uniq_cnt=fight_users_uniq_cnt+?  ",intval($params['wins']),intval($params['deaths']),intval($params['fights_cnt']),intval($params['fights_uniq_cnt']),intval($params['fight_users_uniq_cnt']));
+					fight_stat_cost_update($params);
+				}
+			}
+		}
+	}
+}
+
+function fight_stat_cost_update($param){
+global $db_diff;
+common_save($db_diff, FIGHT_STAT_COST, $param);
+}
+
+function fight_stat_cost_delete($ref, $add=''){
+global $db_diff;
+common_delete($db_diff, FIGHT_STAT_COST, $ref, $add);
+}
+
+function fight_stat_cost_agregate($add){
+global $db_diff;
+$item=common_list($db_diff, FIGHT_STAT_COST, false, $add, $field_list='sum(ftime) as sum_ftime, sum(cnt) as sum_cnt');
+return $item[0];
+}
+function fight_stat_cost_list($add){
+global $db_diff;
+return common_list($db_diff, FIGHT_STAT_COST, false, $add);
+
+}
+
+
+function add_fight_stat_sum($fight_user_id,$area_id, $type_id, $level) {
+	global $fight_users_uniq_ids , $fight_stat_sum;	
+	
+	if (!(isset($fight_users_uniq_ids[$area_id][$type_id][$level]))) $fight_users_uniq_ids[$area_id][$type_id][$level] = array();
+	if (!in_array($fight_user_id, $fight_users_uniq_ids[$area_id][$type_id][$level])) {
+		array_push($fight_users_uniq_ids[$area_id][$type_id][$level],$fight_user_id);
+		$fight_stat_sum[$area_id][$type_id][$level]['fight_users_uniq_cnt'] ++;
+	}	
+	
+}
+
+function add_full_fight_stat($stat, $area_id, $type_id, $level) {
+	global $full_fight_stats;
+	
+	$full_fight_stats[$area_id][$type_id][$level]['wins'] += $stat['wins'];
+	$full_fight_stats[$area_id][$type_id][$level]['deaths'] += $stat['deaths'];
+	$full_fight_stats[$area_id][$type_id][$level]['fights_uniq_cnt'] ++;
+	$full_fight_stats[$area_id][$type_id][$level]['fights_cnt'] += $stat['fights_cnt'];	
+}

@@ -1,0 +1,31 @@
+<?
+
+define('INLAY_RUNE', 'inlay_rune');
+
+////////////////////////////////////////////////////////////////////////////////////
+
+function inlay_rune_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,INLAY_RUNE,$ref,$add);
+}
+
+function inlay_rune_list($ref=false, $add='', $field='*') {
+    global $db_2;
+    return common_list($db_2,INLAY_RUNE,$ref,$add,$field);
+}
+
+function inlay_rune_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, INLAY_RUNE, $ref, $add);
+}
+
+function inlay_rune_save($param) {
+    global $db_2;
+    return common_save($db_2,INLAY_RUNE,$param);
+}
+
+function inlay_rune_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,INLAY_RUNE,$ref,$add);
+    return true;
+}

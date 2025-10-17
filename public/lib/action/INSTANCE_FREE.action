@@ -1,0 +1,54 @@
+<?
+
+// действие "сбросить инстанс"
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+
+if($subject['instance_id'] || $subject['fight_id'] || $subject['raid_id']){
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+
+$active_instance = instance_user_list(array('user_id' => $subject['id']),' AND dtime > '.time_current());
+
+if(!$active_instance){
+    $out['error'] = translate('Нечего сбрасывать!');
+    return;
+}
+
+$instance_ids = array();
+
+foreach ($active_instance as $instance_user){
+    $instance_ids[] = $instance_user['instance_id'];
+}
+$cur_instance_artikuls = array();
+if($instance_ids){
+    $instance_list = instance_list(array('id' => $instance_ids));
+    foreach ($instance_list as $instance){
+        $cur_instance_artikuls[$instance['artikul_id']][] = $instance['id'];
+    }
+}
+
+
+//TODO: Исследование Добавил колонку к instance_user... instance_artikul_id (Для введения должно пройти время) TIME!
+if(!$cur_instance_artikuls[$object['param1']]){
+
+    $active_instance = make_hash(instance_user_list(array('user_id' => $subject['id'], 'instance_artikul_id' => $object['param1'])));
+    if(!$active_instance){
+        $out['error'] = translate('Нечего сбрасывать!');
+        return;
+    }
+
+    instance_user_delete(array('id' => array_keys($active_instance)));
+
+}else{
+    instance_user_delete(array('instance_id' => $cur_instance_artikuls[$object['param1']], 'user_id' => $subject['id']),' AND dtime > '.time_current());
+}
+
+$out['status'] = ACTION_STATUS_OK;
+?>

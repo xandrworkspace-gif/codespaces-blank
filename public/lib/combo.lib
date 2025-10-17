@@ -1,0 +1,97 @@
+<? # $Id: combo.lib,v 1.11 2010-01-15 09:50:10 p.knoblokh Exp $
+
+// Имена и поля таблиц
+define('TABLE_COMBOS','combos');
+define('FIELD_COMBOS','');
+define('TABLE_COMBO_USERS','combo_users');
+define('FIELD_COMBO_USERS','');
+
+define('COMBO_SIZE_MAX', 7);
+
+
+global $combo_item_info;
+
+$combo_item_info = array(
+	'1' =>  array('id' => '1', 'title' => translate('Удар в голову'), 'picture' => 'combo_up.gif', 'picture2' => 'combo_up_16.gif',),
+	'2' =>  array('id' => '2', 'title' => translate('Удар в корпус'), 'picture' => 'combo_middle.gif', 'picture2' => 'combo_middle_16.gif',),
+	'3' =>  array('id' => '3', 'title' => translate('Удар в ноги'), 'picture' => 'combo_down.gif', 'picture2' => 'combo_down_16.gif',),
+);
+
+
+function __seq($size, &$seqs, &$items, $seq='') {
+	if (!is_array($seqs)) $seqs = array();
+	$l = mb_strlen($seq)+1;
+	if (($l > $size) || ($l > COMBO_SIZE_MAX)) return $seq;
+	$seqAvail = array();
+	foreach ($items as $i) {
+		$t = $seq.$i;
+		foreach ($seqs as $s) {
+			if (($l < mb_strlen($s)) && ($l < $size)) continue;	// пропускаем неполные совпадения последовательностей
+			if ((strpos($t,$s) !== false) || (strpos($s,$t) !== false)) continue 2;
+		}
+		$seqAvail[] = $t;
+	}
+	while ($seqAvail) {
+		$k = array_rand($seqAvail);
+		$seq = $seqAvail[$k];
+		$s = __seq($size,$seqs,$items,$seq);
+		if ($s) return $s;
+		unset($seqAvail[$k]);
+	}
+	return false;
+}
+
+function _combo_seq($seq) {
+	$out = array();
+	$l = mb_strlen($seq);
+	for ($i=0; $i<$l; $i++) $out[] = intval($seq{$i});
+	return $out;
+}
+
+function combo_user_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_COMBO_USERS,$ref,$add);
+}
+
+function combo_user_list($combo_id=false, $user_id=false, $add='', $extended=false) {
+	global $db_2, $combo_info;
+	if (!$combo_id && !$user_id && !$add) return false;
+	$query_add = '';
+	if ($combo_id) $query_add .= sql_pholder(" AND combo_id=?",$combo_id);
+	if ($user_id) $query_add .= sql_pholder(" AND user_id=?",$user_id);
+	
+	$data = common_list($db_2,TABLE_COMBO_USERS,false,$query_add.$add);
+	if ($extended) {
+		foreach ($data as $k => $item) {
+			if (isset($combo_info[$item['combo_id']])) {
+				foreach ($combo_info[$item['combo_id']] as $key => $value) {
+					if ($key != 'id') {
+						$data[$k][$key] = $value;
+					}
+				}
+			}
+		}
+	}
+	return $data;
+}
+
+function combo_user_save($param) {
+	global $db_2;
+	if (!$param['id'] && !$param['combo_id']) return false;
+	return common_save($db_2,TABLE_COMBO_USERS,$param,FIELD_COMBO_USERS);
+}
+
+function combo_user_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_COMBO_USERS,$ref,$add);
+}
+
+// ===============================================
+
+function combo_generate_seq($size, &$seqs) {
+	global $combo_item_info;
+	$items = array_keys($combo_item_info);
+	return __seq($size,$seqs,$items);
+}
+
+?>

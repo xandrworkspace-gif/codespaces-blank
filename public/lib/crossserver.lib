@@ -1,0 +1,1433 @@
+<? # $Id: crossserver.lib,v 1.1 2011-12-28 14:18:19 i.polyakov Exp $
+
+// Имена и поля таблиц
+define('TABLE_CROSSSERVER_USERS','crossserver_users');
+define('FIELD_CROSSSERVER_USERS','');
+
+// Возможные значения
+define('CROSSSERVER_STATUS_RECIEVE','1');
+define('CROSSSERVER_STATUS_RETURN','2');
+
+// Специальные режимы переезда на родной мир
+define('XSERVER_NO_DIFF',   1); // Таблица не может измениться на гостевом мире - не формировать дифф вообще
+define('XSERVER_NO_DELETE', 2); // Запись в таблице не может удалиться на гостевом мире - не удалять при переезде
+
+global $user_conf;
+$user_conf = array(
+	'auth' => array(
+		'db' => 'db_auth',
+		'table' => 'auth',
+		'ref_params' => array('uid' => 'user_id'),
+		'unique_key' => array('uid'),
+		'unset_fields' => array('uid','passwd','auth_flags','last_ip','akey_fail_last_time','akey_fail_amt'),
+		'define_vars' => array('user_id' => 'new_key', 'uid' => 'new_key'),
+	),
+	'node_info' => array(
+		'db' => 'db_auth',
+		'table' => 'node_info',
+		'ref_params' => array('uid' => 'user_id'),
+		'unique_key' => array(),
+	),
+	'user_info' => array(
+		'db' => 'db_auth',
+		'table' => 'user_info',
+		'ref_params' => array('uid' => 'user_id'),
+		'unique_key' => array(),
+		'unset_fields' => array('phone'),
+		'gladiator_unset' => array('name', 'birthdate', 'question', 'answer', 'notes', 'block_time', 'partner_data'),
+	),
+	'users' => array(
+		'db' => 'db_3',
+		'table' => 'users',
+		'ref_params' => array('id' => 'user_id'),
+		'unique_key' => array('id'),
+		'unset_fields' => array('id','clan_id','party_id','raid_id','instance_id','fight_id','fight_akey','trade_id','trade_sess_id','referrer_id','pet_id','mount_id'),
+	),
+	'combo_users' => array(
+		'db' => 'db_2',
+		'table' => 'combo_users',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('combo_id','user_id'),
+		'unset_fields' => array('id'),
+	),
+	'quest_users' => array(
+		'db' => 'db_2',
+		'table' => 'quest_users',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('quest_id','user_id'),
+		'batch' => 1,
+	),
+	'quest_user_points' => array(
+		'db' => 'db_2',
+		'table' => 'quest_user_points',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('point_id','user_id'),
+		'batch' => 1,
+	),
+	'recipe_users' => array(
+		'db' => 'db_2',
+		'table' => 'recipe_users',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('artikul_id','user_id'),
+		'unset_fields' => array('id'),
+	),
+	'archive_users' => array(
+		'db' => 'db_2',
+		'table' => 'archive_users',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('object_type','object_id','user_id'),
+	),
+	'action_stat' => array(
+		'db' => 'db_2',
+		'table' => 'action_stat',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('action_id','bkey','user_id'),
+		'unset_fields' => array('id'),
+	),
+	'punishment_users' => array(
+		'db' => 'db_2',
+		'table' => 'punishment_users',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('id'),
+		'unset_fields' => array('id'),
+	),
+	'user_credits' => array(
+		'db' => 'db_diff',
+		'table' => 'user_credits',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array(),
+	),
+	'logserv_buffer_crossserver' => array(
+		'db' => 'db_diff',
+		'table' => 'logserv_buffer_crossserver',
+		'ref_params' => array('uid' => 'user_id'),
+		'unique_key' => array('id'),
+		'unset_fields' => array('id'),
+		'gladiator_free' => true
+	),
+	'artifacts' => array(
+		'db' => 'db',
+		'table' => 'artifacts',
+		'ref_params' => array('user_id' => 'user_id'),
+		'add' => ' and clan_id=0',
+		'unique_key' => array('id'),
+		'unset_fields' => array('id'),
+		'gladiator_free' => true
+	),
+	'artifact_notes' => array(
+		'db' => 'db',
+		'table' => 'artifact_notes',
+		'ref_params' => array('artifact_id' => 'artifact_ids'),
+		'unique_key' => array('artifact_id'),
+		'unset_fields' => array('id'),
+		'gladiator_free' => true
+	),
+	'artifact_actions' => array(
+		'db' => 'db',
+		'table' => 'artifact_actions',
+		'ref_params' => array('artifact_id' => 'artifact_ids'),
+		'unique_key' => array('artifact_id','action_id'),
+		'unset_fields' => array('id'),
+		'gladiator_free' => true
+	),
+	'artifact_skills' => array(
+		'db' => 'db',
+		'table' => 'artifact_skills',
+		'ref_params' => array('artifact_id' => 'artifact_ids'),
+		'unique_key' => array('artifact_id','skill_id'),
+		'unset_fields' => array('id'),
+		'gladiator_free' => true
+	),
+	'pets' => array(
+		'db' => 'db',
+		'table' => 'pets',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('id'),
+		'unset_fields' => array('id'),
+		'gladiator_free' => true
+	),
+	'user_skills' => array(
+		'db' => 'db',
+		'table' => 'user_skills',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('user_id','skill_id'),
+		'batch' => 1,
+	),
+	'user_stats' => array(
+		'db' => 'db',
+		'table' => 'user_stats',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('user_id','type_id','object_id'),
+		'unset_fields' => array('clan_id'),
+		'batch' => 1,
+	),
+	'user_actions' => array(
+		'db' => 'db',
+		'table' => 'user_actions',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('user_id','action_id'),
+		'unset_fields' => array('id'),
+	),
+	'user_achievements' => array(
+		'db' => 'db',
+		'table' => 'user_achievements',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('user_id','achievement_id'),
+		'batch' => 1,
+	),
+	'user_spells' => array(
+		'db' => 'db',
+		'table' => 'user_spells',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('user_id','artikul_id'),
+		'unset_fields' => array('id'),
+		'batch' => 1,
+	),
+	'smile_users' => array(
+		'db' => 'db',
+		'table' => 'smile_users',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('user_id','smile_id'),
+	),
+	'estates' => array(
+		'db' => 'db_2',
+		'table' => 'estates',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('id'),
+		'unset_fields' => array('id'),
+		'diff_mode' => XSERVER_NO_DELETE,
+	),
+	'buildings' => array(
+		'db' => 'db_2',
+		'table' => 'buildings',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('user_id', 'type_id'),
+		'unset_fields' => array('id'),
+		'diff_mode' => XSERVER_NO_DIFF,
+		'batch' => 1,
+	),
+	'user_avatars' => array(
+		'db' => 'db_diff',
+		'table' => 'user_avatars',
+		'ref_params' => array('user_id' => 'user_id'),
+		'unique_key' => array('id'),
+		'unset_fields' => array('id'),
+		'diff_mode' => XSERVER_NO_DIFF,
+	),
+);
+
+function crossserver_lock() {
+	global $tq;
+	return $tq->capture('CROSSSERVER',0,60);
+}
+
+function crossserver_unlock() {
+	global $tq;
+	return $tq->release('CROSSSERVER', true);
+}
+
+function crossserver_signature($request_params, $server_id) {
+	global $SERVERS;
+	
+	unset($request_params['sign']);
+	ksort($request_params);
+	$params = '';
+	foreach ($request_params as $key => $value) {
+		$params .= $key . '=' . $value;
+	}
+	return md5($params . $SERVERS[$server_id]['secret']);
+}
+
+function crossserver_request($server_id, $params, $lib = 'user_transfer') {
+	global $SERVERS, $request_statistic;
+	
+	if (isset($params['sign'])) unset($params['sign']);
+	if (isset($params['server_id'])) unset($params['server_id']);
+	$timeout = 30;
+	if (isset($params['timeout'])) {
+		$timeout = intval($params['timeout']);
+		unset($params['timeout']);
+	}
+	$params['server_id'] = SERVER_ID;
+	$params['sign'] = crossserver_signature($params, SERVER_ID);
+	$params['library'] = $lib;
+	$context  = stream_context_create(array('http' => array(
+		'method'  => 'POST',
+		'header'  => 'Content-type: application/x-www-form-urlencoded',
+		'content' => common_build_request($params),
+		'timeout' => $timeout,
+	)));
+	
+	if (DEBUG) $st_time = microtime(true);
+	$url = SERVER_URL2.'private/user_transfer.php';
+	$result = file_get_contents($url,false, $context);
+	if (DEBUG) {
+		$request_statistic['time']['xserver'][$params['action']] += microtime(true)-$st_time;
+		$request_statistic['xserver'][$params['action']]++;
+	}
+	return $result;
+}
+
+function crossserver_user_recieve($server_id, $user_id, $recieve_params = array(), $instance_id = false) {
+	PF_CALL('crossserver_user_recieve');
+	$params = array(
+		'user_id' => $user_id,
+		'action' => 'user_get',
+	);
+	
+	if (defined('GLADIATORS_SERVER') && GLADIATORS_SERVER) $params['gladiator_transfer'] = 1;
+	
+	if ($recieve_params['ignore_location']) {
+		$params['request_params'] = serialize(array('ignore_location' => 1));
+	}
+	
+	PF_CALL('crossserver_user_recieve_request');
+	$result = crossserver_request($server_id, $params);
+	PF_RET(false, 'crossserver_user_recieve_request');
+	
+	if (!$result) {
+		PF_RET(false, 'crossserver_user_recieve');
+		return false;
+	}
+	
+	$user = unserialize(gzip_uncompress($result));
+	
+	if (!$user['node_info']['']['node_num']) {
+		PF_RET(false, 'crossserver_user_recieve');
+		return false;
+	}
+	
+	$user['auth'][$user_id]['original_user_id'] = $user['node_info']['']['uid'];
+	if (!$recieve_params['ignore_location']) {
+		$user['auth'][$user_id]['current_server_id'] = SERVER_ID;
+	}
+	
+	$new_user_id = crossserver_user_load($user, $instance_id, array('gladiator_transfer' => (defined('GLADIATORS_SERVER') && GLADIATORS_SERVER)));
+	if (!$new_user_id) {
+		PF_RET(false, 'crossserver_user_recieve');
+		return false;
+	}
+	
+	if (!$recieve_params['ignore_location']) {
+		// отправляем запрос что удачно приняли человека
+		$params = array(
+			'user_id' => $user_id,
+			'action' => 'user_recieved',
+		);
+		$result = crossserver_request($server_id, $params);
+	} else {
+		$result = 'ok';
+	}
+	
+	PF_RET(false, 'crossserver_user_recieve');
+	if ($result != 'ok') {
+		return false;
+	} else {
+		return $new_user_id;
+	}
+}
+
+function crossserver_user_return($user_id) {
+	$auth = auth_get($user_id);
+	$user = user_get($user_id);
+	$server_id = $auth['server_id'];
+	if ($auth['current_server_id'] != SERVER_ID) return false;
+	if (!$user_id || !$auth['original_user_id']) return false;
+	$diff_params = array();
+	if (defined('GLADIATORS_SERVER') && GLADIATORS_SERVER) $diff_params['gladiators'] = true;
+	$diff = crossserver_get_user_diff($user_id, $diff_params);
+	
+	$params = array(
+		'user_id' => $auth['original_user_id'],
+		'external_user_id' => $user_id,
+		'action' => 'user_return',
+		'diff' => gzip_compress(serialize($diff)),
+	);
+	
+	NODE_PUSH(null, $user_id);
+		session_delete($user_id);
+		auth_save(array(
+			'uid' => $user_id,
+			'_set' => 'auth_flags = auth_flags | '.(int)AUTH_FLAG_TRANSFERING,
+		));
+	NODE_POP();
+	
+	$result = crossserver_request($server_id, $params);
+	
+	if (!$result) return false;
+	if ($result != 'ok') {
+		print('Error while returning user: '.$result);
+		return false;
+	}
+	crossserver_user_save(array(
+		'user_id'		=> $user_id,
+		'status'		=> CROSSSERVER_STATUS_RETURN,
+		'ctime'			=> time_current(),
+	));
+	
+	if ($user['party_id']) {
+		require_once('lib/party.lib');
+		// Если возвращаем лидера группы, то попробуем вернуть и рюкзак, если он не пуст
+		$party_bag = party_artikul_list($user['party_id']);
+		if ($party_bag) {
+			$party = party_get($user['party_id']);
+			if ($party['leader_id'] == $user_id) {
+				$params = array(
+					'action' => 'party_bag_recieve',
+					'user_id' => $auth['original_user_id'],
+					'party_bag' => serialize($party_bag),
+				);
+				crossserver_request($server_id, $params);
+				party_artikul_delete(array('party_id' => $user['party_id']));
+			}
+		}
+	}
+
+	logserv_buffer_crossserver_delete(array('uid' => $user_id));
+	
+	NODE_PUSH(null, $user_id);
+	auth_save(array('uid' => $user_id, 'current_server_id' => $server_id));
+	user_delete($user_id, true);
+	NODE_POP();
+	return true;	
+}
+
+function crossserver_lock_mngr($server_id) {
+	if ($server_id == SERVER_ID) {
+		return crossserver_lock();
+	}
+	
+	$params = array(
+		'action' => 'lock_mngr',
+		'timeout' => 3,
+	);
+	
+	$result = crossserver_request($server_id, $params);
+	
+	// Подумать что делать если сервер не ответил
+	// Пока говорим что удалось залочить
+	if (!$result) return true;
+	
+	if ($result != 'ok') {
+		return false;
+	}
+	
+	return true;
+}
+
+function crossserver_unlock_mngr($server_id) {
+	if ($server_id == SERVER_ID) {
+		return crossserver_unlock();
+	}
+	
+	$params = array(
+		'action' => 'unlock_mngr',
+		'timeout' => 3,
+	);
+	
+	$result = crossserver_request($server_id, $params);
+	
+	return true;
+}
+
+function crossserver_queue_get($server_id, $bg_id=0, $min_level=0, $max_level=0, $statuses=array(), $dtime=0) {
+	$params = array('action' => 'queue_get');
+	if ($bg_id) $params['bg_id'] = is_array($bg_id) ? 'a'.implode('|', $bg_id) : $bg_id;
+	if ($min_level) $params['min_level'] = $min_level;
+	if ($max_level) $params['max_level'] = $max_level;
+	if ($dtime) $params['dtime'] = $dtime;
+	if ($statuses) $params['statuses'] = serialize($statuses);
+	$params['timeout'] = 3;
+ 	$result = crossserver_request($server_id, $params);
+	if (!$result) return array();
+	return unserialize($result);
+}
+
+function crossserver_bg_invite_send($server_id,$user_id, $bg_id, $dtime, $instance_id = 0) {
+	$params = array(
+		'action' => 'bg_invite_send',
+		'user_id' => $user_id,
+		'dtime' => $dtime,
+		'bg_id' => $bg_id,
+		'instance_id' => $instance_id,
+		'timeout' => 3,
+	);
+	$result = crossserver_request($server_id, $params);
+	return true;
+}
+
+function crossserver_bg_penalty($server_id, $user_id,$bg_id) {
+	$params = array(
+		'action' => 'bg_penalty',
+		'bg_id' => $bg_id,
+		'user_id' => $user_id,
+		'timeout' => 3,
+	);
+	$result = crossserver_request($server_id, $params);
+	return true;
+}
+
+function crossserver_clear_bg_queue($server_id, $bg_id, $user_ids = array(), $instance_id = 0) {
+	$params = array(
+		'action' => 'clear_bg_queue',
+		'bg_id' => $bg_id,
+		'user_ids' => serialize($user_ids),
+		'instance_id' => $instance_id,
+		'timeout' => 3,
+	);
+	$result = crossserver_request($server_id, $params);
+	return true;
+}
+
+function crossserver_bg_users_delete($server_id,$user_ids) {
+	$params = array(
+		'action' => 'bg_users_delete',
+		'user_ids' => serialize($user_ids),
+		'timeout' => 3,
+	);
+	$result = crossserver_request($server_id, $params);
+	return true;
+}
+
+function crossserver_get_login_params($server_id,$nick  = '', $user_id = 0) {
+	$params = array(
+		'action' => 'get_login_params',
+		'timeout' => 3,
+	);
+	
+	if ($nick) $params['nick'] = crossserver_nick_modify($nick);
+	if ($user_id) $params['user_id'] = $user_id;
+	
+	return crossserver_request($server_id, $params);
+}
+function crossserver_get_authinfo($server_id, $user_id) {
+	$params = array(
+		'action' => 'get_authinfo',
+		'user_id' => $user_id,
+		'timeout' => 3,
+	);
+	$result = crossserver_request($server_id, $params);
+	if (!$result) return false;
+	return unserialize($result);
+}
+
+function crossserver_get_userinfo($server_id, $user_id) {
+	$params = array(
+		'action' => 'get_userinfo',
+		'user_id' => $user_id,
+		'timeout' => 3,
+	);
+	$result = crossserver_request($server_id, $params);
+	if (!$result) return false;
+	return unserialize($result);
+}
+
+function crossserver_nick_modify($nick) {
+	global $SERVERS;
+	if (strpos($nick,'(') !== false) return $nick;
+	return $nick.' ('.$SERVERS[SERVER_ID]['name'].')';
+}
+
+function crossserver_chat_send($server_id,$msg,$channel,$channel_data,$system=false) {
+	$params = array(
+		'action' => 'chat_send',
+		'msg' => serialize($msg),
+		'channel' => $channel,
+		'system_msg' => $system ? 1 : 0,
+		'channel_data' => serialize($channel_data),
+		'timeout' => 3,
+	);
+	$result = crossserver_request($server_id, $params);
+	return true;	
+}
+
+function crossserver_archive_generate($server_id, $object_type, $object_id) {
+	$params = array(
+		'action' => 'archive_generate',
+		'object_type' => $object_type,
+		'object_id' => $object_id,
+	);
+	$result = crossserver_request($server_id, $params);
+	if (!$result) return false;
+	return unserialize($result);
+}
+
+function crossserver_archive_object_get($server_id,$object_type, $object_id) {
+	$params = array(
+		'action' => 'archive_object_get',
+		'object_type' => $object_type,
+		'object_id' => $object_id,
+	);
+	$result = crossserver_request($server_id, $params);
+	if (!$result) return false;
+	return unserialize($result);
+}
+
+function crossserver_change_money($server_id, $user_id, $money_arr) {
+	$params = array(
+		'action' => 'change_money',
+		'user_id' => $user_id,
+		'request_params' => serialize(array('money_values' => $money_arr)),
+	);
+	$result = crossserver_request($server_id, $params);
+	return true;
+}
+
+function crossserver_get_rowkey($row, $unique_fields) {
+	$key_elements = array();
+	foreach($unique_fields as $key_element_name) {
+		$key_elements[] = $row[$key_element_name];
+	}
+	return join('|',$key_elements);
+}
+
+function crossserver_get_ref_by_key($key, $unique_fields) {
+	$key_elements = explode('|',$key);
+	if (count($key_elements) != count($unique_fields)) return false;
+	$ref = array();
+	foreach($unique_fields as $key_element_number => $key_element_name) {
+		$ref[$key_element_name] = $key_elements[$key_element_number];
+	}
+	return $ref;
+}
+
+function crossserver_user_export($user_id, $diff_params = array()) {
+	global $user_conf;
+	global $db, $db_2, $db_3, $db_diff, $db_nodes, $db_auth;
+	
+	// Дефолтные значения
+	$diff_params = array_merge(
+		array('gladiators' => false),
+		$diff_params
+	);
+	
+	$user_node = NODE_GET($user_id);
+
+	NODE_PUSH($user_node);
+	
+	foreach($user_conf as $table_key => $table_params) {
+		if ($diff_params['gladiators'] && isset($user_conf[$table_key]['gladiator_free']) && $user_conf[$table_key]['gladiator_free']) continue;
+		$ref = array();
+		foreach($table_params['ref_params'] as $ref_key => $ref_value) {
+			if (!isset($$ref_value)) {
+				$ref = false;
+				break;
+			}
+			$ref[$ref_key] = $$ref_value;
+		}
+		
+		$add = isset($table_params['add']) ? $table_params['add'] : '';
+		
+		if (!$ref && !$add) continue;
+		
+		$data = common_list($$table_params['db'], $table_params['table'], $ref, $add);
+		
+		foreach($data as $row) {
+			
+			$rowkey = crossserver_get_rowkey($row, $table_params['unique_key']);
+			
+			if ($table_params['unset_fields']) {
+				foreach($table_params['unset_fields'] as $unset_field) {
+					unset($row[$unset_field]);
+				}
+			}
+			
+			if ($diff_params['gladiators'] && $table_params['gladiator_unset']) {
+				foreach($table_params['gladiator_unset'] as $unset_field) {
+					unset($row[$unset_field]);
+				}
+			}
+			
+			$user[$table_key][$rowkey] = $row;
+		}
+		
+		if (($table_key === 'artifacts') && $user[$table_key]) {
+			$artifact_ids = array_keys($user[$table_key]);
+		}
+	}
+	
+	NODE_POP();
+	
+	if ($user['users'][$user_id]['nick'] && ($user['auth'][$user_id]['server_id'] == SERVER_ID)) {
+		$user['users'][$user_id]['nick'] = crossserver_nick_modify($user['users'][$user_id]['nick']);
+		$user['auth'][$user_id]['nick'] = crossserver_nick_modify($user['auth'][$user_id]['nick']);
+		if ($diff_params['gladiators']) {
+			$user['auth'][$user_id]['email'] = $user_id.'.'.SERVER_ID.'.mail@mail.mail';
+		}
+	}
+	
+	return $user;
+}
+
+function crossserver_user_load($user, $instance_id = false, $params = array()) {
+	global $user_conf;
+	global $db, $db_2, $db_3, $db_diff, $db_nodes, $db_auth;
+	PF_CALL('crossserver_user_load');
+	
+	NODE_PUSH($user['node_info']['']['node_num']);
+	PF_CALL('crossserver_user_load_old_user_check');
+	$auth = each($user['auth']);
+	$auth_key = $auth['key'];
+	$auth = $auth['value'];
+	$new_auth = auth_get(array('server_id' => $auth['server_id'], 'original_user_id' => $auth['original_user_id']));
+	
+	// надо проверить создавать ли нового пользователя или подменить
+	if (!$new_auth) {
+		$new_user_row = reset($user['users']);
+		$new_user = user_get(array('nick' => trim($new_user_row['nick'])));
+	}
+	
+	if ($new_auth || $new_user) {
+		$old_id = $new_auth ? $new_auth['uid'] : $new_user['id'];
+		$defined_vars['uid'] = $old_id;
+		$user['auth'][$auth_key]['uid'] = $old_id;
+		$user_conf['auth']['unset_fields'] = array('passwd','auth_flags');
+		user_delete($old_id);
+	}
+	PF_RET(false, 'crossserver_user_load_old_user_check');
+	$defined_vars = array();
+	$error = '';
+	
+	PF_CALL('crossserver_user_load_tables');
+	foreach($user as $table_key => $table_data) {
+		$table_params = $user_conf[$table_key];
+		$batch_rows = array();
+		PF_CALL('crossserver_user_load_table_'.$table_key);
+		foreach($table_data as $row_key => $row) {
+			if ($params['gladiator_transfer'] && isset($user_conf[$table_key]['gladiator_free']) && $user_conf[$table_key]['gladiator_free']) continue;
+			
+			foreach($defined_vars as $var => $value) {
+				if (isset($row[$var])) $row[$var] = $value;
+			}
+			
+			// подмена arifact_id
+			if ($row['artifact_id']) {
+				$new_artifact_id = $user['artifacts'][$row['artifact_id']]['new_key'];
+				if (!$new_artifact_id) continue;
+				$row['artifact_id'] = $new_artifact_id;
+			}
+			
+			// подмена id при вставке в users
+			if ($table_key == 'users') {
+				$row['id'] = $defined_vars['user_id'];		
+				$row['flags'] = $row['flags'] ? $row['flags'] | USER_FLAG_CSERVER_GUEST : USER_FLAG_CSERVER_GUEST;
+				if ($instance_id) $row['instance_id'] = $instance_id;
+			}
+			
+			$row['_mode'] = CSMODE_INSERT;
+			
+			$tmp_die_on_error = $$table_params['db']->die_on_error;
+			$$table_params['db']->die_on_error = false;
+			if ($table_params['batch']) {
+				$result = true;
+				unset($row['_mode']);
+				$batch_rows[] = $row;
+			} else {
+				$result = common_save($$table_params['db'], $table_params['table'], $row);
+			}
+			$$table_params['db']->die_on_error = $tmp_die_on_error;
+			if ($$table_params['db']->last_error) {
+				$error = $$table_params['db']->last_error." (table ".$table_params['table'].")";
+				break 2;
+			}
+			
+			unset($row['_mode']);
+			
+			$row['old_key'] = $row_key;
+			if (count($table_params['unique_key']) === 1 && $table_params['unique_key'][0]!='artifact_id') {
+				$row['new_key'] = $result;
+			} else {
+				$row['new_key'] = crossserver_get_rowkey($row, $table_params['unique_key']);
+			}
+			
+			if ($table_params['define_vars']) {
+				foreach($table_params['define_vars'] as $var => $value) {
+					$defined_vars[$var] = $row[$value];
+				}
+			}
+			
+			$user[$table_key][$row_key] = $row;
+		}
+		
+		if ($batch_rows) {
+			$tmp_die_on_error = $$table_params['db']->die_on_error;
+			$$table_params['db']->die_on_error = false;
+			$batch_fields = array_keys(reset($batch_rows));
+			$result = common_multi_update($$table_params['db'], $table_params['table'], $batch_rows, $batch_fields);
+			$$table_params['db']->die_on_error = $tmp_die_on_error;
+			if ($$table_params['db']->last_error) {
+				$error = $$table_params['db']->last_error." (table ".$table_params['table'].")";
+				break;
+			}
+		}
+		PF_RET(false, 'crossserver_user_load_table_'.$table_key);
+	}
+	PF_RET(false, 'crossserver_user_load_tables');
+	
+	PF_CALL('crossserver_user_load_session');
+	if ($defined_vars['user_id'] && !$error) {
+		// создадим сессию, если её нет, чтобы его не выкинуло из инста сразу
+		// сессию удалим если она есть чтобы дать спокойно переехать, и не напороться на то, что сессия есть, но просроченная
+		session_delete($defined_vars['user_id']);
+		$result = session_save(array(
+			'_mode' => CSMODE_INSERT,
+			'uid'   => $defined_vars['user_id'],
+			'sid'   => md5(rand()),
+			'stime' => time_current(),
+			'ctime' => time_current(),
+		));
+		
+		if (!$result) $error = 'Error while creating session';
+	}
+	PF_RET(false, 'crossserver_user_load_session');
+	
+	if ($error) {
+		print('Error while loading user: '.$error);
+		error_log('Error while loading user: '.$error);
+		if ($defined_vars['user_id']) user_delete($defined_vars['user_id']);
+		PF_RET(false, 'crossserver_user_load');
+		return false;
+	}
+	
+	PF_CALL('crossserver_user_load_pet_mount');
+	// Пронесём pet_id и mount_id пользователя
+	$auth = reset($user['auth']);
+	$userinfo =  crossserver_get_userinfo($auth['server_id'], $auth['original_user_id']);
+	
+	if ($userinfo['pet_id'] || $userinfo['mount_id'] || $userinfo['avatar_id']) {
+		$params = array('id' => $defined_vars['user_id']);
+		if ($userinfo['pet_id']) {
+			if ($user['pets'][$userinfo['pet_id']]['new_key']) {
+				$params['pet_id'] = $user['pets'][$userinfo['pet_id']]['new_key'];
+			}
+		}
+		if ($userinfo['mount_id']) {
+			if ($user['artifacts'][$userinfo['mount_id']]['new_key']) {
+				$params['mount_id'] = $user['artifacts'][$userinfo['mount_id']]['new_key'];
+			}
+		}
+
+		if ($userinfo['avatar_id']) {
+			if ($user['user_avatars'][$userinfo['avatar_id']]['new_key']) {
+				$params['avatar_id'] = $user['user_avatars'][$userinfo['avatar_id']]['new_key'];
+			}
+		}
+		user_save($params);
+	}
+	PF_RET(false, 'crossserver_user_load_pet_mount');
+	
+	PF_CALL('crossserver_user_load_dump_data_to_db');
+	$data = gzip_compress(serialize($user));
+	crossserver_user_save(array(
+		'_mode'			=> CSMODE_INSERT,
+		'_on_duplicate'	=> ' status = VALUES(status), ctime = VALUES(ctime), data = VALUES(data) ',
+		'user_id'		=> $defined_vars['user_id'],
+		'status'		=> CROSSSERVER_STATUS_RECIEVE,
+		'ctime'			=> time_current(),
+		'data'			=> $data,
+	));
+	PF_RET(false, 'crossserver_user_load_dump_data_to_db');
+	
+	NODE_POP();
+	PF_RET(false, 'crossserver_user_load');
+	
+	return $defined_vars['user_id'];
+}
+
+function crossserver_get_user_diff($user_id, $diff_params = array()) {
+	global $user_conf;
+	
+	// Дефолтные значения
+	$diff_params = array_merge(
+		array('gladiators' => false),
+		$diff_params
+	);
+	
+	$current_user = crossserver_user_export($user_id, $diff_params);
+	$crossserver_user = crossserver_user_get($user_id);
+	if (!$current_user || !$crossserver_user) return false;
+	$old_user = unserialize(gzip_uncompress($crossserver_user['data']));
+	if (!$old_user) return false;
+	$diff = array();
+	$ignored_fields = array('old_key','new_key','id','uid','node_num','area_id');
+	$key_links = array();
+	
+	// Вначале пробежимся по массиву в момент приезда и определим, что нужно изменилось и удалось
+	// Паралельно соберём таблицу соответствия новых ключей старым
+	foreach($old_user as $table_key => $old_data) {
+		if ($diff_params['gladiators'] && isset($user_conf[$table_key]['gladiator_free']) && $user_conf[$table_key]['gladiator_free']) continue;
+		if (isset($user_conf[$table_key]['diff_mode']) && ($user_conf[$table_key]['diff_mode'] == XSERVER_NO_DIFF)) continue;
+		$table_params = $user_conf[$table_key];
+		foreach($old_data as $row_key => $old_row) {
+			$new_key = isset($old_row['new_key']) ? $old_row['new_key'] : $row_key;
+			$old_key = isset($old_row['old_key']) ? $old_row['old_key'] : $row_key;
+			$key_links[$table_key][$new_key] = $old_key;
+			$new_row = $current_user[$table_key][$new_key];
+			if (!$new_row) {
+				if ($user_conf[$table_key]['diff_mode'] != XSERVER_NO_DELETE) {
+					$diff['delete'][$table_key][$old_key] = $old_key;
+				}
+				continue;
+			}
+			foreach($old_row as $field_name => $field_value) {
+				if (in_array($field_name, $ignored_fields)) continue;
+				// В дифф не стоит включать флаг указывающий на то,
+				// что юзер - гость с другого мира
+				if ($table_key == 'users' && $field_name == 'flags') $new_row[$field_name] = $new_row[$field_name] &~ USER_FLAG_CSERVER_GUEST;
+				if ($diff_params['gladiators'] && ($table_key == 'users') && in_array($field_name, array('money', 'money_silver', 'money_gold')) && ($new_row[$field_name] > $field_value)) {
+					error_log('user '.$user_id.' tries to leave gladiators server with '.$field_name.' PROFIT!!! ('.$field_value.' - '.$new_row[$field_name].')');
+				}
+				if ($field_value != $new_row[$field_name]) {
+					$diff['update'][$table_key][$old_key][$field_name] = $new_row[$field_name];
+				}
+			}
+		}
+	}
+	
+	// Пробежимся по текущему юзеру и если нету связи ключей - надо добавить запись
+	foreach($current_user as $table_key => $new_data) {
+		if ($diff_params['gladiators'] && isset($user_conf[$table_key]['gladiator_free']) && $user_conf[$table_key]['gladiator_free']) continue;
+		if (isset($user_conf[$table_key]['diff_mode']) && ($user_conf[$table_key]['diff_mode'] == XSERVER_NO_DIFF)) continue;
+		$table_params = $user_conf[$table_key];
+		foreach($new_data as $row_key => $new_row) {
+			if (!isset($key_links[$table_key][$row_key])) {
+				$diff['insert'][$table_key][$row_key] = $new_row;
+				// Проблема с доп таблицами артов, если создаётся действие\запись на существующий арт
+				// К сожалению, приходится костылить
+				if ($table_params['unique_key'][0] == 'artifact_id') {
+					if (!isset($diff['insert']['artifacts'][$new_row['artifact_id']])) {
+						// Нужно пробежаться по всем артам, которые были
+						// и найти к какому именно было что-то добавлено
+						$find_art_id = 0;
+						foreach($old_user['artifacts'] as $old_art_id => $old_art) {
+							if ($old_art['new_key'] == $new_row['artifact_id']) {
+								$find_art_id = $old_art_id;
+								break;
+							}
+						}
+						// Удаляем эту запись из дифа и если нашли правильный artifact_id - добавляем
+						unset($diff['insert'][$table_key][$row_key]);
+						if ($find_art_id) {
+							$new_row['artifact_id'] = $find_art_id;
+							$new_rowkey = crossserver_get_rowkey($new_row, $table_params['unique_key']);
+							$diff['insert'][$table_key][$new_rowkey] = $new_row;
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	return $diff;
+}
+
+function crossserver_instance_list($area_id, $params = array(), $add = '', $options = array(), $order_by = 'id', $order_orientation = 'desc', $server_id = null) {
+	$options = array_merge(array(
+		'all_columns' => false,
+		'with_users' => false
+	), $options);
+
+	$columns = $options['all_columns'] ? '*' : 'id'.($order_by == 'id' ? '' : ', '.$order_by);
+	$request_parameters = base64_encode(serialize(array(
+		'params' => $params,
+		'add' => $add,
+		'columns' => $columns,
+		'with_users' => $options['with_users']
+	)));
+
+	$instance_list = array();
+	foreach (common_get_servers('INST') as $srv_id => $srv) {
+		if ($server_id && $server_id != $srv_id) continue;
+
+		if ($srv_id == SERVER_ID) {
+			$srv_instance_list = instance_list($params, $add, $columns);
+		} else {
+			$srv_instance_list = crossserver_request($srv_id, array(
+				'action' => 'instance_list',
+				'area_id' => $area_id,
+				'method_params' => $request_parameters,
+			));
+
+			if (!$srv_instance_list) continue;
+			$srv_instance_list = unserialize($srv_instance_list);
+			if (empty($srv_instance_list)) continue;
+		}
+		
+		foreach ($srv_instance_list as $k => $v) $srv_instance_list[$k]['server_id'] = $srv_id;
+		$instance_list = array_merge($instance_list, $srv_instance_list);
+	}
+
+	usort($instance_list, create_function('$a,$b', "return strnatcmp(\$a['$order_by'], \$b['$order_by']);"));
+
+	if ($order_orientation != 'asc') $instance_list = array_reverse($instance_list);
+	return $instance_list;
+}
+
+function crossserver_instance_count($area_id, $params = array(), $add = '') {
+	$instance_cnt = 0;
+	$instance_cnt += instance_count($params, $add);
+
+	return $instance_cnt;
+}
+
+function crossserver_clan_battle_list($params = array(), $add = '', $options = array(), $order_by = 'id', $order_orientation = 'desc', $server_id = null) {
+	$options = array_merge(array(
+		'all_columns' => false,
+	), $options);
+
+	$columns = $options['all_columns'] ? '*' : 'id'.($order_by == 'id' ? '' : ', '.$order_by);
+
+	$clan_battle_list = array();
+	$srv_clan_battle_list = clan_battle_list($params, $add, $columns);
+	foreach ($srv_clan_battle_list as $k => $v) $srv_clan_battle_list[$k]['server_id'] = SERVER_ID;
+	$clan_battle_list = array_merge($clan_battle_list, $srv_clan_battle_list);
+
+	usort($clan_battle_list, create_function('$a,$b', "return strnatcmp(\$a['$order_by'], \$b['$order_by']);"));
+
+	if ($order_orientation != 'asc') $clan_battle_list = array_reverse($clan_battle_list);
+	return $clan_battle_list;
+}
+
+function crossserver_clan_info_list($server_id, $ref=null, $add='', $field_list='*') {
+	if (!$server_id) return false;
+	
+	$srv_clan_info_list = clan_info_list($ref, $add, $field_list);
+	
+	return $srv_clan_info_list;
+}
+
+function crossserver_apply_user_diff($user_id,$external_user_id, $diff) {
+	global $user_conf;
+	global $db, $db_2, $db_3, $db_diff, $db_nodes, $db_auth;
+	
+	NODE_PUSH(null, $user_id);
+	
+	// Удаление
+	if ($diff['delete']) {
+		foreach($diff['delete'] as $table_key => $data) {
+			$table_params = $user_conf[$table_key];
+			foreach($data as $row_key => $row) {
+				$result = common_delete($$table_params['db'], $table_params['table'], crossserver_get_ref_by_key($row_key, $table_params['unique_key']), '', 'id', true);
+				if ($$table_params['db']->last_error) {
+					return array('status' => false, 'error' => 'Error while deleting from '.$table_params['table'].' ('.$$table_params['db']->last_error.')');
+				}
+			}			
+		}
+	}
+	
+	// Изменение
+	if ($diff['update']) {
+		foreach($diff['update'] as $table_key => $data) {
+			$table_params = $user_conf[$table_key];
+			foreach($data as $row_key => $row) {
+				$ref = crossserver_get_ref_by_key($row_key, $table_params['unique_key']);
+				$update_parts = array();
+				foreach($row as $field => $value) {
+					if (in_array($field,$table_params['unique_key'])) {
+						unset($row[$field]);
+					} else {
+						$update_parts[] = "`".$field."`='".mysql_real_escape_string($value)."'";
+					}
+				}
+				if (!$ref || !$update_parts) continue;
+				$addwhere = '';
+				foreach ($ref as $k=>$v) {
+					$addwhere .= sql_pholder(" AND `".$k."`=?",$v);
+				}
+				$params = array(
+					'_set' => join(',',$update_parts),
+					'_add' => $addwhere,
+					'_noerr' => true
+				);
+				$result = common_save($$table_params['db'], $table_params['table'], $params);
+				if ($$table_params['db']->last_error) {
+					return array('status' => false, 'error' => 'Error while updating '.$table_params['table'].' ('.$$table_params['db']->last_error.')');
+				}
+			}			
+		}
+	}
+	
+	// Добавление
+	
+	if ($diff['insert']['logserv_buffer_crossserver']) {
+		$user_conf['logserv_buffer_crossserver']['table'] = 'logserv_buffer';
+	}
+	
+	if ($diff['insert']) {
+		$defined_vars = array(
+			'user_id_'.$external_user_id => $user_id,
+			'uid_'.$external_user_id => $user_id
+		);
+		foreach($diff['insert'] as $table_key => $data) {
+			$table_params = $user_conf[$table_key];
+			foreach($data as $row_key => $row) {
+				// если получили отложенный опыт - переведём в реальный
+				if (($table_key == 'user_stats') && ($row['type_id'] == USER_STAT_TYPE_SKILL) && ($row['object_id'] == USER_STAT_SKILL_DELAYED_EXP)) {
+					user_stat_update($user_id, USER_STAT_TYPE_SKILL, USER_STAT_SKILL_EXP, $row['value']);
+					continue;
+				}
+				foreach($row as $var => $value) {
+					if (isset($defined_vars[$var.'_'.$value])) $row[$var] = $defined_vars[$var.'_'.$value];
+				}
+				$row['_noerr'] = true;
+				$result = common_save($$table_params['db'], $table_params['table'], $row);
+				// если вставили арт - добавим переменную
+				if ($table_key == 'artifacts') {
+					$defined_vars['artifact_id_'.$row_key] = $result;
+				}
+			}			
+		}
+	}
+	
+	NODE_POP();
+	
+	return array('status' => true);
+}
+
+function crossserver_clan_battle_lock_requests($next_draw_time = false) {
+	$params = array(
+		'action' => 'lock_requests',
+	);
+	
+	if ($next_draw_time) {
+		common_save_settings(array('CLAN_BATTLE_STIME' => $next_draw_time));
+		$params['next_draw_time'] = $next_draw_time;
+	}
+	
+	foreach (common_get_servers('CB') as $srv_id => $srv) {
+		if ($srv_id == SERVER_ID) clan_battle_lock_requests();
+		else crossserver_request($srv_id, $params, 'clan_battle_api');
+	}
+}
+
+function crossserver_clan_battle_free_requests() {
+	$params = array(
+		'action' => 'free_requests',
+	);
+	
+	clan_battle_request_delete(false, ' AND flags & '.CLAN_BATTLE_REQUEST_FLAG_LOCKED);	
+	clan_battle_user_request_delete(false, ' AND 1');
+}
+
+function crossserver_clan_battle_get_requests() {
+    $srv_id = SERVER_ID;
+
+	$params = array(
+		'action' => 'get_clan_requests',
+	);
+	
+	$res = array();
+	$clan_list = clan_battle_get_requests();
+	if ($clan_list) foreach($clan_list as $clan) $res[$clan['id'].'_'.$srv_id] = array('id' => $clan['id'], 'title' => $clan['title'], 'server_id' => $srv_id, 'online' => $clan['online'], 'u' => $clan['u'], 's' => $clan['s']);
+	
+	return $res;
+}
+
+function crossserver_clan_get($server_id, $clan_id, $no_db = false) {
+	$cache = new Cache(sprintf('CROSSSERVER_CLAN_%d_%d', $server_id, $clan_id));
+	if ($cache->isValid()) $clan = $cache->get();
+	else {
+		if (!$no_db) {
+			$res = clan_crossserver_info_get(array('server_id' => $server_id, 'clan_id' => $clan_id));
+			if ($res) return $res;
+		}
+		
+		$params = array(
+			'action' => 'clan_get',
+			'extended' => 1,
+			'clan_id' => $clan_id
+		);
+		$result = crossserver_request($server_id, $params, 'clan_battle_api');
+		if (!$result) return false;
+		
+		$clan = unserialize($result);
+		if (!$clan) return false;
+		if (!$no_db) {
+			clan_crossserver_info_save(array(
+				'server_id' => $clan['server_id'],
+				'clan_id' => $clan['id'],
+				'title' => $clan['title'],
+				'picture' => $clan['picture'],
+				'kind' => $clan['kind'],
+				'stat_level' => $clan['stat_level'],
+				'stat_rank' => $clan['stat_rank'],
+			));
+		}
+		
+		$cache->update($clan, CROSSSERVER_CLAN_CACHE_TTL);
+	}
+	
+	return $clan;
+}
+
+function crossserver_clan_battle_delete($clan_battle, $server_id = false) {
+	$params = array(
+		'action' => 'clan_battle_delete',
+		'clan_battle_id' => $clan_battle['id'],
+		'clan_battle_server_id' => $clan_battle['server_id']
+	);
+	crossserver_request($server_id, $params, 'clan_battle_api');
+}
+
+function crossserver_sync_admin_profiles() {
+	require_once('lib/admin.lib');
+	
+	$data = serialize(admin_profile_dump());
+	if (!$data) return false;
+	
+	foreach (common_get_servers('ADM') as $srv_id => $srv) {
+		if ($srv_id == SERVER_ID) continue;
+		
+		$params = array(
+			'action' => 'admin_profiles_sync',
+			'profile_data' => $data,
+		);
+		$res[$srv_id] = crossserver_request($srv_id, $params);
+	}
+	
+	return $res;
+}
+
+function crossserver_clan_battle_save($clan_battle, $unbind = false) {
+	global $SERVERS;
+	$servers_to_save = array();
+	$servers_to_save[$clan_battle['first_clan_server_id']] = $clan_battle['first_clan_server_id'];
+	$servers_to_save[$clan_battle['second_clan_server_id']] = $clan_battle['second_clan_server_id'];
+
+	if (count($servers_to_save) != count(array_intersect($servers_to_save, get_hash($SERVERS, 'id', 'id')))) return false;
+	
+	if ($clan_battle['server_id'] == SERVER_ID) {
+		if ($unbind) $clan_battle['id'] = clan_battle_save_unbind($clan_battle);
+		else $clan_battle['id'] = clan_battle_save($clan_battle, sql_pholder(' AND server_id = ?', SERVER_ID));
+	} else {
+		$params = array(
+			'action' => 'clan_battle_save'.($unbind ? '_unbind' : ''),
+			'clan_battle' => serialize($clan_battle)
+		);
+		$result = crossserver_request($clan_battle['server_id'], $params, 'clan_battle_api');
+		if (!$result) return false;
+		
+		$clan_battle['id'] = $result;
+	}
+	
+	foreach ($servers_to_save as $srv_id) {
+		if ($srv_id == $clan_battle['server_id']) continue;
+		
+		if ($srv_id == SERVER_ID) {
+			if ($unbind) clan_battle_save_unbind($clan_battle);
+			else clan_battle_save($clan_battle);
+		} else {
+			$params = array(
+				'action' => 'clan_battle_save'.($unbind ? '_unbind' : ''),
+				'clan_battle' => serialize($clan_battle)
+			);
+
+			$result = crossserver_request($srv_id, $params, 'clan_battle_api');
+			if (!$result) return false;
+		}
+	}
+	
+	return $clan_battle['id'];
+}
+
+function crossserver_clan_battle_ready_users_list($server_clans) {
+	$res = array();
+
+	foreach ($server_clans as $server_id => $clans) {
+		if ($server_id == SERVER_ID) {
+			$ready_users = clan_battle_ready_users_list($clans);
+		} else {
+			$params = array(
+				'action' => 'clan_battle_ready_users_list',
+				'clan_ids' => serialize($clans)
+			);
+			$result = crossserver_request($server_id, $params, 'clan_battle_api');
+			
+			if (!$result) continue;
+
+			$ready_users = unserialize($result);
+		}
+
+		if ($ready_users) $res[$server_id] = $ready_users;
+	}
+	
+	return $res;
+}
+
+function crossserver_clan_battle_rating_get($server_id, $clan_id, $extended = false) {
+	$params = array(
+		'action' => 'clan_battle_rating_get',
+		'clan_id' => $clan_id
+	);
+	if ($extended) $params['extended'] = 1;
+	$result = crossserver_request($server_id, $params, 'clan_battle_api');
+			
+	if (!$result) return false;
+
+	$clan_rating = unserialize($result);
+	return $clan_rating;
+}
+
+function crossserver_clan_battle_apply_rating($server_id, $clan_id, $u_diff, $s_appl, $clan_battle_server_id=false, $clan_battle_id=false) {
+	$params = array(
+		'action' => 'clan_battle_rating_apply',
+		'clan_id' => $clan_id,
+		'u_diff' => $u_diff,
+		's_appl' => $s_appl,
+		'clan_battle_server_id' =>$clan_battle_server_id,
+		'clan_battle_id' =>$clan_battle_id,
+	);
+	$result = intval(crossserver_request($server_id, $params, 'clan_battle_api'));
+	
+	return $result;
+}
+
+function crossserver_clan_battle_count($server_id, $ref, $add) {
+	$params = array(
+		'action' => 'clan_battle_count',
+		'ref' => serialize($ref),
+		'add' => $add
+	);
+	$result = intval(crossserver_request($server_id, $params, 'clan_battle_api'));
+	
+	return $result;
+}
+
+function crossserver_clan_battle_season_score_update($server_id, $clan_id, $clan_server_id, $skill, $clan_battle_server_id, $clan_battle_id) {
+	$params = array(
+		'action' => 'clan_battle_season_score_update',
+		'clan_id' => $clan_id,
+		'clan_server_id' => $clan_server_id,
+		'clan_skill' => $skill,
+		'clan_battle_server_id' =>$clan_battle_server_id,
+		'clan_battle_id' =>$clan_battle_id,
+	);
+	$result = intval(crossserver_request($server_id, $params, 'clan_battle_api'));
+	
+	return $result;
+}
+
+function crossserver_clan_battle_season_needs_sync($server_id, $checksum, $season_id = false) {
+	$params = array(
+		'action' => 'clan_battle_season_needs_sync',
+		'checksum' => $checksum,
+	);
+	if ($season_id) $params['season_id'] = $season_id;
+	$result = intval(crossserver_request($server_id, $params, 'clan_battle_api'));
+	
+	return $result > 0 ? true : false;
+}
+
+function crossserver_clan_battle_get_scores($server_id) {
+	$params = array(
+		'action' => 'clan_battle_get_scores',
+	);
+
+	$result = crossserver_request($server_id, $params, 'clan_battle_api');
+	if ($result) $result = unserialize($result);
+	
+	return $result;
+}
+
+function crossserver_clan_battle_seasons_export($server_id) {
+	$params = array(
+		'action' => 'clan_battle_seasons_export',
+	);
+	$result = crossserver_request($server_id, $params, 'clan_battle_api');
+	if ($result) $result = unserialize($result);
+	
+	return $result;
+}
+
+function crossserver_clan_battle_season_get_dump($server_id, $season_id = false) {
+	$params = array(
+		'action' => 'clan_battle_season_get_dump',
+	);
+	if ($season_id) $params['season_id'] = $season_id;
+	$result = crossserver_request($server_id, $params, 'clan_battle_api');
+	
+	return $result;
+}
+
+function crossserver_clan_battle_season_save($server_id, $season) {
+	$params = array(
+		'action' => 'clan_battle_season_save',
+		'season' => serialize($season)
+	);
+
+	$result = crossserver_request($server_id, $params, 'clan_battle_api');
+	
+	return $result;
+}
+
+function crossserver_clan_battle_clear_scores($server_id) {
+	$params = array(
+		'action' => 'clan_battle_clear_scores',
+	);
+	
+	$result = crossserver_request($server_id, $params, 'clan_battle_api');
+	
+	return $result;	
+}
+
+function crossserver_clan_battle_apply_provision($season_clans, $max_rating) {	
+	$season_clan_hash = array();
+	foreach($season_clans as $season_clan) {
+		$season_clan_hash[$season_clan['server_id']][] = array(
+			'clan_id' => $season_clan['clan_id'],
+			'skill' => $season_clan['skill'],
+		);
+	}
+	
+	foreach (common_get_servers('CB') as $srv_id => $srv) {
+		$clan_list = $season_clan_hash[$srv_id];
+		$params = array(
+			'action' => 'clan_battle_apply_provision',
+			'clan_list' => serialize($clan_list),
+			'max_rating' => $max_rating,
+		);
+		
+		if ($srv_id == SERVER_ID) {
+			clan_battle_apply_provision($clan_list, $max_rating);
+		} else {
+			crossserver_request($srv_id, $params, 'clan_battle_api');
+		}
+	}
+	
+	return true;
+}
+
+function crossserver_user_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_CROSSSERVER_USERS,$ref,$add,'user_id');
+}
+
+function crossserver_user_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_CROSSSERVER_USERS,$ref,$add);
+}
+
+function crossserver_user_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_CROSSSERVER_USERS,$param,FIELD_CROSSSERVER_USERS,'user_id');
+}
+
+function crossserver_user_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff,TABLE_CROSSSERVER_USERS,$ref,$add);
+}
+
+function crossserver_user_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_CROSSSERVER_USERS,$ref,$add,'user_id');
+}
+
+function crossserver_gladiators_get($server_id) {
+	$params = array(
+		'action' => 'get_gladiators',
+	);
+	$result = crossserver_request($server_id, $params);
+	
+	return $result;	
+	
+}

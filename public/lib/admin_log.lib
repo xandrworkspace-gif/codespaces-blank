@@ -1,0 +1,183 @@
+<? # $Id: admin_log.lib,v 1.16 2010-01-15 09:50:10 p.knoblokh Exp $
+
+define('TABLE_ADMIN_LOG','admin_log');
+define('FIELD_ADMIN_LOG','');
+define('TABLE_ADMIN_FOOTPRINT','admin_footprint');
+define('FIELD_ADMIN_FOOTPRINT','');
+
+define('AL_PRIORITY_NORMAL',1);
+define('AL_PRIORITY_MEDIUM',2);
+define('AL_PRIORITY_HIGH',3);
+define('AL_PRIORITY_HIGHEST',4);
+
+
+
+define('AL_CODE_USER_AKEY_LOGIN',			107); // вход по akey
+
+define('AL_CODE_BOT_ARTIKUL_ADD',			1501); // добавление бота
+define('AL_CODE_BOT_ARTIKUL_EDIT',			1502); // изменение бота
+define('AL_CODE_BOT_ARTIKUL_DELETE',		1503); // удаление бота
+
+define('AL_CODE_QUEST_DELETE',				1601); // удаление этапа квеста'),
+define('AL_CODE_QUEST_BONUS_EDIT',			1602); // прикрепление бонуса в этапе'),
+define('AL_CODE_QUEST_DIALOG_ADD',			1603); // подвешивание диалога на НПЦ'),
+define('AL_CODE_QUEST_DIALOG_DELETE',		1604); // удаление диалога на НПЦ'),
+
+define('AL_FLAG_ADMIN',           0x00000001);
+
+$admin_log_code_hash = array(
+	// user.admin
+	101 => translate('блокировка'),
+	102 => translate('разблокировка'),
+	103 => translate('изменение денег'),
+	104 => translate('изменение флагов или доступа'),
+	105 => translate('изменение кредита'),
+	106 => translate('изменение образа'),
+	AL_CODE_USER_AKEY_LOGIN => translate('вход по akey'),
+
+	// artifact.admin
+	201 => translate('добавление предмета'),
+	202 => translate('удаление предмета'),
+	203 => translate('изменение предмета'),
+
+	// object_action.admin
+	301 => translate('добавление действия объекту'),
+	302 => translate('удаление действия объекта'),
+	303 => translate('изменение действия объекта'),
+
+	// bonus_issue.admin
+	401 => translate('выдача бонуса'),
+
+	// punishment_user.admin
+	501 => translate('изменение наказания'),
+	502 => translate('удаление наказания'),
+
+	// send_mail.admin
+	601 => translate('отправка писем'),
+
+	// exp_imp.admin
+	701 => translate('экспорт данных'),
+	702 => translate('импорт данных'),
+
+	// object_skill.admin
+	801 => translate('изменение характеристики'),
+	802 => translate('удаление характеристики'),
+	
+	// bonus.admin
+	901 => translate('создание бонуса'),
+	902 => translate('удаление бонуса'),
+	903 => translate('изменение бонуса'),
+	904 => translate('создание элемента бонуса'),
+	905 => translate('удаление элемента бонуса'),
+	906 => translate('изменение элемента бонуса'),
+	
+	// action.admin
+	1001 => translate('создание действия'),
+	1002 => translate('изменение действия'),
+	1003 => translate('удаление действия'),
+	
+	// quest_user.admin
+	1101 => translate('добавление этапа квеста'),
+	1102 => translate('отмена этапа квеста'),
+	1103 => translate('добавление квеста'),
+	1104 => translate('отмена квеста'),
+	
+	// area.store.admin
+	1201 => translate('выставление артикула в магазин'),
+	1202 => translate('удаление артикула из магазина'),
+	
+	// pet.admin
+	1301 => translate('добавление питомца'),
+	1302 => translate('изменение питомца'),
+	1303 => translate('удаление питомца'),
+	
+	// events.admin
+	1401 => translate('добавление события'),
+	1402 => translate('изменение события'),
+	1403 => translate('удаление события'),
+	1404 => translate('отключение события'),
+	1405 => translate('включение события'),
+
+	// bot_artikul.admin
+	AL_CODE_BOT_ARTIKUL_ADD			=> translate('добавление бота'),
+	AL_CODE_BOT_ARTIKUL_EDIT		=> translate('изменение бота'),
+	AL_CODE_BOT_ARTIKUL_DELETE		=> translate('удаление бота'),
+
+	// quest.admin
+	AL_CODE_QUEST_DELETE => translate('удаление этапа квеста'),
+	AL_CODE_QUEST_BONUS_EDIT => translate('редактиорвание бонуса в этапе'),
+	AL_CODE_QUEST_DIALOG_ADD => translate('подвешивание диалога на НПЦ'),
+	AL_CODE_QUEST_DIALOG_DELETE => translate('удаление диалога на НПЦ'),
+
+    //combo_user.admin
+    1701 => translate('изменения комбо'),
+    1702 => translate('удаление комбо'),
+);
+
+
+function admin_log_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_ADMIN_LOG,$ref,$add);
+}
+
+function admin_log_list($add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_ADMIN_LOG,false,$add);
+}
+
+function admin_log_count($add='') {
+	global $db_diff;
+	return common_count($db_diff,TABLE_ADMIN_LOG,false,$add);
+}
+
+function admin_log_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_ADMIN_LOG,$param,FIELD_ADMIN_LOG);
+}
+
+function admin_log_delete($ref=false, $profile_id=false, $add='') {
+	global $db_diff;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($profile_id) $ref['profile_id'] = $profile_id;
+	return common_delete($db_diff,TABLE_ADMIN_LOG,$ref,$add);
+}
+
+// =====================================================================
+
+function admin_log_add($code, $comment='', $priority=false, $in=false) {
+	global $session_admin, $mod;
+	if (!$session_admin) return false;
+	$action = $_REQUEST['action'];
+	if (!$action) $action = 'none';
+	if (!$priority) $priority = AL_PRIORITY_LOW;
+	if($in['user_id']) $user=user_get($in['user_id']);
+	$param = array(
+		'profile_id' => $session_admin['id'],
+		'mod' => $mod,
+		'action' => $action,
+		'code' => intval($code),
+		'comment' => strval($comment),
+		'priority' => intval($priority),
+		'stime' => time_current(),
+	);
+	if($user && $user['flags2']&USER_FLAG2_ADMIN) $param['flags']= AL_FLAG_ADMIN;
+	if ($in['user_id']) $param['user_id'] = $in['user_id'];
+	admin_log_save($param);
+}
+
+function admin_footprint() {
+	if (defined('ADMIN_FOOTPRINT_OFF') && ADMIN_FOOTPRINT_OFF) return;
+	global $session_admin, $db_diff;
+	if (!$session_admin) return;
+		
+	$sql = sql_pholder('INSERT INTO ?#TABLE_ADMIN_FOOTPRINT (stime, profile_id, ip_addr, uri, postdata) VALUES (?, ?, INET_ATON(?), ?, ?)',
+		time_current(),
+		$session_admin['id'],
+        common_client_ip(),
+		$_SERVER['REQUEST_URI'],
+		serialize($_POST));
+		
+	$db_diff->execSQL($sql);
+}
+
+?>

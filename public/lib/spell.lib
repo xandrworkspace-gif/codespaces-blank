@@ -1,0 +1,78 @@
+<? # $Id: spell.lib,v 1.3 2007-08-10 15:06:54 sen Exp $
+
+// Имена и поля таблиц
+define('TABLE_USER_SPELLS','user_spells');
+define('FIELD_USER_SPELLS','');
+
+define('TABLE_USER_SPELLS_AURA','user_spells_aura');
+define('FIELD_USER_SPELLS_AURA','');
+
+define('SPELL_SLOT_NUM', 10);
+define('SPELL_AURA_SLOT_NUM', 4);
+
+function spell_user_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_USER_SPELLS,$ref,$add);
+}
+
+function spell_user_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_USER_SPELLS,$ref,$add);
+}
+
+function spell_user_count($ref=false, $add='') {
+	global $db;
+	return common_count($db,TABLE_USER_SPELLS,$ref,$add);
+}
+
+function spell_user_save($param) {
+	global $db;
+	return common_save($db,TABLE_USER_SPELLS,$param,FIELD_USER_SPELLS);
+}
+
+function spell_user_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_USER_SPELLS,$ref,$add);
+}
+
+function spell_user_sync($artikul_id, $class) {
+	global $NODE_NUMS, $db;
+
+	foreach ($NODE_NUMS as $nn) {
+		if (!NODE_SWITCH($nn)) continue;
+		
+		$param = array(
+			'_mode' => CSMODE_UPDATE,
+			'_set' => sql_pholder('class = ?', $class),
+			'_add' => sql_pholder(' AND artikul_id = ?', $artikul_id),
+		);
+		
+		common_save($db, TABLE_USER_SPELLS, $param);
+	}
+}
+
+
+function spell_user_aura_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,TABLE_USER_SPELLS_AURA,$ref,$add);
+}
+
+function spell_user_aura_list($ref=false, $add='') {
+    global $db;
+    return common_list($db,TABLE_USER_SPELLS_AURA,$ref,$add);
+}
+
+function spell_user_aura_count($ref=false, $add='') {
+    global $db;
+    return common_count($db,TABLE_USER_SPELLS_AURA,$ref,$add);
+}
+
+function spell_user_aura_save($param) {
+    global $db;
+    return common_save($db,TABLE_USER_SPELLS_AURA,$param,FIELD_USER_SPELLS_AURA);
+}
+
+function spell_user_aura_delete($ref=false, $add='') {
+    global $db;
+    return common_delete($db,TABLE_USER_SPELLS_AURA,$ref,$add);
+}

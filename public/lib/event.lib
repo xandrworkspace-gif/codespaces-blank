@@ -1,0 +1,450 @@
+<? # $Id: event.lib,v 1.57 2010-02-15 06:07:08 i.hrustalev Exp $
+
+// Имена и поля таблиц
+define('TABLE_EVENTS','events');
+define('FIELD_EVENTS','');
+define('TABLE_EVENT_TYPES','event_types');
+define('FIELD_EVENT_TYPES','');
+define('TABLE_EVENT_ARTIKULS','event_artikuls');
+define('FIELD_EVENT_ARTUKULS','');
+define('TABLE_EVENT_POINTS','event_points');
+define('FIELD_EVENT_POINTS','');
+define('TABLE_EVENT_POINT_TYPES','event_point_types');
+define('FIELD_EVENT_POINT_TYPES','');
+define('TABLE_EVENT_ARTIKUL_POINTS','event_artikul_points');
+define('FIELD_EVENT_ARTIKUL_POINTS','');
+define('TABLE_EVENT_POINT_TASKS','event_point_tasks');
+define('FIELD_EVENT_POINT_TASKS','');
+define('TABLE_EVENT_POINT_TASK_USERS','event_point_task_users');
+define('FIELD_EVENT_POINT_TASK_USERS','');
+define('TABLE_EVENT_AREAS','event_areas');
+define('FIELD_EVENT_AREAS','');
+define('TABLE_EVENT_TRACK_USERS','event_track_users');
+define('FIELD_EVENT_TRACK_USERS','');
+
+define('TABLE_EVENT_INFLU_INFO', 'event_influ_info');
+
+// флаги евента
+define('EVENT_FLAG_OFF',                  0x0001);	// Выключен
+define('EVENT_FLAG_NOTIFY_ALL_LOCATIONS', 0x0002);	// Оповещение по всем локациям
+define('EVENT_FLAG_NO_NOTIFY',            0x0004);	// Отключить оповещение
+define('EVENT_FLAG_ADMIN_ONLY',           0x0010);  // Видимый только администраторам
+
+// флаги этапа евента
+define('EVENT_POINT_FLAG_IGNORE_TASKS',   0x0001);  // Считать этап завершенным при истечении времени
+define('EVENT_POINT_FLAG_NO_STATS',       0x0002);  // Не отображать статистику этапа события
+define('EVENT_POINT_FLAG_TALKFREE',       0x0008);  // Включить межрассовый чат
+
+// флаги задачи евента
+define('EVENT_POINT_TASK_FLAG_NOT_INDIVIDUAL',  0x0001);	// Не показывать личное участие в задаче
+
+// флаги привязок юзеров
+define('EVENT_TRACK_USERS_FLAG_NOTIFY', 0x1);
+define('EVENT_TRACK_USERS_FLAG_HIDE',   0x2);
+
+//флаги информирования о предсоящем евенте
+define('EVENT_FLAG_NOTIFY_5',  0x0008);	// Была рассылка за 5 минут
+define('EVENT_FLAG_NOTIFY_3',  0x0010);	// Была рассылка за 3 минуты
+define('EVENT_FLAG_NOTIFY_1',  0x0020);	// Была рассылка за 1 минуту
+
+// сложность событий
+$event_quality_info = array(
+	1 => array('id' => 1, 'title' => translate('Низкая'), 'color' => '#339900'),
+	2 => array('id' => 2, 'title' => translate('Средняя'), 'color' => '#3300ff'),
+	3 => array('id' => 3, 'title' => translate('Высокая'), 'color' => '#990099'),
+	4 => array('id' => 4, 'title' => translate('Героическая'), 'color' => '#ff0000'),
+	5 => array('id' => 5, 'title' => translate('Торговое'), 'color' => '#ff7f00'),
+	6 => array('id' => 6, 'title' => translate('Сезонное'), 'color' => '#808000'),
+);
+
+function event_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_EVENTS,$ref,$add);
+}
+
+function event_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_EVENTS,$ref,$add, $field_list);
+}
+
+function event_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_EVENTS,$param,FIELD_EVENTS);
+}
+
+// Можно удалять только по одному событию, чтобы верно удалялись задачи
+function event_delete($ref) {
+	global $db_2;
+	$event = event_get($ref);
+	if ($event) {
+		common_delete($db_2,TABLE_EVENTS,$ref);
+		event_point_task_user_delete(array('artikul_id' => $event['artikul_id']));
+	}
+	return true;
+}
+
+function event_type_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_EVENT_TYPES,$ref,$add);
+}
+
+function event_type_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_EVENT_TYPES,false,$add);
+}
+
+function event_type_count($add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_EVENT_TYPES, false, $add);
+}
+
+function event_type_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_EVENT_TYPES,$param,FIELD_EVENT_TYPES);
+}
+
+function event_type_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_EVENT_TYPES,$ref,$add);
+}
+
+function event_artikul_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_EVENT_ARTIKULS,$ref,$add);
+}
+
+function event_artikul_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_EVENT_ARTIKULS,$ref,$add, $field_list);
+}
+
+function event_artikul_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_EVENT_ARTIKULS, $ref, $add);
+}
+
+function event_artikul_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_EVENT_ARTIKULS,$param,FIELD_EVENT_ARTUKULS);
+}
+
+function event_artikul_delete($artikul_id) {
+	global $db_2;
+	common_delete($db_2,TABLE_EVENT_ARTIKULS,$artikul_id);
+	$event = event_get(array('artikul_id' => $artikul_id));
+	if ($event) event_delete($event['id']);
+	event_area_delete(array('artikul_id' => $artikul_id));
+	event_artikul_point_delete(array('artikul_id' => $artikul_id));
+	return true;
+}
+
+function event_point_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_EVENT_POINTS,$ref,$add);
+}
+
+function event_point_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_EVENT_POINTS,$ref,$add);
+}
+
+function event_point_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_EVENT_POINTS,$param,FIELD_EVENT_POINTS);
+}
+
+function event_point_delete($point_id) {
+	global $db_2;
+	$event_point_tasks = event_point_task_list(array('point_id' => $point_id));
+	if ($event_point_tasks) foreach ($event_point_tasks as $event_point_task) event_point_task_delete($event_point_task['id']);
+	event_artikul_point_delete(array('point_id' => $point_id));
+	return common_delete($db_2,TABLE_EVENT_POINTS,$point_id);
+}
+
+function event_point_type_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_EVENT_POINT_TYPES,$ref,$add);
+}
+
+function event_point_type_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_EVENT_POINT_TYPES,false,$add);
+}
+
+function event_point_type_count($add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_EVENT_POINT_TYPES, false, $add);
+}
+
+function event_point_type_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_EVENT_POINT_TYPES,$param,FIELD_EVENT_POINT_TYPES);
+}
+
+function event_point_type_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_EVENT_POINT_TYPES,$ref,$add);
+}
+
+function event_artikul_point_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_EVENT_ARTIKUL_POINTS,$ref,$add);
+}
+
+function event_artikul_point_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_EVENT_ARTIKUL_POINTS,$ref,$add);
+}
+
+function event_artikul_point_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_EVENT_ARTIKUL_POINTS,$param,FIELD_EVENT_ARTIKUL_POINTS);
+}
+
+function event_artikul_point_delete($param) {
+	global $db_2;
+	return common_delete($db_2,TABLE_EVENT_ARTIKUL_POINTS,$param);
+}
+
+function event_point_task_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_EVENT_POINT_TASKS,$ref,$add);
+}
+
+function event_point_task_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_EVENT_POINT_TASKS,$ref,$add);
+}
+
+function event_point_task_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_EVENT_POINT_TASKS,$param,FIELD_EVENT_POINT_TASKS);
+}
+
+function event_point_task_delete($task_id) {
+	global $db_2;
+	return common_delete($db_2,TABLE_EVENT_POINT_TASKS,$task_id);
+	event_point_task_user_delete(array('task_id' => $ref));
+}
+
+function event_point_task_user_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_EVENT_POINT_TASK_USERS,$ref,$add);
+}
+
+function event_point_task_user_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_EVENT_POINT_TASK_USERS,$ref,$add,$field_list);
+}
+
+function event_point_task_user_save($param, $add='') {
+	global $db_2;
+	return common_save($db_2,TABLE_EVENT_POINT_TASK_USERS,$param,FIELD_EVENT_POINT_TASK_USERS,'id',$add);
+}
+
+function event_point_task_user_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_EVENT_POINT_TASK_USERS,$ref,$add);
+}
+
+function event_area_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_EVENT_AREAS,$ref,$add);
+}
+
+function event_area_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_EVENT_AREAS,$ref,$add,$field_list);
+}
+
+function event_area_save($param, $add='') {
+	global $db_2;
+	return common_save($db_2,TABLE_EVENT_AREAS,$param,FIELD_EVENT_AREAS,'id',$add);
+}
+
+function event_area_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_EVENT_AREAS,$ref,$add);
+}
+
+
+//////////////////////////////////////////
+
+function event_influ_info_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_EVENT_INFLU_INFO,$ref,$add);
+}
+
+function event_influ_info_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_EVENT_INFLU_INFO,$ref,$add,$field_list);
+}
+
+function event_influ_info_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_EVENT_INFLU_INFO,$param);
+}
+
+function event_influ_info_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_EVENT_INFLU_INFO,$ref,$add);
+}
+
+function event_influ_info_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_EVENT_INFLU_INFO,$ref,$add);
+}
+
+/////////////////////////////////
+
+function event_track_user_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_EVENT_TRACK_USERS,$ref,$add);
+}
+
+function event_track_user_list($param, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_EVENT_TRACK_USERS,$param,$add);
+}
+
+function event_track_user_save($param,$add=false) {
+	global $db_2;
+	return common_save($db_2,TABLE_EVENT_TRACK_USERS,$param,FIELD_EVENT_TRACK_USERS,'id',$add);
+}
+
+function event_track_user_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_EVENT_TRACK_USERS,$ref,$add);
+}
+
+function event_lock($loc_key, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$loc_key) return false;
+	return $tq->capture('EVENT_'.$loc_key,$timewait,$timelock);
+}
+
+function event_unlock($loc_key) {
+	global $tq;
+	if (!$loc_key) return false;
+	return $tq->release('EVENT_'.$loc_key);
+}
+
+function event_conf() {
+	global $session_user,$session;
+	$event_artikul_ids = get_hash(event_area_list(array('area_id' => $session_user['area_id']),'','artikul_id'),'artikul_id','artikul_id');
+	if (!$event_artikul_ids) return '';
+	// Фильтрация событий для других рас
+	$event_artikul_ids = get_hash(event_artikul_list(array('id' => $event_artikul_ids),sql_pholder(" AND ((kind = 0) OR (kind = ?)) AND !(flags & ?)",$session_user['kind'], EVENT_FLAG_NO_NOTIFY),'id'),'id','id');
+	if (!$event_artikul_ids) return '';
+	// Решено, что одновременно несколько событий на локации быть не может, поэтому отображаю только одно первое попавшееся
+	$event = reset(event_list(array('artikul_id' => $event_artikul_ids), ' AND point_id > 0'));
+	if (!$event) return '';
+	// Фильтрация артикулов событий для которых отключены уведомления
+	if (event_track_user_list(array('user_id' => $session_user['id'],'event_id' => $event['artikul_id']), sql_pholder(' AND flags & ?', EVENT_TRACK_USERS_FLAG_HIDE))) return '';
+	$event_artikul = event_artikul_get($event['artikul_id']);
+	$event_point = event_point_get($event['point_id']);
+	$event_point_tasks = make_hash(event_point_task_list(array('point_id' => $event['point_id']),' ORDER BY id'));
+	if (!$event_point_tasks) return '';
+	$event_point_task_user_hash = get_hash(event_point_task_user_list(array('artikul_id' => $event['artikul_id'], 'user_id' => $session_user['id'])),'task_id','value');
+	$event_point_task_value_hash = get_hash(event_point_task_user_list(array('artikul_id' => $event['artikul_id']),' GROUP BY 1','task_id,SUM(value) as value'),'task_id','value');
+
+	$params = array();
+
+	if (!($event_point['flags'] & EVENT_POINT_FLAG_NO_STATS)) {
+		foreach($event_point_tasks as $event_point_task) {
+			$params[] = array(
+				'title' => $event_point_task['title'],
+				'max_value' =>  $event_point_task['max_value'],
+				'max_user_value' =>  $event_point_task['max_user_value'],
+				'user_value' => intval($event_point_task_user_hash[$event_point_task['id']]),
+				'value' => intval($event_point_task_value_hash[$event_point_task['id']]),
+				'no_user_value' => ($event_point_task['flags'] & EVENT_POINT_TASK_FLAG_NOT_INDIVIDUAL) ? 1 : 0,
+			);
+		}
+	}
+
+	return sprintf('<event title="%s" point_title="%s" id="%s">',$event_artikul['title'],$event_point['title'],$event['id']).construct_xml($params,'task').'</event>';
+}
+
+function event_conf_json() {
+    global $session_user,$session;
+    $event_artikul_ids = get_hash(event_area_list(array('area_id' => $session_user['area_id']),'','artikul_id'),'artikul_id','artikul_id');
+    if (!$event_artikul_ids) return array();
+    // Фильтрация событий для других рас
+    $event_artikul_ids = get_hash(event_artikul_list(array('id' => $event_artikul_ids),sql_pholder(" AND ((kind = 0) OR (kind = ?)) AND !(flags & ?)",$session_user['kind'], EVENT_FLAG_NO_NOTIFY),'id'),'id','id');
+    if (!$event_artikul_ids) return array();
+    // Решено, что одновременно несколько событий на локации быть не может, поэтому отображаю только одно первое попавшееся
+    $event = reset(event_list(array('artikul_id' => $event_artikul_ids), ' AND point_id > 0'));
+    if (!$event) return array();
+    // Фильтрация артикулов событий для которых отключены уведомления
+    if (event_track_user_list(array('user_id' => $session_user['id'],'event_id' => $event['artikul_id']), sql_pholder(' AND flags & ?', EVENT_TRACK_USERS_FLAG_HIDE))) return array();
+    $event_artikul = event_artikul_get($event['artikul_id']);
+    $event_point = event_point_get($event['point_id']);
+    $event_point_tasks = make_hash(event_point_task_list(array('point_id' => $event['point_id']),' ORDER BY id'));
+    if (!$event_point_tasks) return array();
+    $event_point_task_user_hash = get_hash(event_point_task_user_list(array('artikul_id' => $event['artikul_id'], 'user_id' => $session_user['id'])),'task_id','value');
+    $event_point_task_value_hash = get_hash(event_point_task_user_list(array('artikul_id' => $event['artikul_id']),' GROUP BY 1','task_id,SUM(value) as value'),'task_id','value');
+
+    $params = array();
+
+    if (!($event_point['flags'] & EVENT_POINT_FLAG_NO_STATS)) {
+        foreach($event_point_tasks as $event_point_task) {
+            $params[] = array(
+                'title' => $event_point_task['title'],
+                'max_value' =>  $event_point_task['max_value'],
+                'max_user_value' =>  $event_point_task['max_user_value'],
+                'user_value' => intval($event_point_task_user_hash[$event_point_task['id']]),
+                'value' => intval($event_point_task_value_hash[$event_point_task['id']]),
+                'no_user_value' => ($event_point_task['flags'] & EVENT_POINT_TASK_FLAG_NOT_INDIVIDUAL) ? 1 : 0,
+            );
+        }
+    }
+
+    $ret_arr['event'] = array(
+        'title' => $event_artikul['title'],
+        'point_title' => $event_point['title'],
+        'id' => $event['id'],
+        'task' => $params,
+    );
+
+    return $ret_arr;
+}
+
+// Спамилка в чат о ключевых "событиях" события
+function event_anouncer($msg_text, $artikul_id, $area_ids, $kind, $everybody=false) {
+	$artikul = event_artikul_get($artikul_id);
+	if ($artikul['flags'] & EVENT_FLAG_NO_NOTIFY) return false;
+
+	$msg_text="<img src=\"images/smile_event.gif\" border=0><b>".$msg_text."</b><img src=\"images/smile_event.gif\" border=0>";
+	$msg = array(
+		'type' => CHAT_MSG_TYPE_BROADCAST,
+		'msg_text' => $msg_text,
+		'urgent' => true,
+		'event_id' => $artikul_id,
+	);
+	if ($kind) $msg['user_kind'] = $kind;
+	chat_msg_send($msg,CHAT_CHF_AREA,$area_ids ? $area_ids : array(CHAT_AREA_ID_BROADCAST),array('event_id' => $artikul_id, 'no_abracadabra' => true));
+
+	if (!$area_ids) $everybody = false;
+	chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_AREA,$area_ids,array('func' => "updateSwf({'event':''})"));
+
+	$user_ids = array();
+
+	// Оповещение тех, кто участвует в событии, но находится в других локациях, где не проходит событие
+	if ($everybody) {
+		$event_user_ids = get_hash(event_point_task_user_list(array('artikul_id' => $artikul_id),'','distinct user_id'),'user_id','user_id');
+		if ($event_user_ids) $user_ids = array_merge($user_ids, $event_user_ids);
+	}
+	
+	// Оповещение тех, кто следит за событиями и находится в другой локации
+	$event_track_ids = get_hash(event_track_user_list(array('event_id' => $artikul_id), sql_pholder(' AND flags & ?', EVENT_TRACK_USERS_FLAG_NOTIFY)),'user_id','user_id');
+	if ($event_track_ids && $area_ids) $user_ids = array_merge($user_ids, $event_track_ids);
+
+	if (is_array($user_ids) && count($user_ids) > 0) {
+		$user_ids = get_hash(user_list(array('id' => $user_ids), ($area_ids ? sql_pholder(' AND area_id NOT IN (?@)', $area_ids) : ''),false,'id'),'id','id');
+		if ($user_ids) chat_msg_send_system($msg_text,CHAT_CHF_USER,$user_ids,true, array('event_id' => $artikul_id));
+	}
+	return true;
+}
+
+?>

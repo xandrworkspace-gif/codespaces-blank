@@ -1,0 +1,453 @@
+<? # $Id: session.lib,v 1.72 2010-01-12 13:58:23 i.hrustalev Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/auth.lib");
+require_once('/home/admin/web/dwar.fun/public_html/lib/stat.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/session_stat.lib');
+require_once("/home/admin/web/dwar.fun/public_html/lib/adv_premium.lib");require_once("/home/admin/web/dwar.fun/public_html/lib/adv_bonus.lib");
+
+define('SESSION_COOKIE_PREFIX', 'sess_');
+
+// Имена и поля таблиц
+define('TABLE_SESSIONS','sessions');
+define('FIELD_SESSIONS','uid, sid, client_ip, client_cid, ctime, stime, area_id, instance_id, action_id, ltime, fight_time, chat_time, chat_md5, chat_cflood, chat_ctime, online_time, invisibility_time, ressurect_time, help_time, emo_time, partner_pid');
+define('TABLE_CODES','codes');
+define('FIELD_CODES','');
+
+define('CODE_TTL',3600);	// TTL числовых кодов подтверждения
+define('NORMAL_SESSION_TTL', 180);
+
+global $SESSION_TTL, $session, $session_user,$session_premium;
+
+$SESSION_TTL = 3600; //300
+$session = array();
+$session_user = array();
+
+function session_get($ref=false, $sid=false, $add='') {
+	global $db;
+	if ($ref && !is_array($ref)) $ref = array('uid' => $ref);
+	if ($sid) $ref['sid'] = $sid;
+	return common_get($db,TABLE_SESSIONS,$ref,$add,'uid',true);
+}
+
+function _session_list($area_id=null, $instance_id=null, $online=null, $add='', $field_list='*', $ignore_invisibility =false) {
+    global $db;
+    $ttl = NORMAL_SESSION_TTL;
+    $query_add = '';
+    if (isset($area_id)) $query_add .= sql_pholder(" AND area_id=?",$area_id);
+    if (isset($instance_id)) $query_add .= sql_pholder(" AND instance_id=?",$instance_id);
+    if ($online == true) {
+        $query_add .= sql_pholder(" AND stime>=?",(time_current()-$ttl));
+
+        // учитывать невидимость
+        if (!$ignore_invisibility) {
+            $query_add .= sql_pholder(" AND invisibility_time<?",time_current());
+        }
+    }
+    return common_list($db,TABLE_SESSIONS,false,$query_add.$add,$field_list,true);
+}
+
+function session_list($area_id=null, $instance_id=null, $online=null, $add='', $field_list='*', $ignore_invisibility=false, $real_online=false) {
+	global $db, $SESSION_TTL;
+	$query_add = '';
+	if (isset($area_id)) $query_add .= sql_pholder(" AND area_id=?",$area_id);
+	if (isset($instance_id)) $query_add .= sql_pholder(" AND instance_id=?",$instance_id);
+	if ($online == true) {
+		$query_add .= sql_pholder(" AND stime>=?",(time_current()-($real_online ? NORMAL_SESSION_TTL : $SESSION_TTL)));
+		
+		// учитывать невидимость
+		if (!$ignore_invisibility) {
+			$query_add .= sql_pholder(" AND invisibility_time<?",time_current());
+		}
+	}
+	return common_list($db,TABLE_SESSIONS,false,$query_add.$add,$field_list,true);
+}
+
+function session_count($area_id=null, $instance_id=null, $online=null, $add='', $ignore_invisibility=false, $real_online=false) {
+	global $db, $SESSION_TTL;
+	$query_add = '';
+	if (isset($area_id)) $query_add .= sql_pholder(" AND area_id=?",$area_id);
+	if (isset($instance_id)) $query_add .= sql_pholder(" AND instance_id=?",$instance_id);
+	if ($online == true) {
+		$query_add .= sql_pholder(" AND stime>=?",(time_current()-($real_online ? NORMAL_SESSION_TTL : $SESSION_TTL)));
+		
+		// учитывать невидимость
+		if (!$ignore_invisibility) {
+			$query_add .= sql_pholder(" AND invisibility_time<?",time_current());
+		}
+	}
+	return common_count($db,TABLE_SESSIONS,false,$query_add.$add,true);
+}
+
+function session_save($param) {
+	global $db;
+	global $session;
+	if ($session && ($session['uid'] == $param['uid'])) $session = array_merge($session,$param);
+	return common_save($db,TABLE_SESSIONS,$param,FIELD_SESSIONS,'uid');
+}
+
+function session_delete($ref=false, $add='') {
+	global $db, $db_auth;
+	
+	// учитываем игровое время перед удалением сессии
+	if ($ref) {
+		$session = session_get($ref, $add);
+		if (!$session) return false;
+		$sessions = array($session);
+	}
+	else $sessions = session_list(null, null, null, $add, 'uid, ctime, stime');
+	
+	$return = common_delete($db,TABLE_SESSIONS,$ref,$add,'uid');
+	
+	if ($sessions) {
+		$user_ids = array(); 
+		foreach($sessions as $k => $data) {
+			$user_ids[] = $data['uid'];
+			$sessions[$k]['time_login'] = $data['ctime'];
+			$sessions[$k]['time_logout'] = $data['stime'];
+		}
+		session_stat_multi_update($sessions, array('uid', 'time_login', 'time_logout'));
+
+		require_once("lib/stat_user_casino.lib");
+		$casino_money_list = $user_ids ? stat_user_casino_list(array('user_id' => $user_ids)) : array();
+		foreach($casino_money_list as $casino_money) {
+			if ($casino_money['stake_sum'] != 0 || $casino_money['gain_sum'] != 0) {
+				// лог-сервис -----------------------
+				logserv_log_operation(array(
+					'money_type' => MONEY_TYPE_GAME,
+					'amount' => -$casino_money['stake_sum'],
+					'comment' => sprintf(translate('Потрачено на ставки в казино (ставок: %s)'), $casino_money['stake_count']),
+				),$casino_money['user_id']);
+				logserv_log_operation(array(
+					'money_type' => MONEY_TYPE_GAME,
+					'amount' => $casino_money['gain_sum'],
+					'comment' => translate('Выиграш в казино'),
+				),$casino_money['user_id']);
+				stat_user_casino_save(array(
+					'stake_sum' => 0,
+					'gain_sum' => 0,
+					'stake_count' => 0,
+					'_mode' => CSMODE_UPDATE,
+					'_add' => sql_pholder(' AND user_id = ?', $casino_money['user_id']),
+				));
+			}
+		}
+
+		//Для бриллиантов
+        $casino_money_gold_list = $user_ids ? stat_user_casino_gold_list(array('user_id' => $user_ids)) : array();
+        foreach($casino_money_gold_list as $casino_money) {
+            if ($casino_money['stake_sum'] != 0 || $casino_money['gain_sum'] != 0) {
+                // лог-сервис -----------------------
+                logserv_log_operation(array(
+                    'money_type' => MONEY_TYPE_GOLD,
+                    'amount' => -$casino_money['stake_sum'],
+                    'comment' => sprintf(translate('Потрачено на ставки в казино бр. (ставок: %s)'), $casino_money['stake_count']),
+                ),$casino_money['user_id']);
+                logserv_log_operation(array(
+                    'money_type' => MONEY_TYPE_GOLD,
+                    'amount' => $casino_money['gain_sum'],
+                    'comment' => translate('Выиграш в казино бр.'),
+                ),$casino_money['user_id']);
+                stat_user_casino_gold_save(array(
+                    'stake_sum' => 0,
+                    'gain_sum' => 0,
+                    'stake_count' => 0,
+                    '_mode' => CSMODE_UPDATE,
+                    '_add' => sql_pholder(' AND user_id = ?', $casino_money['user_id']),
+                ));
+            }
+        }
+		
+		$auth = auth_list('', array('uid' => $user_ids));
+		foreach($auth as $data) {
+			auth_save(
+				array(
+					'uid' => $data['uid'], 
+					// игровое_время = игровое_время + текущее_время() - время_логина
+					'ingame_time' => intval($data['ingame_time']) + intval(time_current()) - intval($data['time_login']),
+					'time_logout' => time_current(),
+				)
+			);
+            //ADV BONUS DELETE BLOCKS
+            global $db_path;
+            common_delete($db_path, TABLE_ADV_BONUS_BLOCK, array('object_id' => $data['uid']), sql_pholder(' AND flags & ?#ADV_BONUS_BLOCK_FLAG_DELETE_LOGOUT'));
+            adv_bonus_stat_delete(array('uid' => $data['uid'], 'stat_id' => ADV_BONUS_STAT_USER_ONLINE_TIME)); //Удаляем статистику по онлайну бонусов.
+		}
+	}
+	
+	return $return;
+}
+
+function session_truncate() {
+	global $db;
+	return common_truncate($db,TABLE_SESSIONS);
+}
+
+function session_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	/*
+	if($ref == 1) {
+        logfile(NODE_FILE_LOG, 'lock');
+        $bt = debug_backtrace();
+        //unset($bt[0]);
+        $out = array();
+        foreach ($bt as $v) {
+            $t = array();
+            $out[] = sprintf("%s:%d %s(%s)\n",basename($v['file']),$v['line'],$v['function'],implode(',',$t));
+        }
+        $out[0] .= ' '.json_encode($_REQUEST, JSON_UNESCAPED_UNICODE);
+        foreach ($out as $t) logfile(NODE_FILE_LOG, $t);
+    }
+	*/
+	if (!$ref) return false;
+	return $tq->capture('SESSION_'.intval($ref),$timewait,$timelock);
+}
+
+function session_unlock($ref) {
+	global $tq;
+    /*
+	if($ref == 1) {
+        logfile(NODE_FILE_LOG, 'unlock');
+        $bt = debug_backtrace();
+        //unset($bt[0]);
+        $out = array();
+        foreach ($bt as $v) {
+            $t = array();
+            $out[] = sprintf("%s:%d %s(%s)\n",basename($v['file']),$v['line'],$v['function'],implode(',',$t));
+        }
+        $out[0] .= ' '.json_encode($_REQUEST, JSON_UNESCAPED_UNICODE);
+        foreach ($out as $t) logfile(NODE_FILE_LOG, $t);
+    }
+    */
+	if (!$ref) return false;
+	return $tq->release('SESSION_'.intval($ref));
+}
+
+function session_cookie_domain() {
+	if (defined('SESSION_COOKIE_DOMAIN')) {
+		$domain = constant('SESSION_COOKIE_DOMAIN');
+	} else {
+		$host_parts = parse_url(SERVER_DOMAIN);
+		$domain = $host_parts['host'];
+		$t = explode('.',$domain);
+		if (intval(DEVS) || (count($t) < 2)) return '';
+	}
+	return $domain;
+}
+
+function session_set_cookies($nn=null, $uid=null, $sid=null, $online_time=0) {
+	
+	
+	if (!isset($nn)) $nn = $_COOKIE[SESSION_COOKIE_PREFIX.'nn'];
+	if (!isset($uid)) $uid = $_COOKIE[SESSION_COOKIE_PREFIX.'uid'];
+	if (!isset($sid)) $sid = $_COOKIE[SESSION_COOKIE_PREFIX.'sid'];
+	$domain = session_cookie_domain();
+	$crc = session_crc($nn,$uid,$sid);
+	common_resetcookie(SESSION_COOKIE_PREFIX.'nn',($nn ? $nn : ''),($nn ? 0 : 1),'/',$domain);
+	common_resetcookie(SESSION_COOKIE_PREFIX.'uid',($uid ? $uid : ''),($uid ? 0 : 1),'/',$domain);
+	common_resetcookie(SESSION_COOKIE_PREFIX.'sid',($sid ? $sid : ''),($sid ? 0 : 1),'/',$domain);
+	common_resetcookie(SESSION_COOKIE_PREFIX.'crc',$crc,0,'/',$domain);
+	common_resetcookie(SESSION_COOKIE_PREFIX.'ot',strval($online_time),0,'/',$domain);
+	$_COOKIE[SESSION_COOKIE_PREFIX.'nn'] = $nn;
+	$_COOKIE[SESSION_COOKIE_PREFIX.'uid'] = $uid;
+	$_COOKIE[SESSION_COOKIE_PREFIX.'sid'] = $sid;
+	$_COOKIE[SESSION_COOKIE_PREFIX.'crc'] = $crc;
+	$_COOKIE[SESSION_COOKIE_PREFIX.'ot'] = $online_time;
+}
+
+function session_crc($nn, $uid, $sid, $crc=null) {
+	$_crc = md5('SESSION-CRC-'.$nn.'-'.$uid.'-'.$sid);
+	return isset($crc) ? $_crc == $crc : $_crc;
+}
+
+function session_init($nn=null, $uid=null, $sid=null) {
+	global $session, $session_user, $session_premium, $SESSION_TTL, $SITE_CFG, $_SERVER, $current_site_domain,$crossserver_auth,$no_translate;
+	global $known_languages;
+	
+	if ($crossserver_auth) {
+		NODE_SWITCH(null, $session_user['id']);
+		return true;
+	}
+	if (defined('PROJECT_STOPPED') && PROJECT_STOPPED) return false;
+	$session_user = array();
+	$session_premium = array();
+	if (!isset($nn) || !isset($uid) || !isset($sid)) {
+		$nn = $_COOKIE[SESSION_COOKIE_PREFIX.'nn'];
+		$uid = $_COOKIE[SESSION_COOKIE_PREFIX.'uid'];
+		$sid = $_COOKIE[SESSION_COOKIE_PREFIX.'sid'];
+		$crc = $_COOKIE[SESSION_COOKIE_PREFIX.'crc'];
+		if (!session_crc($nn,$uid,$sid,strval($crc))) $sid = false;
+	}
+	if (!$nn || !$uid || !$sid) return false;
+	if (!NODE_SWITCH($nn)) return false;
+	$session = session_get($uid,$sid);
+	if (!$session) return false;
+	if (intval($session['stime']) <= (time_current()-$SESSION_TTL)) return false;
+	$ip = common_client_ip();
+	$session_user = user_get($uid);
+    if (strval($session['client_ip']) != $ip){
+        //logfile(NODE_FILE_LOG,'У Игрока '.$session_user['nick'].'['.$session_user['level'].'] ID:'.$session_user['id'].' сменился IP adress с '.$session['client_ip'].' на '.$ip);
+        session_save(array(
+            'uid' => $session['uid'],
+            'client_ip' => $ip,
+        ));
+    }
+	if ($session_user['flags'] & USER_FLAG_CSERVER_GUEST && $session_user['instance_id'] == 0 && 1 == 2) {
+		crossserver_user_return($uid);
+		$session_user = array();
+		return false;
+	}
+	if ($session_user['blocked'] || (defined('ADMIN_LOGIN') && ADMIN_LOGIN && !($session_user['flags'] & USER_FLAG_ADMIN))) {
+		session_logout(true);
+		return false;
+	}
+	$session_premium = user_premium_get($session_user['id']);
+	
+	$session_update = array();
+	if ($session_user['area_id'] != $session['area_id']) $session_update['area_id'] = $session_user['area_id'];
+	if ($session_user['instance_id'] != $session['instance_id']) $session_update['instance_id'] = $session_user['instance_id'];
+	if ($session_user['invisibility_time'] != $session['invisibility_time']) $session_update['invisibility_time'] = $session_user['invisibility_time'];
+	if ($session_update || ($session['stime'] <= (time_current() - 60))) {
+		$session_update['stime'] = time_current();	// изменяем stime раз в мин
+		if ($session_user['level'] < USER_CONVERSION_BONUS_LEVEL) {
+			user_stat_update($session_user['id'], USER_STAT_TYPE_MISC, USER_STAT_OBJECT_ONLINE_TIME, time_current() - $session['stime'], USER_STAT_OP_INC);
+		}
+	}
+	if ($session_update) {
+		$session_update['uid'] = $session['uid'];
+		session_save($session_update);
+	}
+	
+	// Инициализируем язык переводов только для локализаций
+	if (defined('_TRANS_LANG') && _TRANS_LANG) {
+		if ($session_user['language'] == 'ru' || (!$session_user['language'] && _TRANS_LANG == 'ru') || (MLT_ADMIN_ONLY && !($session_user['flags'] & USER_FLAG_ADMIN))) {
+			global $no_translate;
+			$no_translate = true;
+			require('include/constant.inc');
+		}
+		// для авторизованного пользователя основным является выбранный им язык
+		// для неавторизованного инициализация языка идёт в common_init
+		elseif ($session_user && $session_user['language'] && $known_languages[$session_user['language']]) {
+			translate_default_language($session_user['language']);
+			require('include/constant.inc');
+		}
+	}
+	
+	return true;
+}
+
+function session_login($uid=null, $email=null, $passwd=null) {
+	global $PARTNERS_CFG;
+	
+	$auth = false;
+	if ($uid) $auth = auth_get($uid);
+	elseif ($email) {
+		$auth = auth_get(array('email' => $email, 'server_id' => SERVER_ID));
+		if ($auth['auth_flags'] & AUTH_FLAG_PLAYIT) {	// PlayIT authorization
+			require_once("lib/playit.lib");
+			if (!playit_check_auth($email,$passwd)) unset($auth);
+		} else {
+		if (defined("SOUZ_PROJECT_ID")) {
+				$ret = souz_auth($email,$passwd);
+				if (!$ret) {
+					unset($auth);
+				}
+			} else {
+				if (!auth_check_password_hash($auth['passwd'], $passwd)) {
+					unset($auth);
+				};
+			};
+		}
+	}
+	if (!$auth || $auth['blocked']) return false;
+	
+	$user = user_get($auth['uid']);
+	
+	if (defined('ADMIN_LOGIN') && ADMIN_LOGIN) {
+		if (!($user['flags'] & USER_FLAG_ADMIN)) return false;
+	}
+	if (!NODE_SWITCH(null,$auth['uid'])) return false;
+	$user_max = intval(USER_MAX);
+	$online_count = session_count(null,null,true,'',true);
+	if ($online_count >= $user_max) return false;
+	$ip = common_client_ip();
+	$cid = common_client_cid();
+	if (!$cid) {
+		$cid = common_client_cid(true);
+		common_client_cid(false,$cid,session_cookie_domain());
+	}
+	auth_save(array(
+		'uid' => $auth['uid'],
+		'time_login' => time_current(),
+		'last_ip' => $ip,
+		'last_cid' => $cid,
+	));
+	$sid = md5(uniqid(rand(), true));
+
+	// Статистика
+	if (date('Y-m-d', time_current()) != date('Y-m-d', $auth['time_login'])) {
+		if ($auth['time_registered'] < (time_current() - 86400 * 2)) {
+			stat_update('a_login_cnt');
+			if ($PARTNERS_CFG && PARTNER && $PARTNERS_CFG[PARTNER] && $PARTNERS_CFG[PARTNER]['a_login_cnt_field']) {
+				stat_update($PARTNERS_CFG[PARTNER]['a_login_cnt_field']);
+			}
+		}
+	}
+
+	session_save(array(
+		'_mode' => CSMODE_REPLACE,
+		'uid' => $auth['uid'],
+		'sid' => $sid,
+		'client_ip' => $ip,
+		'client_cid' => $cid,
+		'stime' => time_current(),
+		'ctime' => time_current(),
+		'online_time' => $online_time,
+		'partner_pid' => $user['partner_pid'] ? $user['partner_pid'] : $PARTNERS_CFG[PARTNER]['partner_pid'],
+	));
+	session_set_cookies(NODE_SWITCH(),$auth['uid'],$sid,$online_time);
+	session_init(NODE_SWITCH(),$auth['uid'],$sid);
+	return true;
+}
+
+function session_logout($clean=false) {
+	global $session, $session_user;
+
+	if (!$session_user) return false;
+	auth_save(array(
+		'uid' => $session['uid'],
+		'time_logout' => time_current(),
+	));
+	if ($clean) {
+		session_delete($session['uid']);
+	}
+	$session = $session_user = array();
+	session_set_cookies('','','','');
+	return true;
+}
+
+function session_code_check($code, $check_only=false) {
+	global $db_diff, $session_user;
+	common_delete($db_diff,TABLE_CODES,false,sql_pholder(" AND stime<?",time_current()-CODE_TTL),'cid');
+	$cid = $session_user ? 'UID_'.$session_user['id']: 'IP_'.common_client_ip();
+	$item = common_get($db_diff,TABLE_CODES,$cid,'','cid');
+	if (!$item) return false;
+	$code = str_replace("0","o",$code);	// Заменяем ноль на "o"
+	$code = strtoupper($code);
+	$status = ($code === $item['code']);
+	if (!$status || !$check_only) common_delete($db_diff,TABLE_CODES,$cid,'','cid');
+	return $status;
+}
+
+function session_code_save($code) {
+	global $db_diff, $session_user;
+	if (!$code) return false;
+	$cid = $session_user ? 'UID_'.$session_user['id']: 'IP_'.common_client_ip();
+	return common_save($db_diff,TABLE_CODES,array(
+		'_mode' => CSMODE_REPLACE,
+		'cid' => $cid,
+		'code' => $code,
+		'stime' => time_current(),
+	),'','cid');
+}
+
+?>

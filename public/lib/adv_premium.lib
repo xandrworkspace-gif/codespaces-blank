@@ -1,0 +1,677 @@
+<?#ADVANCED PREMIUM LIB WRITTEN 25.04.2017 IGORPAUK
+
+define('TABLE_ADV_PREMIUM_LIST','adv_premium');
+define('FIELD_ADV_PREMIUM_LIST','id,user_id,level,money,flags,time_end');
+
+define('PREMIUM_TIME', 2678400); //Стандартно месяц епт
+/*
+
+Если инициализировали сессию, то получили премиум игрока в переменной $session_premium
+
+PHP Для замены функционала:
+admind_accessd/user.admin (Готово)
+area/auction.area (Готово)
+area/bank_premium.room (Готово, надо сделать переключатель)
+area/bank_exchanje.room (Готово)
+cronsd2/auto_fight_cron.php (Готово)
+cronsd2/auto_sbor_cron.php (Готово)
+lib/auto_sbor_user.lib (Готово)
+lib/fight.lib (Готово)
+lib/skupka.lib (Готово)
+lib/auto_battle.lib (Готово)
+agress_monter.php (Готово)
+use_all_prem.php (Готово)
+auto_battle.php (Готово)
+auto_sbor.php (Готово)
+main_frame.php (Готово)
+main_iframe.php (Готово)
+skupka.php (Готово)
+user_info.php (Готово)
+
+111sc.php - скрпит конвертации старых премиумов в новые
+
+lib/action/PREMIUM_ADD.action
+
+
+Делаем так:
+0.Данные по премиуму удаляются по времени
+1.Игрок обменивает алмазы
+2.В базу идет информация о кол-ве
+3.Игрок получает премиум (Время удаления ставится через месяц) (Установим характеристику PREMIUM на текущий уровень премиума)
+4.Если игрок еще обменивает, то время удаления снова может стать через месяц только в том случае, если есть к чему стремиться премиум
+4.1 Если премиум вышка, не менять время удаления...
+5. Время удаления обнулит счетчик количества алмазов обмененных на золото или бр
+6.PROFIT
+7.PROFIT отметки с нулевым временем не удалять xD
+
+По злым окам и доп энергии:
+Бонусы:	 	3967 - оки
+			9432 - энергия
+			9560 - Улучшенная волшебная палочка
+			9331 - Волшебная палочкаа
+Характеристика PREMIUM отражает текущий уровень премиума у пользователя.
+
+P_FLAG_EXP_DISABLE - Будет действовать для отключения опыта
+*/
+
+define('PREMIUM_TALER_ARTIKUL_ID', 10098);
+
+//Кодовые значения
+define('P_MAILBOX', 1); //Вместительный почтовый ящик YES
+define('P_POST_GOLUB', 2); //Почтовый голубь YES
+define('P_MAGIC_WAND', 3); //Волшебная палочка щедрее
+define('P_HONOR', 4); //Бонус доблести +5% YES
+define('P_LOTS_ADD', 5); //Дополнительные лоты на бирже и аукционе YES
+define('P_ANONIM_TORG', 6); //Анонимные торги на бирже и ауционе YES
+define('P_DISABLE_BREAK', 7); //Меньше ущерба при поражениях YES
+define('P_SPEED_WALK', 8); //Скорость перемешения YES
+define('P_PROF_SPEED', 9); //Повышение производительности профессий NOYES (Нужно тестировать)
+define('P_BACKPACK', 10); //Бездонная сумка YES
+define('P_AUCTION', 11); //Погонщик для аукциона
+define('P_PROVOCATION', 12); //Провокация без задержки
+define('P_MONEY', 13); //Дополнительные монеты
+define('P_DROPX2', 14); //Удвоенный дроп
+define('P_RESP', 15); //Выбор места воскрешения*
+define('P_TALER', 16); //Бонусные талеры
+define('P_TALERB', 17); //Шанс получить талеры
+define('P_ANIM', 18); //Ускорение анимации
+define('P_INSTAP', 19); //Дополнительные карманы
+define('P_MOUNTC', 20); //Экономьте корм*
+define('P_PROVOCATION_ADD', 21); //Провокация дополнение
+define('P_ACTIVITY_RESET', 22); //!
+define('P_SMILES', 23); //!
+define('P_DICEGAME_DOUBLE', 24);//!
+define('P_DIAMOND_ADD', 26);
+define('P_PROFESSIONS', 27);
+define('P_MAIL_ARTIFACTS', 28); //!
+define('P_AUTO_WAY', 29); //!
+
+$date_end_premium = strtotime(date('Y-m-t')) + 86399;
+
+$premium_levels_hash = array(
+	1 => 10,
+	2 => 25,
+	3 => 50,
+	4 => 75,
+	5 => 125
+);
+
+$premium_mode_hash = array(
+	P_MAILBOX => 'Вместительный почтовый ящик',
+	P_POST_GOLUB => 'Почтовый голубь',
+    P_MAGIC_WAND => 'Волшебная палочка щедрее',
+    P_HONOR => 'Бонус доблести',
+    P_LOTS_ADD => 'Дополнительные лоты на бирже и аукционе',
+    P_ANONIM_TORG => 'Анонимные торги на бирже и ауционе',
+    P_DISABLE_BREAK => 'Меньше ущерба при поражениях',
+    P_SPEED_WALK => 'Высокая скорость передвижений',
+    P_PROF_SPEED => 'Повышение производительности профессий',
+    P_BACKPACK => 'Бездонная сумка',
+    P_AUCTION => 'Погонщик для аукциона',
+    P_PROVOCATION => 'Провокация',
+    P_MONEY => 'Дополнительные монеты с монстров',
+    P_DROPX2 => 'Удвоенный дроп',
+    P_RESP => 'Выбор места воскрешения*',
+    P_TALER => 'Бонусные талеры',
+    P_TALERB => 'Шанс получить талеры',
+    P_ANIM => 'Ускорение анимации',
+    P_INSTAP => 'Дополнительные карманы',
+    P_MOUNTC => 'Экономьте корм*',
+    P_PROVOCATION_ADD => 'Провокация дополнение',
+    P_ACTIVITY_RESET => 'Сброс активностей', //Возможность сбрасывать активности раз в день.
+    P_SMILES => 'Дополнительные смайлы', //Передавайте всю гамму ваших эмоций с помощью уникальных смайлов!
+    P_DICEGAME_DOUBLE => 'Дар небес вдвое щедрее', //Получайте удвоенное количество наград в Даре Небес!
+    P_DIAMOND_ADD => 'Улучшенный курс обмена', //Бонус в 10% при каждом обмене бриллиантов.
+    P_PROFESSIONS => 'Повышение мастерства', //Шанс повысить навык Палача и навык Взломщика увеличивается в 2 раза, а опыт мастертсва Целителя идет в двойном размере.
+    P_MAIL_ARTIFACTS => 'Почтовые уведомления', //Получайте уведомления по игровой почте о предметах, у которых заканчивается срок службы.
+    P_AUTO_WAY => 'Дойти до нужного местоположения',
+);
+
+$premium_pic = array(
+	P_MAILBOX => array(1 => 'mailbox_20.png', 2 => 'mailbox_20.png', 3 => 'mailbox_30.png', 4 => 'mailbox_30.png', 5 => 'mailbox_40.png'),
+	P_POST_GOLUB => array(0 => 'pingeon.png'),
+	P_MAGIC_WAND => array(0 => 'magic_wand.png'),
+    P_HONOR => array(0 => 'premium_bonushonor2.png'),
+    P_LOTS_ADD => array(1 => 'birga_3.png', 2 => 'birga_3.png',3 => 'birga_6.png',4 => 'birga_9.png',5 => 'birga_9.png'),
+    P_RESP => array(0 => 'icons_prem_resp.png'),
+    P_ANONIM_TORG => array(0 => 'birga_1.png'),
+    P_DISABLE_BREAK => array(0 => 'low_breaks_1.png'),
+    P_SPEED_WALK => array(0 => 'speed_buff.png'),
+    P_PROF_SPEED => array(0 => 'worker.png'),
+    P_BACKPACK => array(2 => 'backpack_2.png',3 => 'backpack_4.png',4 => 'backpack_6.png',5 => 'backpack_8.png',),
+    P_AUCTION => array(0 => 'auc_pogon.png'),
+    P_PROVOCATION => array(0 => 'provocation.png?ux=1'),
+    P_MONEY => array(0 => 'birga_1.png'),
+    P_DROPX2 => array(0 => 'dar_40x40.png'),
+    P_TALER => array(0 => 'prem_taler.png',),
+    P_TALERB => array(0 => 'prem_taler_plus.png',),
+    P_ANIM => array(0 => 'premium_fx2.png',),
+    P_INSTAP => array(2 => 'instapocket1.png',3 => 'instapocket2.png',4 => 'instapocket3.png',5 => 'instapocket4.png',),
+    P_MOUNTC => array(0 => 'korm_40x40.png',),
+    P_PROVOCATION_ADD => array(0 => 'provocation.png'),
+    P_SMILES => array(0 => 'smiles.png'),
+    P_ACTIVITY_RESET => array(0 => 'activity.png'),
+    P_DICEGAME_DOUBLE => array(0 => 'dar_40x40.png'),
+    P_DIAMOND_ADD => array(0 => 'exchange_10.png'),
+    P_PROFESSIONS => array(0 => 'skill.png'),
+    P_MAIL_ARTIFACTS => array(0 => 'notice.png'),
+    P_AUTO_WAY => array(0 => 'speed_buff.png',),
+);
+
+$premium_info = array(
+    1 => array(
+        P_MAILBOX => array('title' => 'Вместительный почтовый ящик', 'description' => 'Почтовый ящик станет вместительнее: в нем можно хранить на 20 писем больше.'),
+        P_POST_GOLUB => array('title' => 'Почтовый голубь', 'description' => 'Отправляйте послания из любого уголка Мира!'),
+        P_MAGIC_WAND => array('title' => 'Волшебная палочка щедрее', 'description' => 'Волшебная палочка каждый день будет приносить максимальное количество даров.'),
+        P_HONOR => array('title' => 'Бонус доблести +5%', 'description' => 'Бонус +5% к получаемого в боях доблести.'),
+        P_LOTS_ADD => array('title' => 'Дополнительные лоты на бирже и аукционе', 'description' => 'Возможность выставлять на бирже или аукционе на 3 лота больше.'),
+        P_PROVOCATION => array('title' => 'Провокация без задержки', 'description' => 'Позволяет провоцировать монстров без задержки по времени.'),
+        P_TALER => array('title' => 'Бонусные талеры', 'description' => 'Вы получите 5 платиновых талеров при достижении этого уровня премиума.'),
+        P_TALERB => array('title' => 'Шанс получить талеры +10%', 'description' => 'Получайте талеры с большей вероятностью, участвуя в таких акциях, как распродажа драгоценных сундучков, Сияние удачи и Магия зеркал!'),
+        P_SMILES => array('title' => 'Дополнительные смайлы', 'description' => 'Передавайте всю гамму ваших эмоций с помощью уникальных смайлов!'),
+    ),
+    2 => array(
+        P_MAILBOX => array('title' => 'Вместительный почтовый ящик', 'description' => 'Почтовый ящик станет вместительнее: в нем можно хранить на 20 писем больше.'),
+        P_POST_GOLUB => array('title' => 'Почтовый голубь', 'description' => 'Отправляйте послания из любого уголка Мира!'),
+        P_MAGIC_WAND => array('title' => 'Волшебная палочка щедрее', 'description' => 'Волшебная палочка каждый день будет приносить максимальное количество даров.'),
+        P_HONOR => array('title' => 'Бонус доблести +5%', 'description' => 'Бонус +5% к получаемого в боях доблести.'),
+        P_LOTS_ADD => array('title' => 'Дополнительные лоты на бирже и аукционе', 'description' => 'Возможность выставлять на бирже или аукционе на 3 лота больше.'),
+        P_RESP => array('title' => 'Выбор места воскрешения*', 'description' => 'Выбирайте, где воскреснуть, из списка храмов и ближайших обелисков.'),
+        P_ANONIM_TORG => array('title' => 'Анонимная работа с биржей и аукционом', 'description' => 'Возможность анонимно выкладывать лоты на аукцион и заявки на биржу.'),
+        P_DISABLE_BREAK => array('title' => 'Меньше ущерба при поражениях', 'description' => 'Число вещей, повреждающихся при поражении, уменьшается на 1.'),
+        P_SPEED_WALK => array('title' => 'Высокая скорость передвижений', 'description' => 'Тратьте меньше времени на перемещения из одной точки в другую! Ваша скорость увеличена на 10%.'),
+        P_PROF_SPEED => array('title' => 'Повышение производительности профессий', 'description' => 'В 2 раза сокращено время ожидания на использование рецептов производящих профессий.'),
+        P_BACKPACK => array('title' => 'Бездонная сумка', 'description' => 'Увеличение емкости рюкзака на 2 слота.'),
+        P_INSTAP => array('title' => 'Дополнительный «быстрый» карман!', 'description' => 'Один дополнительный «быстрый» карман для удобного доступа к часто используемым предметам в рюкзаке!'),
+        P_PROVOCATION => array('title' => 'Провокация без задержки', 'description' => 'Позволяет провоцировать монстров без задержки по времени.'),
+        P_TALER => array('title' => 'Бонусные талеры', 'description' => 'Вы получите 10 платиновых талеров при достижении этого уровня премиума.'),
+        P_TALERB => array('title' => 'Шанс получить талеры +25%', 'description' => 'Получайте талеры с большей вероятностью, участвуя в таких акциях, как распродажа драгоценных сундучков, Сияние удачи и Магия зеркал!'),
+        P_SMILES => array('title' => 'Дополнительные смайлы', 'description' => 'Передавайте всю гамму ваших эмоций с помощью уникальных смайлов!'),
+    ),
+    3 => array(
+        P_MAILBOX => array('title' => 'Вместительный почтовый ящик', 'description' => 'Почтовый ящик станет вместительнее: в нем можно хранить на 30 писем больше.'),
+        P_POST_GOLUB => array('title' => 'Почтовый голубь', 'description' => 'Отправляйте послания из любого уголка Мира!'),
+        P_MAGIC_WAND => array('title' => 'Волшебная палочка щедрее', 'description' => 'Волшебная палочка каждый день будет приносить максимальное количество даров.'),
+        P_HONOR => array('title' => 'Бонус доблести +10%', 'description' => 'Бонус +10% к получаемого в боях доблести.'),
+        P_LOTS_ADD => array('title' => 'Дополнительные лоты на бирже и аукционе', 'description' => 'Возможность выставлять на бирже или аукционе на 6 лотов больше.'),
+        P_RESP => array('title' => 'Выбор места воскрешения*', 'description' => 'Выбирайте, где воскреснуть, из списка храмов и ближайших обелисков.'),
+        P_ANONIM_TORG => array('title' => 'Анонимная работа с биржей и аукционом', 'description' => 'Возможность анонимно выкладывать лоты на аукцион и заявки на биржу.'),
+        P_DISABLE_BREAK => array('title' => 'Меньше ущерба при поражениях', 'description' => 'Число вещей, повреждающихся при поражении, уменьшается на 1.'),
+        P_SPEED_WALK => array('title' => 'Высокая скорость передвижений', 'description' => 'Тратьте меньше времени на перемещения из одной точки в другую! Ваша скорость увеличена на 20%.'),
+        P_PROF_SPEED => array('title' => 'Повышение производительности профессий', 'description' => 'В 2 раза сокращено время ожидания на использование рецептов производящих профессий.'),
+        P_BACKPACK => array('title' => 'Бездонная сумка', 'description' => 'Увеличение емкости рюкзака на 4 слота.'),
+        P_INSTAP => array('title' => 'Дополнительные «быстрые» карманы!', 'description' => 'Два дополнительных «быстрых» кармана для удобного доступа к часто используемым предметам в рюкзаке!'),
+        P_ANIM => array('title' => 'Ускоренная анимация*', 'description' => 'Возможность в два раза ускорить анимацию в бою.'),
+        P_AUCTION => array('title' => 'Погонщик для аукциона', 'description' => 'Позволяет выставлять лоты на аукционе в любой точке мира.'),
+        P_PROVOCATION => array('title' => 'Провокация без задержки', 'description' => 'Позволяет провоцировать монстров без задержки по времени.'),
+        P_TALER => array('title' => 'Бонусные талеры', 'description' => 'Вы получите 23 платиновых талеров при достижении этого уровня премиума.'),
+        P_TALERB => array('title' => 'Шанс получить талеры +40%', 'description' => 'Получайте талеры с большей вероятностью, участвуя в таких акциях, как распродажа драгоценных сундучков, Сияние удачи и Магия зеркал!'),
+        //P_PROVOCATION_ADD => array('title' => 'Провокация дополнение', 'description' => '+50 к провокации в день'),
+        P_SMILES => array('title' => 'Дополнительные смайлы', 'description' => 'Передавайте всю гамму ваших эмоций с помощью уникальных смайлов!'),
+        P_DICEGAME_DOUBLE => array('title' => 'Дар небес вдвое щедрее', 'description' => 'Получайте удвоенное количество наград в Даре Небес!'),
+        P_MAIL_ARTIFACTS => array('title' => 'Почтовые уведомления', 'description' => 'Получайте уведомления по игровой почте о предметах, у которых заканчивается срок службы.'),
+        P_AUTO_WAY => array('title' => 'Дойти до нужного местоположения', 'description' => 'Позволит дойти до нужного местоположения через навигатор, после выхода на локацию движение будет происходить автоматически.'),
+    ),
+    4 => array(
+        P_MAILBOX => array('title' => 'Вместительный почтовый ящик', 'description' => 'Почтовый ящик станет вместительнее: в нем можно хранить на 30 писем больше.'),
+        P_POST_GOLUB => array('title' => 'Почтовый голубь', 'description' => 'Отправляйте послания из любого уголка Мира!'),
+        P_MAGIC_WAND => array('title' => 'Волшебная палочка щедрее', 'description' => 'Волшебная палочка каждый день будет приносить максимальное количество даров.'),
+        P_HONOR => array('title' => 'Бонус доблести +10%', 'description' => 'Бонус +10% к получаемого в боях доблести.'),
+        P_LOTS_ADD => array('title' => 'Дополнительные лоты на бирже и аукционе', 'description' => 'Возможность выставлять на бирже или аукционе на 9 лотов больше.'),
+        P_RESP => array('title' => 'Выбор места воскрешения*', 'description' => 'Выбирайте, где воскреснуть, из списка храмов и ближайших обелисков.'),
+        P_ANONIM_TORG => array('title' => 'Анонимная работа с биржей и аукционом', 'description' => 'Возможность анонимно выкладывать лоты на аукцион и заявки на биржу.'),
+        P_DISABLE_BREAK => array('title' => 'Меньше ущерба при поражениях', 'description' => 'Число вещей, повреждающихся при поражении, уменьшается на 1.'),
+        P_SPEED_WALK => array('title' => 'Высокая скорость передвижений', 'description' => 'Тратьте меньше времени на перемещения из одной точки в другую! Ваша скорость увеличена на 35%.'),
+        P_PROF_SPEED => array('title' => 'Повышение производительности профессий', 'description' => 'В 2 раза сокращено время ожидания на использование рецептов производящих профессий.'),
+        P_BACKPACK => array('title' => 'Бездонная сумка', 'description' => 'Увеличение емкости рюкзака на 6 слота.'),
+        P_MOUNTC => array('title' => 'Экономьте корм*', 'description' => 'Ездовые животные более не потребляют корм при перемещении между локациями.'),
+        P_INSTAP => array('title' => 'Дополнительные «быстрые» карманы!', 'description' => 'Три дополнительных «быстрых» кармана для удобного доступа к часто используемым предметам в рюкзаке!'),
+        P_ANIM => array('title' => 'Ускоренная анимация*', 'description' => 'Возможность в два раза ускорить анимацию в бою.'),
+        P_AUCTION => array('title' => 'Погонщик для аукциона', 'description' => 'Позволяет выставлять лоты на аукционе в любой точке мира.'),
+        P_PROVOCATION => array('title' => 'Провокация без задержки', 'description' => 'Позволяет провоцировать монстров без задержки по времени.'),
+        P_MONEY => array('title' => 'Увеличение монет с монстров', 'description' => 'Увеличение падения монет с монстров на 5%.'),
+        P_TALER => array('title' => 'Бонусные талеры', 'description' => 'Вы получите 46 платиновых талеров при достижении этого уровня премиума.'),
+        P_TALERB => array('title' => 'Шанс получить талеры +80%', 'description' => 'Получайте талеры с большей вероятностью, участвуя в таких акциях, как распродажа драгоценных сундучков, Сияние удачи и Магия зеркал!'),
+        //P_PROVOCATION_ADD => array('title' => 'Провокация дополнение', 'description' => '+200 к провокации в день'),
+        P_SMILES => array('title' => 'Дополнительные смайлы', 'description' => 'Передавайте всю гамму ваших эмоций с помощью уникальных смайлов!'),
+        P_DICEGAME_DOUBLE => array('title' => 'Дар небес вдвое щедрее', 'description' => 'Получайте удвоенное количество наград в Даре Небес!'),
+        P_ACTIVITY_RESET => array('title' => 'Сброс активностей', 'description' => 'Возможность сбрасывать активности раз в день.'),
+        P_PROFESSIONS => array('title' => 'Повышение мастерства', 'description' => 'Шанс повысить навык Палача и навык Взломщика увеличивается в 2 раза, а опыт мастертсва Целителя идет в двойном размере.'),
+        P_MAIL_ARTIFACTS => array('title' => 'Почтовые уведомления', 'description' => 'Получайте уведомления по игровой почте о предметах, у которых заканчивается срок службы.'),
+        P_AUTO_WAY => array('title' => 'Дойти до нужного местоположения', 'description' => 'Позволит дойти до нужного местоположения через навигатор, после выхода на локацию движение будет происходить автоматически.'),
+    ),
+    5 => array(
+        P_MAILBOX => array('title' => 'Вместительный почтовый ящик', 'description' => 'Почтовый ящик станет вместительнее: в нем можно хранить на 40 писем больше.'),
+        P_POST_GOLUB => array('title' => 'Почтовый голубь', 'description' => 'Отправляйте послания из любого уголка Мира!'),
+        P_MAGIC_WAND => array('title' => 'Волшебная палочка щедрее', 'description' => 'Волшебная палочка каждый день будет приносить максимальное количество даров.'),
+        P_HONOR => array('title' => 'Бонус доблести +15%', 'description' => 'Бонус +15% к получаемого в боях доблести.'),
+        P_LOTS_ADD => array('title' => 'Дополнительные лоты на бирже и аукционе', 'description' => 'Возможность выставлять на бирже или аукционе на 9 лотов больше.'),
+        P_RESP => array('title' => 'Выбор места воскрешения*', 'description' => 'Выбирайте, где воскреснуть, из списка храмов и ближайших обелисков.'),
+        P_ANONIM_TORG => array('title' => 'Анонимная работа с биржей и аукционом', 'description' => 'Возможность анонимно выкладывать лоты на аукцион и заявки на биржу.'),
+        P_DISABLE_BREAK => array('title' => 'Меньше ущерба при поражениях', 'description' => 'Число вещей, повреждающихся при поражении, уменьшается на 2.'),
+        P_SPEED_WALK => array('title' => 'Высокая скорость передвижений', 'description' => 'Тратьте меньше времени на перемещения из одной точки в другую! Ваша скорость увеличена на 40%.'),
+        P_PROF_SPEED => array('title' => 'Повышение производительности профессий', 'description' => 'В 2 раза сокращено время ожидания на использование рецептов производящих профессий.'),
+        P_MOUNTC => array('title' => 'Экономьте корм*', 'description' => 'Ездовые животные более не потребляют корм при перемещении между локациями.'),
+        P_BACKPACK => array('title' => 'Бездонная сумка', 'description' => 'Увеличение емкости рюкзака на 8 слота.'),
+        P_INSTAP => array('title' => 'Дополнительные «быстрые» карманы!', 'description' => 'Четыре дополнительных «быстрых» кармана для удобного доступа к часто используемым предметам в рюкзаке!'),
+        P_ANIM => array('title' => 'Ускоренная анимация*', 'description' => 'Возможность в два раза ускорить анимацию в бою.'),
+        P_AUCTION => array('title' => 'Погонщик для аукциона', 'description' => 'Позволяет выставлять лоты на аукционе в любой точке мира.'),
+        P_PROVOCATION => array('title' => 'Провокация без задержки', 'description' => 'Позволяет провоцировать монстров без задержки по времени.'),
+        P_MONEY => array('title' => 'Увеличение монет с монстров', 'description' => 'Увеличение падения монет с монстров на 10%.'),
+        P_TALER => array('title' => 'Бонусные талеры', 'description' => 'Вы получите 55 платиновых талеров при достижении этого уровня премиума.'),
+        P_TALERB => array('title' => 'Шанс получить талеры +100%', 'description' => 'Получайте талеры с большей вероятностью, участвуя в таких акциях, как распродажа драгоценных сундучков, Сияние удачи и Магия зеркал!'),
+        //P_PROVOCATION_ADD => array('title' => 'Провокация дополнение', 'description' => '+400 к провокации в день'),
+        P_SMILES => array('title' => 'Дополнительные смайлы', 'description' => 'Передавайте всю гамму ваших эмоций с помощью уникальных смайлов!'),
+        P_DICEGAME_DOUBLE => array('title' => 'Дар небес вдвое щедрее', 'description' => 'Получайте удвоенное количество наград в Даре Небес!'),
+        P_ACTIVITY_RESET => array('title' => 'Сброс активностей', 'description' => 'Возможность сбрасывать активности раз в день.'),
+        P_PROFESSIONS => array('title' => 'Повышение мастерства', 'description' => 'Шанс повысить навык Палача и навык Взломщика увеличивается в 2 раза, а опыт мастертсва Целителя идет в двойном размере.'),
+        P_DIAMOND_ADD => array('title' => 'Улучшенный курс обмена', 'description' => 'Бонус в 10% при каждом обмене бриллиантов.'),
+        P_MAIL_ARTIFACTS => array('title' => 'Почтовые уведомления', 'description' => 'Получайте уведомления по игровой почте о предметах, у которых заканчивается срок службы.'),
+        P_AUTO_WAY => array('title' => 'Дойти до нужного местоположения', 'description' => 'Позволит дойти до нужного местоположения через навигатор, после выхода на локацию движение будет происходить автоматически.'),
+    ),
+);
+
+$premium_vars = array(
+    1 => array(
+        P_MAILBOX => array('cnt' => 20),
+        P_POST_GOLUB => true,
+        P_MAGIC_WAND => true,
+        P_HONOR => array('cnt' => 0.05),
+        P_LOTS_ADD => array('cnt' => 3),
+        P_TALER => array('cnt' => 5),
+        P_TALERB => array('cnt' => 10),
+        P_SMILES => true,
+        P_PROVOCATION => true,
+    ),
+    2 => array(
+        P_MAILBOX => array('cnt' => 20),
+        P_POST_GOLUB => true,
+        P_MAGIC_WAND => true,
+        P_HONOR => array('cnt' => 0.05),
+        P_LOTS_ADD => array('cnt' => 3),
+        P_RESP => true,
+        P_ANONIM_TORG => true,
+        P_DISABLE_BREAK => array('cnt' => 1),
+        P_SPEED_WALK => array('cnt' => 10),
+        P_PROF_SPEED => true,
+        P_BACKPACK => array('cnt' => 2),
+        P_TALER => array('cnt' => 10),
+        P_TALERB => array('cnt' => 15),
+        P_INSTAP => array('cnt' => 1),
+        P_SMILES => true,
+        P_PROVOCATION => true,
+    ),
+    3 => array(
+        P_MAILBOX => array('cnt' => 30),
+        P_POST_GOLUB => true,
+        P_MAGIC_WAND => true,
+        P_HONOR => array('cnt' => 0.10),
+        P_LOTS_ADD => array('cnt' => 6),
+        P_RESP => true,
+        P_ANONIM_TORG => true,
+        P_DISABLE_BREAK => array('cnt' => 1),
+        P_SPEED_WALK => array('cnt' => 20),
+        P_PROF_SPEED => true,
+        P_BACKPACK => array('cnt' => 4),
+        P_AUCTION => true,
+        P_TALER => array('cnt' => 23),
+        P_TALERB => array('cnt' => 40),
+        P_ANIM => true,
+        P_INSTAP => array('cnt' => 2),
+        //P_PROVOCATION_ADD => array('cnt' => 50),
+        P_SMILES => true,
+        P_DICEGAME_DOUBLE => true,
+        P_MAIL_ARTIFACTS => true,
+        P_PROVOCATION => true,
+        P_AUTO_WAY => true,
+    ),
+    4 => array(
+        P_MAILBOX => array('cnt' => 30),
+        P_POST_GOLUB => true,
+        P_MAGIC_WAND => true,
+        P_HONOR => array('cnt' => 0.10),
+        P_LOTS_ADD => array('cnt' => 9),
+        P_RESP => true,
+        P_ANONIM_TORG => true,
+        P_DISABLE_BREAK => array('cnt' => 1),
+        P_SPEED_WALK => array('cnt' => 35),
+        P_PROF_SPEED => true,
+        P_BACKPACK => array('cnt' => 6),
+        P_AUCTION => true,
+        P_MONEY => array('cnt' => 5),
+        P_TALER => array('cnt' => 46),
+        P_TALERB => array('cnt' => 80),
+        P_INSTAP => array('cnt' => 3),
+        P_MOUNTC => true,
+        //P_PROVOCATION_ADD => array('cnt' => 200),
+        P_SMILES => true,
+        P_ACTIVITY_RESET => true,
+        P_DICEGAME_DOUBLE => true,
+        P_PROFESSIONS => true,
+        P_MAIL_ARTIFACTS => true,
+        P_PROVOCATION => true,
+        P_AUTO_WAY => true,
+    ),
+    5 => array(
+        P_MAILBOX => array('cnt' => 40),
+        P_POST_GOLUB => true,
+        P_MAGIC_WAND => true,
+        P_HONOR => array('cnt' => 0.15),
+        P_LOTS_ADD => array('cnt' => 9),
+        P_RESP => true,
+        P_ANONIM_TORG => true,
+        P_DISABLE_BREAK => array('cnt' => 2),
+        P_SPEED_WALK => array('cnt' => 40),
+        P_PROF_SPEED => true,
+        P_BACKPACK => array('cnt' => 8),
+        P_AUCTION => true,
+        P_PROVOCATION => true,
+        P_MONEY => array('cnt' => 10),
+        P_TALER => array('cnt' => 55),
+        P_TALERB => array('cnt' => 100),
+        P_INSTAP => array('cnt' => 4),
+        P_MOUNTC => true,
+        //P_PROVOCATION_ADD => array('cnt' => 400),
+        P_SMILES => true,
+        P_ACTIVITY_RESET => true,
+        P_DICEGAME_DOUBLE => true,
+        P_DIAMOND_ADD => true,
+        P_PROFESSIONS => true,
+        P_MAIL_ARTIFACTS => true,
+        P_AUTO_WAY => true,
+    ),
+);
+
+#Работа с базой данных
+function adv_premium_get($ref=false, $add='') {
+	global $db_path;
+	return common_get($db_path,TABLE_ADV_PREMIUM_LIST,$ref,$add);
+}
+
+function adv_premium_list($ref=false, $add='', $ex = false) {
+	global $db_path,$premium_vars;
+	$list = common_list($db_path,TABLE_ADV_PREMIUM_LIST,$ref,$add);
+	if($ex){
+		foreach($list as $k=>$premium){
+			$list[$k]['vars'] = $premium_vars[$premium['level']];
+		}
+	}
+	return $list;
+}
+
+function adv_premium_count($ref=false, $add='') {
+	global $db_path;
+	return common_count($db_path, TABLE_ADV_PREMIUM_LIST, $ref, $add);
+}
+
+function adv_premium_save($param) {
+	global $db_path;
+	return common_save($db_path,TABLE_ADV_PREMIUM_LIST,$param,FIELD_ADV_PREMIUM_LIST);
+}
+
+function adv_premium_delete($ref, $add='') {
+	global $db_path;
+	if(!$ref)return false;
+	common_delete($db_path,TABLE_ADV_PREMIUM_LIST,$ref,$add);
+	return true;
+}
+
+#Работа с базой данных
+
+function user_premium_get($ref, $add=''){
+	global $premium_vars;
+	$premium = adv_premium_get(array('user_id' => $ref),$add);
+	if($premium){
+		$premium['vars'] = $premium_vars[$premium['level']];
+	}
+	return $premium;
+}
+
+
+//////////////////Дополнительный премиум время написания 23.11.2017
+
+define('TABLE_ADV_DP_PREMIUM', 'adv_dp_premium');
+define('FIELD_ADV_DP_PREMIUM', '');
+
+//TODO: Добавить функционал дополнительных наборов! За донат покупка прямо в премиуме!
+define('DP_USER_GIFT', 1); //Спец-набор друзьям
+define('DP_USER_GIFT_ADD', 2); //Дополнительные подарки друзьям (Если друзей много)
+define('DP_USER_AUTO_LOGIN', 3); //Авто-вход в игру
+//TODO: Сделать структуру дополнительную с подструктурами покупок!
+
+$_DP_premium_list = array(
+    DP_USER_GIFT => array(
+        'id' => DP_USER_GIFT,
+        'title' => 'Спец-Набор',
+        'title2' => 'Любимчик сервера!',
+        'levels' => array(
+            1 => true, //Есть возможность!
+        ),
+        'prices' => array(
+            1 => array(
+                'price' => 10,
+                'price_type' => MONEY_TYPE_GOLD,
+            ),
+        ),
+        'description' => array(
+            1 => 'В течении 1 месяца появляется возможность дарить друзьям Спец-Набор (подарок)',
+        ),
+        'time' => array(
+            1 => 2592000,
+        ),
+        'pic' => array(0 => 'user_gift.png',),
+    ),
+    DP_USER_GIFT_ADD => array(
+        'id' => DP_USER_GIFT_ADD,
+        'title' => 'Подарки+',
+        'title2' => 'Любимчик сервера 2!',
+        'levels' => array(
+            1 => 2, //+2 подарка
+            2 => 5, //+5 подарков
+            3 => 10, //+10 подарков
+        ),
+        'prices' => array(
+            1 => array(
+                'price' => 10,
+                'price_type' => MONEY_TYPE_GOLD,
+            ),
+            2 => array(
+                'price' => 20,
+                'price_type' => MONEY_TYPE_GOLD,
+            ),
+            3 => array(
+                'price' => 35,
+                'price_type' => MONEY_TYPE_GOLD,
+            ),
+        ),
+        'time' => array(
+            1 => 2592000,
+            2 => 2592000,
+            3 => 2592000,
+        ),
+        'description' => array(
+            1 => 'В течении месяца вы можете дарить друзьям на 2 подарка больше!',
+            2 => 'В течении месяца вы можете дарить друзьям на 5 подарков больше!',
+            3 => 'В течении месяца вы можете дарить друзьям на 10 подарков больше!',
+        ),
+        'pic' => array(0 => 'user_gift.png',),
+    ),
+    DP_USER_AUTO_LOGIN => array(
+        'id' => DP_USER_AUTO_LOGIN,
+        'title' => 'Авто-вход',
+        'title2' => 'Автоматический вход в игру!',
+        'levels' => array(
+            1 => 30, //30 дней
+            2 => 90, //90 дней
+            3 => 180, //180 дней
+        ),
+        'prices' => array(
+            1 => array(
+                'price' => 30,
+                'price_type' => MONEY_TYPE_GOLD,
+            ),
+            2 => array(
+                'price' => 70,
+                'price_type' => MONEY_TYPE_GOLD,
+            ),
+            3 => array(
+                'price' => 125,
+                'price_type' => MONEY_TYPE_GOLD,
+            ),
+        ),
+        'time' => array(
+            1 => 2592000,
+            2 => 7776000,
+            3 => 15552000,
+        ),
+        'description' => array(
+            1 => 'В течении месяца система будет заходить за вас в 00:10 по серверу, если вы оффлайн и собирать бонусы входа в игру!',
+            2 => 'В течении трех месяцев система будет заходить за вас в 00:10 по серверу, если вы оффлайн и собирать бонусы входа в игру!',
+            3 => 'В течении полугода система будет заходить за вас в 00:10 по серверу, если вы оффлайн и собирать бонусы входа в игру!',
+        ),
+        'pic' => array(0 => 'user_gift.png',),
+    ),
+);
+
+//Работа с БД
+function adv_dp_premium_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_DP_PREMIUM,$ref,$add);
+}
+
+function adv_dp_premium_list($ref=false, $add='', $ex = false) {
+    global $db_path,$_DP_premium_list;
+    $list = common_list($db_path,TABLE_ADV_DP_PREMIUM,$ref,$add);
+    if($ex){
+        foreach($list as $k=>$dp_premium){
+            $dp = $dp_premium['dp'];
+            $lvl = $dp_premium['level'];
+            $list[$k]['dp'] = $_DP_premium_list[$dp]['levels'][$lvl];
+        }
+    }
+    return $list;
+}
+
+function adv_dp_premium_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_DP_PREMIUM, $ref, $add);
+}
+
+function adv_dp_premium_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_DP_PREMIUM,$param,FIELD_ADV_DP_PREMIUM);
+}
+
+function adv_dp_premium_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_DP_PREMIUM,$ref,$add);
+    return true;
+}
+
+//Работа с БД
+
+function adv_dp_user_get($user_id){
+    global $_DP_premium_list;
+    if(!$user_id) return false;
+    $dp_user = array();
+    $dp_list = adv_dp_premium_list(array('user_id' => $user_id), ' AND dtime >= '.time_current());
+    foreach ($dp_list as $item) {
+        $dp_user[$item['dp']] = array(
+            'dp' => $item['dp'],
+            'level' => $item['level'],
+            'var' => $_DP_premium_list[$item['dp']]['levels'][$item['level']],
+        );
+    }
+    return $dp_user;
+}
+
+//TODO: Доделать автоматическую авторизацию игрока
+//TODO: Доделать чтобы доп пакеты премиума автоматически удалялись по dtime
+
+define('AUTO_LOGIN_DP_TIME', 600);
+function adv_dp_premium_autologin_cron(){
+    $auto_login_user_list = adv_dp_premium_list(array('dp' => DP_USER_AUTO_LOGIN), ' AND dtime >= '.time_current());
+    foreach ($auto_login_user_list as $auto_login_dp){
+        $data = json_decode($auto_login_dp['data'], true);
+        if($data['next_time'] < time_current()){
+            //Что-то делаем xD
+            $data['next_time'] = (mktime(23,59,59) + 1) + AUTO_LOGIN_DP_TIME + 5; // Следующий день + 10 минут 5 секунд ( На всякий )
+            $online = user_is_online($auto_login_dp['user_id'], true);
+            if(!$online){
+                //Производим авторизацию и выход
+
+            }
+            adv_dp_premium_save(array(
+                'id' => $auto_login_dp['id'],
+                'data' => json_encode($data),
+            ));
+        }
+    }
+}
+
+function auto_login_user(){
+
+}
+
+function user_premium_update($user = array(), $value = 0){
+    global $premium_levels_hash, $premium_vars;
+    if(!$user || $value <= 0) return false;
+    $premium = adv_premium_get(array('user_id' => $user['id']));
+
+    if($premium['level'] == 5) return false;
+
+    $date_end_premium = ($premium['time_end'] > (time_current() + PREMIUM_TIME) ? $premium['time_end'] : time_current() + PREMIUM_TIME);
+    if(!$premium){
+        $adv_premium_id = adv_premium_save(array(
+            'user_id' => $user['id'],
+            'money' => $value,
+        ));
+        $premium = adv_premium_get($adv_premium_id);
+        if(!$premium) $premium = adv_premium_get(array('user_id' => $user['id']));
+        if(!$premium) return false;
+    }else{
+        $status = adv_premium_save(array(
+            'id' => $premium['id'],
+            '_set' => sql_pholder(' money = money + ?', $value),
+        ));
+        if(!$status) return false;
+        $premium['money'] += $value;
+    }
+
+    //Функция апдейта премиума!
+    $upd_level = false;
+    foreach($premium_levels_hash as $level=>$cost){
+        if(intval($premium['level']) < $level && $premium['money'] >= $cost){
+            $upd_level = $level;
+        }
+    }
+    if($upd_level){
+        $cur_level = $premium['level'];
+        $taler_artikul = artifact_artikul_get(PREMIUM_TALER_ARTIKUL_ID);
+        $all_cnt = 0;
+        for($i = $cur_level; $i <= $upd_level; $i++){
+            if($i == $cur_level) continue;
+            //За каждый апдейт получаем талеры
+            if($premium_vars[$i][P_TALER]['cnt'] <= 0) continue;
+            $all_cnt += $premium_vars[$i][P_TALER]['cnt'];
+            artifact_add(PREMIUM_TALER_ARTIKUL_ID, $premium_vars[$i][P_TALER]['cnt'], $user['id']);
+        }
+        if($all_cnt > 0){
+            $msg_text = '<b>За повышение уровня премиума вы получили: </b><b>'.tpl_artikul_info($taler_artikul, $all_cnt).'</b>';
+            chat_msg_send_system($msg_text, CHAT_CHF_USER, $user['id']);
+        }
+
+        adv_premium_save(array(
+            'id' => $premium['id'],
+            'level' => $upd_level,
+            'time_end' => $date_end_premium,
+        ));
+
+        skill_object_set_value(OBJECT_CLASS_USER,$user['id'],'PREMIUM',$upd_level);
+
+        chat_msg_send_system("<b>Вы улучшили свой премиум до <b class=grnn>".$upd_level."</b> уровня.</b>",CHAT_CHF_USER,$user['id']);
+    }else{
+        chat_msg_send_system("<b>Прогресс до улучшения премиума <b class=grnn>".($premium['level'] + 1)." уровня</b> <b class=redd>".intval($premium['money'])."/".$premium_levels_hash[$premium['level'] + 1]."</b>.</b>",CHAT_CHF_USER,$user['id']);
+    }
+}

@@ -1,0 +1,50 @@
+<?
+
+require_once("lib/rf_enchant.lib");
+
+global $rf_enchant_slots, $symbol_info;
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+
+
+$artifact = artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id']));
+if(!$artifact){
+    $out['error'] = 'Не выбран артефакт!';
+    return;
+}
+$artikul = artifact_artikul_get($artifact['artikul_id']);
+if(!$artikul){
+    $out['error'] = 'Не выбран артефакт!';
+    return;
+}
+if($artifact['flags2'] & ARTIFACT_FLAG2_RUNIC_FRAME){
+    $out['error'] = 'На данный предмет уже наложена руническая основа!';
+    return;
+}
+
+if(!isset($artikul['slot_id'], $rf_enchant_slots)){
+    $out['error'] = 'На выбранную вами вещь невозможно наложить руническую основу!';
+    return;
+}
+
+artifact_save(array(
+    'id' => $artifact['id'],
+    '_set' => sql_pholder(' flags2 = flags2 | ?#ARTIFACT_FLAG2_RUNIC_FRAME'),
+));
+require_once('lib/user_stat.lib');	
+require_once('lib/chat.lib');	
+user_stat_update($subject['id'], USER_STAT_TYPE_SKILL, USER_STAT_SKILL_REP_KUSYA, 5);
+user_stat_update($subject['id'], USER_STAT_TYPE_SKILL, USER_STAT_SKILL_ENHANT_RUNEOSNOVA, 1);
+chat_msg_send_system('<b>Вы получили <b style="color:darkred;">5 репутации Кузнеца</b></b>', CHAT_CHF_USER, $subject['id']);
+artifact_artikul_get_title($artifact);
+
+chat_msg_send_system('На вещь "'.tpl_artifact_info($artifact).'" наложена руническая основа!', CHAT_CHF_USER, $subject['id']);
+
+$out['status'] = ACTION_STATUS_OK;

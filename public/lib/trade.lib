@@ -1,0 +1,750 @@
+<? # $Id: trade.lib,v 1.41 2010-02-02 11:08:36 p.knoblokh Exp $
+
+require_once("lib/artifact.lib");
+require_once("lib/log.lib");
+require_once("lib/trade_log.lib");
+
+// Имена и поля таблиц
+define('TABLE_TRADES', 'trades');
+define('FIELD_TRADES', '');
+define('TABLE_TRADE_ITEMS', 'trade_items');
+define('FIELD_TRADE_ITEMS', '');
+define('TRADE_TTL', 30);
+
+define('TRADE_COMMISSION', 0.10); // комиссия на сделку 10%
+define('TRADE_MIN_PRICE', 0.10);
+
+define('TRADE_STATUS_OK', 0);
+define('TRADE_STATUS_ERROR', -1);
+
+define('TRADE_REQUEST_STAT_UNKNOWN', 0);
+define('TRADE_REQUEST_STAT_ACTIVE',  1); // сделка в активном состоянии, кто-то в нее вошел
+define('TRADE_REQUEST_STAT_DISBAND', 2); // состояние "Расформировано"
+define('TRADE_REQUEST_STAT_LOCKED',  3); // состояние "Блокировка", передаются предметы
+define('TRADE_REQUEST_STAT_DONE',    4); // состояние "Успешно завершено"
+
+define('TRADE_USER_STAT_UNKNOWN',   0);
+define('TRADE_USER_STAT_REQUESTED', 1); // пользователю отправлен запрос на сделку
+define('TRADE_USER_STAT_ACCEPT',    2); // подтвержден/одобрен запрос на сделку
+define('TRADE_USER_STAT_IN_TRADE',  3); // пользователь находится в интерфейсе торговли
+define('TRADE_USER_STAT_READY1',    4); // пользователь подтвердил согласие с условиями обмена
+define('TRADE_USER_STAT_READY2',    5); // пользователь подтвердил согласие с условиями обмена 2
+define('TRADE_USER_STAT_LEAVE',     6); // пользователь вышел из торговли
+
+$user_status_hash = array(
+	TRADE_USER_STAT_UNKNOWN   => array('id' => TRADE_USER_STAT_UNKNOWN  , 'action_text' => translate(' - ожидаем...')),
+	TRADE_USER_STAT_REQUESTED => array('id' => TRADE_USER_STAT_REQUESTED, 'action_text' => translate(' - ожидаем...')),
+	TRADE_USER_STAT_ACCEPT    => array('id' => TRADE_USER_STAT_ACCEPT   , 'action_text' => translate(' - ожидаем...')),
+	TRADE_USER_STAT_IN_TRADE  => array('id' => TRADE_USER_STAT_IN_TRADE , 'action_text' => ''),
+	TRADE_USER_STAT_READY1    => array('id' => TRADE_USER_STAT_READY1   , 'action_text' => ''),
+	TRADE_USER_STAT_READY2    => array('id' => TRADE_USER_STAT_READY2   , 'action_text' => ''),
+	TRADE_USER_STAT_LEAVE     => array('id' => TRADE_USER_STAT_LEAVE    , 'action_text' => translate(' - ушел')),
+);
+
+
+define('USER_ROLE_INITIATOR', 1);
+define('USER_ROLE_COMPELLED', 2);
+
+
+function trade_get($ref=false, $from_id=false, $skip_innactive=true, $add='') {
+	global $db_4;
+	$query_add = '';
+	if ($from_id)
+		$query_add .= sql_pholder(" AND from_id=?", $from_id);
+	if ($skip_innactive)
+		$query_add .= sql_pholder(" AND (stime>? OR status=?#TRADE_REQUEST_STAT_ACTIVE)", time_current()-TRADE_TTL);
+	return common_get($db_4,TABLE_TRADES,$ref,$query_add.$add);
+}
+
+function trade_list($from_id=false, $to_id=false, $skip_innactive=true, $add='', $field_list='*') {
+	global $db_4;
+	$query_add = '';
+	if ($from_id)
+		$query_add .= sql_pholder(" AND from_id=?",$from_id);
+	if ($to_id)
+		$query_add .= sql_pholder(" AND to_id=?",$to_id);
+	if ($skip_innactive)
+		$query_add .= sql_pholder(" AND (stime>? OR status=?#TRADE_REQUEST_STAT_ACTIVE)", time_current()-TRADE_TTL);
+	return common_list($db_4,TABLE_TRADES,false,$query_add.$add, $field_list);
+}
+
+function trade_save($param) {
+	global $db_4;
+	return common_save($db_4,TABLE_TRADES,$param,FIELD_TRADES);
+}
+
+function trade_delete($ref, $add='') {
+	global $db_4;
+	if (!common_delete($db_4,TABLE_TRADES,$ref,$add)) return false;
+	trade_item_delete(false,$ref);
+	return true;
+}
+
+function trade_innactive_delete($from_id=false) {
+	global $db_4;
+	$expired_list = trade_list($from_id, false, false);
+	if (!$expired_list) return false;
+	foreach ($expired_list as $trade) {
+		trade_delete($trade['id'], sql_pholder(" AND (stime<? AND status<>?#TRADE_REQUEST_STAT_ACTIVE)", time_current()-TRADE_TTL));
+	}
+	return true;
+}
+
+
+function trade_item_get($ref=false, $add='') {
+	global $db_4;
+	return common_get($db_4,TABLE_TRADE_ITEMS,$ref,$add);
+}
+
+function trade_item_list($trade_id=false, $user_id=false, $add='', $extended=false) {
+	global $db_4;
+	$ref = false;
+	if ($trade_id) $ref ['trade_id'] = $trade_id;
+	if ($user_id) $ref ['user_id'] = $user_id;
+	$data = common_list($db_4,TABLE_TRADE_ITEMS,$ref,$add);
+	if ($data && $extended) {
+		foreach ($data as $k=>$item) {
+			$data[$k] = array_merge($item,artifact_get_safe($item['artifact_id']));
+			$data[$k]['cart_id'] = $item['id'];
+		}
+	}
+	return $data;
+}
+
+function trade_item_save($param) {
+	global $db_4;
+	if (!isset($param['id']) && !isset($param['trade_id'])) return false;
+	return common_save($db_4,TABLE_TRADE_ITEMS,$param,FIELD_TRADE_ITEMS);
+}
+
+function trade_item_delete($ref=false, $trade_id=false, $add='') {
+	global $db_4;
+	$query_add = '';
+	if ($trade_id) $query_add .= sql_pholder(" AND trade_id=?",$trade_id);
+	return common_delete($db_4,TABLE_TRADE_ITEMS,$ref,$query_add.$add);
+}
+
+function trade_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('TRADE_'.intval($ref),$timewait,$timelock);
+}
+
+function trade_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('TRADE_'.intval($ref));
+}
+
+
+///////////////////////////////
+
+function trade_create($from_id, $to_id) {
+	global $db_4;
+
+	$out = array(
+		'status' => TRADE_STATUS_ERROR,
+		'error' => translate('Вы не можете подать заявку на торговлю! ')
+	);
+
+	$to_user = user_get($to_id,false,'',true);
+	if (!$to_user || $to_user['blocked']) {
+		$out['error'] .= translate('Такого пользователя не существует!');
+		return $out;
+	}
+
+	$trade = trade_get(false, $from_id, true);
+	if ($trade) {
+		$out['error'] .= translate('Вы уже находитесь в заявке!');
+		$out['trade_id'] = $trade['id'];
+		return $out;
+	}
+
+	if (trade_get(false, $to_id, true) || trade_list(false, $to_id, true, sql_pholder(' AND (to_status >= ?#TRADE_USER_STAT_ACCEPT AND to_status < ?#TRADE_USER_STAT_LEAVE) '))) {
+		$out['error'] .= sprintf(translate('Пользователь "%s" уже c кем-то торгует!'),htmlspecialchars($to_user['nick']));
+		return $out;
+	}
+
+	trade_innactive_delete($from_id);
+	if (trade_get(false, false, true, sql_pholder(' AND from_id=? AND to_id=?',$from_id,$to_id))) return $out;
+	$new_id = trade_save(array(
+		'_noerr' => true,
+		'from_id' => $from_id,
+		'to_id' => $to_id,
+		'stime' => time_current(),
+	));
+	if (!$new_id) return $out;
+	$out['status'] = TRADE_STATUS_OK;
+	$out['trade_id'] = $new_id;
+	unset($out['error']);
+	return $out;
+}
+
+
+function trade_commission($x) {
+	return pow(0.5, log($x,10)+2)*$x;
+}
+
+
+// сбор информации по торговой сессии, списки артефактов с обеих сторон, деньги, коммиссия
+function calc_trade_info(&$trade_info, $check_artifacts = false, $trade_id = false) {
+	$total_price = 0.00;
+
+	$artikul_ids = get_hash($trade_info['cart_hash'], 'artikul_id', 'artikul_id');
+	$artikul_hash = $artikul_ids ? make_hash(artifact_artikul_list(array('id' => $artikul_ids), '', 'id, price')) : array();
+	foreach ($trade_info['cart_hash'] as $artifact) {
+		$total_price += floatval($artikul_hash[$artifact['artikul_id']]['price']) * ((intval($artifact['n'])) ? intval($artifact['n']) : 1);
+	}
+	$trade_info['total_price'] = $total_price+$trade_info['money'];
+	$total_price = ($trade_info['total_price'] <= 0) ? 0.01 : $trade_info['total_price'];
+	$trade_info['commission'] = trade_commission($total_price);
+
+	if ($check_artifacts && $trade_id) {
+		// проверка нестандартной ситуации, предметы, выставленные на продажу,
+		// удалены или перемещены
+		$trade_info['artifact_valid'] = true;
+		$trade_cart_hash = make_hash(trade_item_list($trade_id, $trade_info['user_id'], false),'artifact_id');
+		foreach($trade_cart_hash as $cart_item) {
+			if (!isset($trade_info['cart_hash'][$cart_item['artifact_id']])) {
+				$trade_info['artifact_valid'] = false;
+			}
+			if ($trade_info['cart_hash'][$cart_item['artifact_id']]['cnt'] &&
+				$trade_info['cart_hash'][$cart_item['artifact_id']]['n'] > $trade_info['cart_hash'][$cart_item['artifact_id']]['cnt']) {
+				// в корзине больше, чем у пользователя
+				$trade_info['artifact_valid'] = false;
+			}
+		}
+	}
+}
+
+// расчет веса предметов, возможно/невозможно ли будет выполнить передачу вещей.
+// учет поля 'cnt', наличия/отсутствия таких же предметов у возможного получателя, возможного схлопывания стека вещей
+function calc_trade_weight(&$trade_info) {
+
+	// прогноз того, что останется у юзеров после передачи вещей оппоненту
+	$user_artifact_after_transfer = array();
+	NODE_PUSH(null, $trade_info['user']['user_id']);
+	$user_artifact_after_transfer['user'] = make_hash(user_get_artifact_list($trade_info['user']['user_id'],'', sql_pholder(' AND NOT (flags & (?#ARTIFACT_FLAG_NOGIVE | ?#ARTIFACT_FLAG_CLAN_THING))')));
+	NODE_POP();
+	NODE_PUSH(null, $trade_info['opponent']['user_id']);
+	$user_artifact_after_transfer['opponent'] =  make_hash(user_get_artifact_list($trade_info['opponent']['user_id'],'', sql_pholder(' AND NOT (flags & (?#ARTIFACT_FLAG_NOGIVE | ?#ARTIFACT_FLAG_CLAN_THING))')));
+	NODE_POP();
+
+	$storages = array();
+	foreach (array('user', 'opponent') as $object) {
+		NODE_PUSH(null, $trade_info[$object]['user_id']);
+		$trade_info[$object]['artifact_amount_left'][ARTIFACT_STORAGE_TYPE_USER] = user_get_artifact_amount_max($trade_info[$object]['user_id'], ARTIFACT_STORAGE_TYPE_USER) - user_get_artifact_amount($trade_info[$object]['user_id'], ARTIFACT_STORAGE_TYPE_USER);
+		$prof_bag_size = user_get_artifact_amount_max($trade_info[$object]['user_id'], ARTIFACT_STORAGE_TYPE_PR_BAG);
+		if ($prof_bag_size > 0) $storages[$object][ARTIFACT_STORAGE_TYPE_PR_BAG] = ARTIFACT_STORAGE_TYPE_PR_BAG;
+		NODE_POP();
+
+		// посчитаем, сколько останется у пользователя места после передачи своих вещей
+		foreach ($trade_info[$object]['cart_hash'] as $artifact) {
+			if ($artifact['cnt'] > 0) {
+				// передаются вещи в стеке, проверим, целиком они передадутся или нет...
+				$user_artifact = artifact_get_safe($artifact['id']);
+				if ($user_artifact['cnt'] > $artifact['cnt']) {
+					// передается неполное количество, что-то останется в рюкзаке, место не освободится
+					continue;
+				}
+			}
+			unset($user_artifact_after_transfer[$object][$artifact['id']]);
+			$trade_info[$object]['artifact_amount_left'][$artifact['storage_type']]++;
+		}
+	}
+
+	foreach (array('user', 'opponent') as $object) {
+		$opponent = ($object == 'user') ? 'opponent' : 'user';
+		$object_artikul_hash = get_hash($user_artifact_after_transfer[$object], 'artikul_id', 'id');
+		$trade_info[$object]['take_new_artikul'] = false;
+
+		// считаем, что получим от оппонента, с учетом того, схлопнутся стековые вещи или нет
+		foreach ($trade_info[$opponent]['cart_hash'] as $artifact) {
+			if ($artifact['cnt'] > 0) {
+				// стековая вещь
+				if ($object_artikul_hash[$artifact['artikul_id']]) {
+					// есть такая же стековая вещь, схлопнется
+					continue;
+				}
+			}
+			$trade_info[$object]['artifact_amount_left'][$artifact['storage_type']]--;
+			$trade_info[$object]['take_new_artikul'] = true;
+		}
+	}
+	
+	$amounts_ok = array(
+		'user' => true,
+		'opponent' => true,
+	);
+	foreach ($trade_info as $object => $data) {
+		if ($data['artifact_amount_left']) {
+			foreach ($data['artifact_amount_left'] as $storage => $size) {
+				if ($size < 0) {
+					$amounts_ok[$object] = false;
+				}
+			}
+		}
+	}
+	
+	return !(
+		($trade_info['user']['take_new_artikul'] && !$amounts_ok['user']) ||
+		($trade_info['opponent']['take_new_artikul'] && !$amounts_ok)
+	);
+}
+
+function trade_change_arts(&$trade_info,&$arts) {
+	$changes = array();
+	$artikuls_ids = array();
+	foreach (array('user', 'opponent') as $object) {
+		foreach ($trade_info[$object]['cart_hash'] as $artifact) {
+			if ($artifact['flags'] & ARTIFACT_FLAG_CHANGE && $artifact['param2']) {
+				$changes[$object][$artifact['param2']] += $artifact['n'] ? $artifact['n'] : 1;
+				$artikuls_ids[$artifact['artikul_id']] = $artifact['artikul_id'];
+			}
+		}
+	}
+	$arts = array();
+	if ($artikuls_ids) {
+		$arts = get_hash(artifact_artikul_list(array('id'=>$artikuls_ids),'','id,title'),'id','title');
+	}
+	if (count($changes['user']) != count($changes['opponent'])) {
+		return false;
+	}
+	if ($changes['user'] && is_array($changes['user'])) {
+		foreach ($changes['user'] as $k=>$v) {
+			if ($v != $changes['opponent'][$k]) return false;
+		}
+	}
+	return true;
+}
+
+
+/*
+function trade_complete_rollback($trade_id = false, $transfer_list) {
+	foreach ($transfer_list as $transfer) {
+		if ($transfer['type'] == 'transfer') {
+			if (user_make_transfer($transfer['money_type'], $transfer['to_id'], $transfer['from_id'], $transfer['money_amount'], 'Торговля - откат передачи денег'))
+				trade_log_add(801, $trade_id, TRADE_OBJECT_MONEY_DRV, $transfer['money_amount'], false, $transfer['to_id'], $transfer['from_id'], 'откат передачи денег');
+		} elseif ($transfer['type'] == 'payment') {
+			if (user_make_payment($transfer['money_type'], $transfer['user_id'], $transfer['money_amount'], !$transfer['credit'], 'Откат оплаты налога за торговлю'))
+				trade_log_add(803, $trade_id, TRADE_OBJECT_MONEY_DRV, $transfer['money_amount'], false, false, $transfer['user_id'], 'откат оплаты налога за торговлю');
+		} elseif ($transfer['type'] == 'artifact') {
+			if (user_make_artifact_transfer($transfer['artifact_id'], $transfer['to_id'], $transfer['from_id']))
+				trade_log_add(802, $trade_id, TRADE_OBJECT_ARTIFACT, $transfer['artifact_id'], $transfer['artifact_price'], $transfer['to_id'], $transfer['from_id'], sprintf('откат передачи артефакта "%d"', $transfer['artifact_id']));
+		}
+	}
+}
+*/
+
+// завершение торговли, выдача артефактов и переводы денег
+function trade_complete($trade_id) {
+	global $db_4;
+
+	$out = array(
+		'status' => TRADE_STATUS_ERROR,
+		'error' => translate('Невозможно совершить сделку! ')
+	);
+	$trade = trade_get($trade_id, false, false);
+	if (!$trade) return $out;
+
+	if (!trade_lock($trade_id)) { // блокировка
+		$out['error'] .= translate('Не удалось установить блокировку.');
+		return $out;
+	}
+	if (!session_lock($trade['from_id'])) {
+		$out['error'] .= translate('Не удалось установить блокировку..');
+		trade_unlock($trade_id);
+		return $out;
+	}
+	if (!session_lock($trade['to_id'])) {
+		$out['error'] .= translate('Не удалось установить блокировку...');
+		session_unlock($trade['from_id']);
+		trade_unlock($trade_id);
+		return $out;
+	}
+
+	do {
+		$trade = trade_get($trade_id, false, false);
+		if (!$trade) break;
+
+		if ($trade['from_status'] != TRADE_USER_STAT_READY2 || $trade['to_status'] != TRADE_USER_STAT_READY2) {
+			$out['error'] .= translate('Не все стороны готовы к сделке!');
+			break;
+		}
+		if ($trade['status'] != TRADE_REQUEST_STAT_ACTIVE) {
+			$out['error'] .= translate('Сделка уже завершена.');
+			break;
+		}
+		$user_artifacts = array();
+		$trade_info = array();
+
+		$artikul_ids = array();
+		foreach (array('from', 'to') as $prefix) {
+			$trade_info[$prefix] = array(
+				'user_id' => $trade[$prefix.'_id'],
+				'cart_hash' => make_hash(trade_item_list($trade['id'], $trade[$prefix.'_id'], '', true)),
+				'money' => $trade[$prefix.'_money']
+			);
+			calc_trade_info($trade_info[$prefix], true, $trade['id']);
+			if (!$trade_info[$prefix]['artifact_valid']) {
+				$out['error'] .= translate('Один из предметов был перемещен или выброшен!');
+				break 2;
+			}
+			foreach ($trade_info[$prefix]['cart_hash'] as $artifact) {
+				$artikul_ids[$artifact['artikul_id']] = 1;
+			}
+		}
+		$artikul_hash = $artikul_ids ? make_hash(artifact_artikul_list(array('id' => array_keys($artikul_ids)), '', 'id, price')) : array();
+
+		$trade_info['user'] = $trade_info['from'];
+		$trade_info['opponent'] = $trade_info['to'];
+
+		if (!calc_trade_weight($trade_info)) {
+			$out['error'] .= translate('Вы не сможете совершить такую сделку, у одного из участников не хватит места в рюкзаке!');
+			break;
+		}
+		foreach (array('from', 'to') as $prefix) {
+			// останется денег после сделки
+			$user_money = user_get_money_amount(MONEY_TYPE_GAME, $trade_info[$prefix]['user_id']) - $trade_info[$prefix]['money'];
+			$commission = $trade_info[($prefix == 'to') ? 'to' : 'from']['commission'];
+			if ($user_money < $commission) {
+				$user = user_get($trade_info[$prefix]['user_id']);
+				$out['error'] .= sprintf(translate('У пользователя "%s" не хватает денег оплатить налог в %s!'),htmlspecialchars($user['nick']),$commission);
+				break 2;
+			}
+		}
+
+		// лог-сервис -----------------------
+		$auth1 = auth_get($trade['from_id']);
+		$auth2 = auth_get($trade['to_id']);
+		logserv_log_action(array(
+			'act_code' => 1060,	// Торговля
+			'comment' => sprintf(translate('IP/CID: %s/%s (инициатор)')."\n".translate('IP/CID: %s/%s (цель)'),html_ip_info($auth1['last_ip']),$auth1['last_cid'],html_ip_info($auth2['last_ip']),$auth2['last_cid']),
+		),$trade['from_id'],$trade['to_id']);
+		// ----------------------------------
+
+		$transfer_list = array();
+
+		$trade_logs = array();
+        foreach (array('from', 'to') as $prefix) {
+            $opponent_id = $trade_info[($prefix == 'from') ? 'to' : 'from']['user_id'];
+            $trade_logs[$prefix] = array(
+            	'user_id' => $trade_info[$prefix]['user_id'],
+				'to_user_id' => $opponent_id,
+			);
+        }
+
+		// передача вещей и денег
+		foreach (array('from', 'to') as $prefix) {
+			$opponent_id = $trade_info[($prefix == 'from') ? 'to' : 'from']['user_id'];
+			$money_amount = $trade_info[$prefix]['money'];
+
+			// передаем оппоненту наши деньги
+			if ($money_amount > 0) {
+				$status = user_make_transfer(MONEY_TYPE_GAME, $trade_info[$prefix]['user_id'], $opponent_id, $money_amount, translate('Торговля - передача денег'));
+				if ($status) {
+					// регистрируем передачу
+					$transfer_list[] = array ('type' => 'transfer', 'money_type' => MONEY_TYPE_GAME, 'from_id' => $trade_info[$prefix]['user_id'], 'to_id' => $opponent_id, 'money_amount' => $money_amount);
+					// лог-сервис -----------------------
+					logserv_log_operation(array(
+						'money_type' => MONEY_TYPE_GAME,
+						'amount' => -$money_amount,
+					),$trade_info[$prefix]['user_id'],$opponent_id);
+					// ----------------------------------
+
+                    $trade_logs[$prefix]['data']['money_transfer'][] = array('t' => MONEY_TYPE_GAME,'v' => $money_amount);
+
+				} else {
+					// откат трансферов
+					//trade_complete_rollback($trade['id'], $transfer_list);
+					break 2;
+				}
+			}
+		}
+
+		// вычитаем из обоих налоги на торговлю
+		foreach (array('from', 'to') as $prefix) {
+			$opponent_id = $trade_info[($prefix == 'to') ? 'to' : 'from']['user_id'];
+			if ($trade_info[$prefix]['commission'] <= 0)
+				continue;
+			$operations = array(MONEY_STAT_OPERATION_LOST,MONEY_STAT_OPERATION_PURE_LOST);
+			$status = user_make_payment(MONEY_TYPE_GAME, $opponent_id, -$trade_info[$prefix]['commission'], translate('Оплата налога за торговлю'),false, $operations);
+			if ($status) {
+				// регистрируем платеж
+				$transfer_list[] = array ('type' => 'payment', 'money_type' => MONEY_TYPE_GAME, 'user_id' => $opponent_id, 'money_amount' => $trade_info[$prefix]['commission'], 'credit' => false);
+				// лог-сервис -----------------------
+				logserv_log_operation(array(
+					'money_type' => MONEY_TYPE_GAME,
+					'amount' => -$trade_info[$prefix]['commission'],
+					'comment' => translate('Налог за торговлю'),
+				),$opponent_id);
+				// ----------------------------------
+			} else {
+				// откат трансферов
+				//trade_complete_rollback($trade['id'], $transfer_list);
+				break 2;
+			}
+		}
+
+		// передаем оппоненту наши вещи
+		foreach (array('from', 'to') as $prefix) {
+			$opponent_id = $trade_info[($prefix == 'from') ? 'to' : 'from']['user_id'];
+			NODE_PUSH(null, $opponent_id);
+			$opponent_artifact_hash = get_hash(user_get_artifact_list($opponent_id,'', ' AND cnt > 0 ', ARTIFACT_STORAGE_TYPE_ALL), 'artikul_id', 'id');
+			NODE_POP();
+
+			foreach ($trade_info[$prefix]['cart_hash'] as $artifact) {
+				$cnt = 0;
+				if (!$opponent_user) $opponent_user = user_get($opponent_id);
+				$into_profbag = user_check_prof_bag($artifact, $opponent_user, +$artifact['n']);
+				$storage = ($into_profbag) ? ARTIFACT_STORAGE_TYPE_PR_BAG : ARTIFACT_STORAGE_TYPE_USER;
+				$artifact_node = NODE_GET_BY_REF(TABLE_ARTIFACTS,$artifact['id']);
+				NODE_PUSH($artifact_node);
+				if ($artifact['cnt'] > 0) {
+					// стековая вещь ...
+					$artifact_actual = artifact_get($artifact['id'], '', ARTIFACT_STORAGE_TYPE_ALL);
+					if ($artifact_actual['cnt'] > $artifact['n']) {
+						// ... и передаётся не полностью
+						$success = artifact_change_cnt($artifact['id'], -$artifact['n']);
+						if ($success) {
+							NODE_PUSH(null, $opponent_id);
+							artifact_create($artifact['artikul_id'], +$artifact['n'], $opponent_id, false, false, false, array(), $storage);
+							NODE_POP();
+							$cnt = $artifact['n'];
+						}
+					} else {
+						// ... и передается полностью
+						if (isset($opponent_artifact_hash[$artifact['artikul_id']])) {
+							// добавим количество
+							artifact_delete($artifact);
+							NODE_PUSH(null, $opponent_id);
+							artifact_create($artifact['artikul_id'], +$artifact['n'], $opponent_id, false, false, false, array(), $storage);
+							NODE_POP();
+							$cnt = $artifact['n'];
+						} else {
+							$status = artifact_transfer($artifact['id'], $opponent_id, false, false, $storage);
+							$cnt = $artifact['n'];
+						}
+					}
+
+				} else {
+					$status = artifact_transfer($artifact['id'], $opponent_id, false, false, $storage);
+				}
+				NODE_POP();
+				if ($status) {
+					// регистрируем передачу
+					$transfer_list[] = array (
+						'type' => 'artifact',
+						'artifact_id' => $artifact['id'],
+						'from_id' => $trade[$prefix.'_id'],
+						'to_id' => $opponent_id,
+						'artifact_price' => $artikul_hash[$artifact['artikul_id']]['price'],
+						'artikul_id' => $artifact['artikul_id'],
+						'num' => ($artifact['cnt'] > 0) ? $artifact['n'] : 1,
+					);
+					// лог-сервис -----------------------
+					logserv_log_operation(array(
+						'artifact' => $artifact,
+						'cnt' => -max($artifact['n'],1),
+					),$trade_info[$prefix]['user_id'],$opponent_id);
+					// ----------------------------------
+
+                    $trade_logs[$prefix]['data']['art_transfer'][] = array('id' => $artifact['id'], 'aid' => $artifact['artikul_id'], 'cnt' => max($artifact['n'],1));
+
+				} else {
+					// откат трансферов
+					$out['error'] .= translate('Один из предметов перемещен или выброшен.');
+					//trade_complete_rollback($trade['id'], $transfer_list);
+					break 2;
+				}
+			}
+		}
+
+        foreach (array('from', 'to') as $prefix) {
+            trade_log_add(TRADE_LOG_TRADE, $trade_logs[$prefix]);
+        }
+
+		// передача всего барахла прошла успешно
+		$param = array(
+			'id' => $trade['id'],
+				'status' => TRADE_REQUEST_STAT_DONE,
+				'from_status' => TRADE_USER_STAT_IN_TRADE,
+				'to_status' => TRADE_USER_STAT_IN_TRADE,
+		);
+
+		// очищаем корзины
+		trade_item_delete(false,$trade_id);
+
+		$param = array_merge($param, array (
+				'from_money' => 0.0,
+				'to_money' => 0.0
+		));
+
+		trade_save($param);
+		$out['status'] = TRADE_STATUS_OK;
+
+	} while (0);
+
+	if ($out['status'] != TRADE_STATUS_OK) {
+		trade_save(array(
+			'id' => $trade['id'],
+			'from_status' => TRADE_USER_STAT_IN_TRADE,
+			'to_status' => TRADE_USER_STAT_IN_TRADE, )
+		);
+	}
+
+	session_unlock($trade['to_id']);
+	session_unlock($trade['from_id']);
+	trade_unlock($trade_id);
+
+	if ($out['status'] == TRADE_STATUS_OK) {
+		trade_send_result_chat_msg($transfer_list);
+		$artifact_ids = array();
+		foreach ($transfer_list as $item) {
+			if ($item['type'] == 'artifact') {
+				$artifact_ids[] = $item['artifact_id'];
+			}
+		}
+		artifact_bag_send_diff($trade['to_id'], $artifact_ids);
+		artifact_bag_send_diff($trade['from_id'], $artifact_ids);
+	}
+
+	return $out;
+}
+
+
+// обработка списка трансферов денег, налогов, артефактов произошедших в результате торговли
+// приведение к общей схеме, схлопывание сумм и количеств артефактов
+function reduce_trade_log(&$transfer_list) {
+	global $money_type_info;
+
+	$trade_log = make_hash($transfer_list, 'type', true);
+	$result_user = array();
+
+	foreach($transfer_list as $op) {
+		foreach (array('from_id', 'to_id', 'user_id') as $id) {
+			if (isset($op[$id]) && !isset($result_user[$op[$id]])) {
+				$result_user[$op[$id]] = $op[$id];
+			}
+		}
+	}
+	$money_type_hash = get_hash($money_type_info, 'id', 'id');
+	foreach ($money_type_hash as $k=>$v) {
+		$money_type_hash[$k] = 0;
+	}
+
+	foreach ($result_user as $k=>$user) {
+		$result_user[$k] = array(
+			'give' => array(
+				'money_transfer' => $money_type_hash,
+				'money_payment' => $money_type_hash,
+				'artifact' => array(),
+				),
+			'take' => array(
+				'money_transfer' => $money_type_hash,
+//				'money_payment' => $money_type_hash,
+				'artifact' => array(),
+				),
+		);
+	}
+
+	if (isset($trade_log['transfer'])) {
+		// переводы денег от игрока игроку
+		foreach ($trade_log['transfer'] as $transfer) {
+			$result_user[$transfer['from_id']]['give']['money_transfer'][$transfer['money_type']] += $transfer['money_amount'];
+			$result_user[$transfer['to_id']]['take']['money_transfer'][$transfer['money_type']] += $transfer['money_amount'];
+		}
+	}
+	if (isset($trade_log['payment'])) {
+		// платежи от игрока системе
+		foreach ($trade_log['payment'] as $transfer) {
+			$result_user[$transfer['user_id']]['give']['money_payment'][$transfer['money_type']] += $transfer['money_amount'];
+		}
+	}
+	if (isset($trade_log['artifact'])) {
+		// передача артефактов от игрока игроку
+		foreach ($trade_log['artifact'] as $transfer) {
+			$artikul_id = $transfer['artikul_id'];
+			foreach (array('from_id', 'to_id') as $side) {
+				if ($side == 'from_id')
+					$artifact_list = &$result_user[$transfer['from_id']]['give']['artifact'];
+				else
+					$artifact_list = &$result_user[$transfer['to_id']]['take']['artifact'];
+
+				if (isset($artifact_list[$artikul_id])) {
+					$artifact_list[$artikul_id]['artifact_ids'][] = $transfer['artifact_id'];
+					$artifact_list[$artikul_id]['num'] += $transfer['num'];
+					$artifact_list[$artikul_id]['artifact_price'] += $transfer['artifact_price'];
+				} else {
+					$artifact_list[$artikul_id] = array (
+						'artifact_ids' => array($transfer['artifact_id']),
+						'artifact_price' => $transfer['artifact_price'],
+						'num' => $transfer['num'],
+					);
+				}
+			}
+		}
+	}
+	return $result_user;
+}
+
+
+// на входе список трансферов в результате совершения торговли
+// на выходе сообщения в чат всем участникам торговли
+function trade_send_result_chat_msg(&$transfer_list) {
+	$reduced_log = reduce_trade_log($transfer_list);
+
+	$text_templates = array(
+		'give' => array(
+			'money_transfer' => translate('Вы отдали: '),
+			'money_payment' => translate('Вы заплатили налог: '),
+			'artifact' => translate('Вы отдали предмет(ы): '),
+		),
+		'take' => array(
+			'money_transfer' => translate('Вы получили: '),
+//			'money_payment' => 'Вы получили: ',
+			'artifact' => translate('Вы получили предмет(ы): '),
+		),
+	);
+
+	foreach($reduced_log as $user_id => $log_items) {
+		$texts = array();
+		foreach(array('give', 'take') as $side) {
+			$log = $log_items[$side];
+			if (isset($log['money_transfer'])) {
+				$t = array();
+				foreach ($log['money_transfer'] as $money_type => $money_amount) {
+					if ($money_amount) {
+						$t[] = html_money_str($money_type, $money_amount);
+					}
+				}
+				if ($t) $texts[] = $text_templates[$side]['money_transfer'].implode($t, ', ');
+			}
+
+			if (isset($log['money_payment'])) {
+				$t = array();
+				foreach ($log['money_payment'] as $money_type => $money_amount) {
+					if ($money_amount) {
+						$t[] = html_money_str($money_type, $money_amount);
+					}
+				}
+				if ($t) $texts[] = $text_templates[$side]['money_payment'].implode($t, ', ');
+			}
+
+			if (isset($log['artifact'])) {
+				$t = array();
+				$artifact_artikuls = count($log['artifact']) ? get_hash(artifact_artikul_list(array('id' => array_keys($log['artifact'])))) : array();
+				foreach ($log['artifact'] as $artikul_id => $item) {
+					$t[] = '<a href="#" onClick="showArtifactInfo(false,'.$artikul_id.');return false;">'.$artifact_artikuls[$artikul_id].'</a> '.($item['num'] > 1 ? sprintf(translate(' %s <b> шт</b>'),$item['num']) : '');
+				}
+				if ($t) $texts[] = $text_templates[$side]['artifact'].implode($t, ', ');
+			}
+		}
+		// вывод в чат
+		foreach($texts as $msg) {
+			chat_msg_send_system($msg, CHAT_CHF_USER, $user_id);
+		}
+	}
+}
+
+?>

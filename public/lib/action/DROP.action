@@ -1,0 +1,69 @@
+<? # $Id: DROP.action,v 1.9 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "выкинуть предмет"
+// Параметры:
+//	$in['amount'] - кол-во
+
+require_once("lib/area_store.lib");
+
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT)) || $object['slot_id']) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if ($object['flags'] & ARTIFACT_FLAG_NODROP) {
+	$out['error'] = translate('Предмет нельзя выбросить!');
+	return;
+}
+$amount = min(intval($in['amount']),$object['cnt']);
+if (($object['cnt'] > 0) && ($amount <= 0)) {
+	$out['error'] = translate('Указано неверное количество!');
+	return;
+}
+if (($amount > 0) && ($amount < $object['cnt'])) {
+	artifact_save(array(
+		'id' => $object['id'],
+		'cnt' => $object['cnt'] - $amount,
+		'artikul_actions' => 1,
+	));
+	action_object_delete(OBJECT_CLASS_ARTIFACT,$object);
+} else {
+	artifact_delete($object);
+}
+$out['status'] = ACTION_STATUS_OK;
+
+//Возможность выкупить
+$artifact_s = $object;
+unset($artifact_s['object_class']);
+unset($artifact_s['id']);
+$artifact_s['cnt'] = ($object['cnt'] == 0 ? 0 : $amount);
+$artifact_s['sell_time'] = time_current();
+$artifact_s['sell_cost'] = 0;
+$artifact_s['sell_type'] = MONEY_TYPE_GAME;
+$a_s_id = artifact_sell_save($artifact_s);
+$artifact_s['id'] = $a_s_id;
+$artifact_s['_mode'] = CSMODE_INSERT;
+artifact_ransom_add($artifact_s, $subject['id']);
+//////////////////////////////////////
+
+if (empty($in['no_log'])){
+	// лог-сервис -----------------------
+	logserv_log_action(array(
+	'action' => $action,
+	),$action_user);
+	logserv_log_operation(array(
+	'artifact' => $object,
+	'cnt' => -max($amount,1),
+	),$action_user);
+	// ----------------------------------
+}
+artifact_bag_send_diff($session_user['id'], $object['id']);
+// Сохранение статистики
+logfile(SERVER_ROOT.PATH_LOGS.'drop_statistic.log',implode("\t",array(
+	time_current(),
+	$object['artikul_id'],
+	$object['title'],
+	$amount,
+)));
+
+?>

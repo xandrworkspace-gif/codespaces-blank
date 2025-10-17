@@ -1,0 +1,298 @@
+<?
+require_once("lib/area_post.lib");
+
+// Имена и поля таблиц
+define('TABLE_BLINDAUCTION_LOTS','blindauction_lots');
+define('FIELD_BLINDAUCTION_LOTS','');
+define('TABLE_BLINDAUCTION_BIDS','blindauction_bids');
+define('FIELD_BLINDAUCTION_BIDS','');
+
+define('BA_STATUS_WAITING', 1);
+define('BA_STATUS_RUNNING', 2);
+define('BA_STATUS_CONFLICTED', 3);
+define('BA_STATUS_FINISHED', 4);
+define('BA_STATUS_ARCHIEVED', 5);
+
+function blindauction_lot_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_BLINDAUCTION_LOTS,$ref,$add);
+}
+
+function blindauction_lot_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_BLINDAUCTION_LOTS,$ref,$add,$field_list);
+}
+
+function blindauction_lot_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_BLINDAUCTION_LOTS,$ref,$add);
+}
+
+function blindauction_lot_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_BLINDAUCTION_LOTS,$param,FIELD_BLINDAUCTION_LOTS);
+}
+
+function blindauction_lot_delete($ref) {
+	global $db_2;
+	$status = common_delete($db_2,TABLE_BLINDAUCTION_LOTS,$ref);
+	if ($status) blindauction_bid_delete(array('lot_id' => $ref));
+	return $status;
+}
+
+////////////////////////////////////
+
+function blindauction_bid_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_BLINDAUCTION_BIDS,$ref,$add);
+}
+
+function blindauction_bid_list($ref=false, $add='', $field_list = '*') {
+	global $db_2;
+	return common_list($db_2,TABLE_BLINDAUCTION_BIDS,$ref,$add,$field_list);
+}
+
+function blindauction_bid_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_BLINDAUCTION_BIDS,$ref,$add);
+}
+
+function blindauction_bid_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_BLINDAUCTION_BIDS,$param,FIELD_BLINDAUCTION_BIDS);
+}
+
+function blindauction_bid_delete($ref) {
+	global $db_2;
+	return common_delete($db_2,TABLE_BLINDAUCTION_BIDS,$ref);
+}
+
+//////////////////////////////////
+
+function blindauction_bid_make($lot_id, $user_id, $bid) {
+	
+	$result = array('status' => false);
+	if (defined('BLINDAUCTION_DISABLED') && BLINDAUCTION_DISABLED) {
+		$result['error'] = translate('Закрытый аукцион временно не работает');
+		return $result;
+	} 
+	
+	$lot_id = intval($lot_id);
+	$user_id = intval($user_id);
+	$bid = round(floatval($bid)*100)/100;
+	
+	$lot = blindauction_lot_get($lot_id);
+
+	if (!$lot || !$lot['step'] || $lot['status'] != BA_STATUS_RUNNING) {
+		$result['error'] = translate('Лот не активен');
+		return $result;
+	}
+	
+	if ($lot['end_time']<time_current()) {
+		$result['error'] = translate('Приём ставок завершён');
+		return $result;
+	}
+	
+	if (!$bid || $bid<0 || ((100*$bid) % (100*$lot['step']) != 0)) {
+		$result['error'] = translate('Сумма не кратна шагу ставки!');
+		return $result;
+	}
+	
+	$check_bid = blindauction_bid_get(array('lot_id'  => $lot_id, 'user_id' => $user_id, 'bid'     => $bid));
+	if ($check_bid) {
+		$result['error'] = translate('Вы уже делали такую ставку!');
+		return $result;
+	}
+	
+	$user = user_get($user_id);
+	if (!$user) {
+		$result['error'] = translate('Пользователь не найден');
+		return $result;
+	}
+	
+	if (defined('BLINDAUCTION_ADMIN_ONLY') && BLINDAUCTION_ADMIN_ONLY && !($user['flags'] & USER_FLAG_ADMIN)) {
+		$result['error'] = translate('Закрытый аукцион временно не работает');
+		return $result;
+	}
+	
+	if ($lot['kind'] && ($lot['kind']!=$user['kind'])) {
+		$result['error'] = translate('Лот действителен только для противоположной расы');
+		return $result;
+	}
+	
+	$balance = user_get_money_amount(MONEY_TYPE_GAME,$user_id);
+	if ($balance < $bid) {
+		$result['error'] = translate('У вас недостаточно средств, чтобы сделать ставку!');
+		return $result;
+	}
+	
+	$comment = sprintf(translate('Ставка в закрытом аукционе (lot_id=%d)'),$lot_id);
+	$status = user_make_payment(MONEY_TYPE_GAME,$user_id,-$bid,$comment);
+	
+	if (!$status) {
+		$result['error'] = translate('Не удалось сделать ставку');
+		return $result;
+	}
+	
+	blindauction_bid_save(array(
+		'lot_id'  => $lot_id,
+		'user_id' => $user_id,
+		'bid'     => $bid,
+		'ctime'	  => time_current(),
+	));
+	
+	blindauction_lot_save(array(
+		'_set' => sql_pholder('bid_sum=bid_sum+?', $bid),
+		'_add' => sql_pholder(' and id=?', $lot_id),
+	));
+	
+	return array('status' => true);
+}
+
+function blindauction_process_lot($lot_id) {
+	global $db_2;
+	
+	$lot_id = intval($lot_id);
+	$lot = blindauction_lot_get($lot_id);
+
+	$result = array('status' => false);
+	if (!$lot || $lot['status'] != BA_STATUS_RUNNING) {
+		$result['error'] = translate('Лот не активен');
+		return $result;
+	}
+	
+	// Поставим статус что аукцион ожидает начала, чтобы в процессе определения победителя никто не пытался сделать ставку
+	blindauction_lot_save(array('id' => $lot_id, 'status' => BA_STATUS_WAITING));
+	sleep(3); // ждём немного чтобы никто не успел влезть
+	
+	$query_get_winner_bid = '
+		select 
+			bid,count(*) as cc 
+		from 
+			'.TABLE_BLINDAUCTION_BIDS.'
+		where 
+			lot_id='.$lot_id.' 
+		group by 1 having cc=1 order by bid limit 1';
+	$db_2->db_GetQueryRow($query_get_winner_bid,$winner_bid);
+	
+	if (!$winner_bid) {
+		blindauction_lot_save(array('id' => $lot_id, 'status' => BA_STATUS_CONFLICTED));
+		return array('status' => true);
+	}
+	
+	if (!floatval($winner_bid['bid'])) {
+		$result['error'] = 'Incorrect result';
+		return $result;
+	}
+	$winner = blindauction_bid_get(array('lot_id' => $lot_id, 'bid' => $winner_bid['bid']));
+	if (!$winner) {
+		$result['error'] = 'Error while getting winner';
+		return $result;
+	}
+	
+	$user = user_get($winner['user_id']);
+	if (!$user) {
+		$result['error'] = 'Error while getting winner user';
+		return $result;
+	}
+	NODE_PUSH(null,$user['id']);
+	$artifact_id = artifact_create($lot['artikul_id'], $lot['cnt']);
+	NODE_POP();
+	if (!$artifact_id) {
+		$result['error'] = 'Error while creating artifact';
+		return $result;
+	}
+	
+	
+	// функция создания артефатов может вернуть массив или 1 число, в зависимости от кол-ва созданного
+	// сделаем массив, если создался 1 арт, для унификации
+	$artifact_ids = !is_array($artifact_id) ? array($artifact_id) : $artifact_id;
+	
+	$result = blindauction_lot_save(array(
+		'id' => $lot_id,
+		'status' => BA_STATUS_FINISHED,
+		'bid_winner' => $winner['bid'],
+		'user_winner' => $winner['user_id'],
+	));
+	
+	if (!$winner) {
+		$result['error'] = 'Error while updating lot';
+		return $result;
+	}
+	
+	$artifact_artikul = artifact_artikul_get($lot['artikul_id']);
+	
+	$subject = translate('Закрытый аукцион: победа!');
+	$msg_text = sprintf(translate('*** Вы победили в торгах по лоту "%s", %dшт в закрытом аукционе! ***'),
+	$artifact_artikul['title'], $lot['cnt']);
+	foreach($artifact_ids as $artifact_id) {
+		$params = array(
+			'to_id' => $winner['user_id'],
+			'from_id' => 0,
+			'subject' => $subject,
+			'text' => $msg_text,
+			'artifact_id' => $artifact_id,
+			'unread' => 1,
+			'type_id' => MSG_TYPE_SYS_NORMAL,
+			'stime' => time_current(),
+			'rtime' => time_current() + area_post_message_ttl(MSG_TYPE_SYS_NORMAL, true),
+			'flags' => POST_MSG_FLAG_ADMIN,
+			'n' => (count($artifact_ids) > 1) ? 1 : $lot['cnt'], // если лот нестэкающийся, то 1 арт
+		);
+		$result = area_post_message_save($params);
+	}
+	
+	$msg_text = sprintf(
+		translate('Игрок %s победил в торгах по лоту "%s" в закрытом аукционе! Ставка победителя: %s!'),
+		html_user_info($user),
+		$artifact_artikul['title'],
+		html_money_str(MONEY_TYPE_GAME, $winner['bid'])
+	);
+	
+	$msg = array(
+		'type' => CHAT_MSG_TYPE_BROADCAST,
+		'msg_text' => $msg_text,
+		'urgent' => true,
+	);
+	
+	if ($lot['kind']) $msg['user_kind'] = $lot['kind'];
+		
+	chat_msg_send($msg, CHAT_CHF_AREA);
+	
+	$comment = sprintf(translate('Закрытый аукцион: лот lot_id=%d'), $lot_id);
+	logserv_log_operation(array(
+		'artikul' => $lot['artikul_id'],
+		'cnt' => $lot['cnt'],
+		'comment' => $comment,
+	),$user);
+	
+	// запишем данные о всех ставках в логсерв
+	$bids = blindauction_bid_list(array('lot_id' => $lot_id));
+	$user_bids = array();
+	foreach($bids as $bid) {
+		if (!isset($user_bids[$bid['user_id']])) {
+			$user_bids[$bid['user_id']] = $bid['bid'];
+		} else {
+			$user_bids[$bid['user_id']] += $bid['bid'];
+		}
+	}
+	
+	$comment = sprintf(translate('Ставка в закрытом аукционе (lot_id=%d)'),$lot_id);
+	foreach($user_bids as $user_id => $bidsum) {
+		logserv_log_operation(array(
+			'money_type' => MONEY_TYPE_GAME,
+			'amount' => -$bidsum,
+			'comment' => $comment,
+		),$user_id);
+	}
+	
+	return array('status' => true);
+}
+
+function blindauction_get_user_bids($lot_ids, $user_id) {
+	$user_id = intval($user_id);
+	$fields = 'lot_id,count(*) as cnt,max(bid) as amount';
+	$add = ' group by lot_id order by null';
+	return blindauction_bid_list(array('lot_id' => $lot_ids, 'user_id' => $user_id),$add,$fields);
+	
+}

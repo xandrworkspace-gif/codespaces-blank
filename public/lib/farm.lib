@@ -1,0 +1,346 @@
+<? # $Id: farm.lib,v 1.12 2009-10-29 07:35:04 s.ignatenkov Exp $
+
+require_once('/home/admin/web/dwar.fun/public_html/lib/artifact.lib');
+
+// Имена и поля таблиц
+define('TABLE_FARM','farm');
+define('FIELD_FARM','');
+
+define('TABLE_FARMS','farms');
+define('FIELD_FARMS','');
+
+define('TABLE_FARM_TYPES','farm_types');
+define('FIELD_FARM_TYPES','');
+define('TABLE_FARM_AREAS','farm_areas');
+define('FIELD_FARM_AREAS','');
+define('TABLE_FARM_USERS','farm_users');
+define('FIELD_FARM_USERS','');
+
+
+define('TABLE_AUTO_FARM','auto_farm');
+
+// Флаги артефактов
+define('FARM_FLAG_NOPROFESSION',  0x0001);  // Не требовать наличия профессии
+define('FARM_FLAG_NOLUCKYCHANCE', 0x0002); // Не проверять удачу
+define('FARM_FLAG_RANDOM', 0x0004); //Данный Фарм на рандомных локациях
+define('FARM_FLAG_ADMIN', 0x0008); //Данный Фарм виден только админу
+define('FARM_FLAG_RANDOM_AREA', 0x0010); //Распределить кол-во по всем локам (если указано макс. кол-во 20, значит на все локации будет респределено 20 ресурсов поровну)
+
+function farm_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_FARM,$ref,$add);
+}
+
+function farm_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_FARM,$ref,$add);
+}
+
+function farm_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_FARM,$ref,$add);
+}
+
+function farm_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_FARM,$param,FIELD_FARM);
+}
+
+function farm_delete($ref) {
+	global $db_2;
+	return common_delete($db_2,TABLE_FARM,$ref);
+}
+
+function farm_type_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_FARM_TYPES,$ref,$add);
+}
+
+function farm_type_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_FARM_TYPES,$ref,$add);
+}
+
+function farm_type_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_FARM_TYPES, $ref, $add);
+}
+
+function farm_type_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_FARM_TYPES,$param,FIELD_FARM_TYPES);
+}
+
+function farm_type_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_FARM_TYPES,$ref,$add);
+}
+
+function farm_area_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_FARM_AREAS,$ref,$add);
+}
+
+function farm_area_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_FARM_AREAS,$ref,$add);
+}
+
+function farm_area_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_FARM_AREAS, $ref, $add);
+}
+
+function farm_area_save($param) {
+	global $db_2;
+	if (!$param['id'] && !$param['farm_id']) return false;
+	return common_save($db_2,TABLE_FARM_AREAS,$param,FIELD_FARM_AREAS);
+}
+
+function farm_area_delete($ref=false) {
+	global $db_2;
+	return common_delete($db_2,TABLE_FARM_AREAS,$ref);
+}
+
+function farm_user_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_FARM_USERS,$ref,$add);
+}
+
+function farm_user_list($user_id, $profession_id=null, $add='', $extended=false) {
+	global $db_2;
+	$ref = false;
+	if ($user_id) $ref['user_id'] = $user_id;
+	if ($profession_id) $extended = true;
+	if (!$extended) {
+		return common_list($db_2,TABLE_FARM_USERS,$ref,$add);;
+	} else {
+		$farm_user_list = common_list($db_2,TABLE_FARM_USERS,$ref,$add);
+		if (!$farm_user_list) return false;
+		$farm_ids = get_hash($farm_user_list, 'farm_id', 'farm_id');
+		$r = array('id' => $farm_ids);
+		if (isset($profession_id)) $r['profession'] = $profession_id;
+		$farm_hash = make_hash(farm_list($r), 'id');
+		foreach ($farm_user_list as $k=>$v) {
+			if (!isset($farm_hash[$v['farm_id']])) {
+				unset($farm_user_list[$k]);
+			} else {
+				$farm_user_list[$k] = array_merge(
+					$farm_hash[$v['farm_id']],
+					$farm_user_list[$k]
+				);
+			}
+		}
+		return $farm_user_list;
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function auto_farm_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_AUTO_FARM,$ref,$add);
+}
+
+function auto_farm_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_AUTO_FARM,$ref,$add,$field_list);
+}
+
+function auto_farm_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_AUTO_FARM, $ref, $add);
+}
+
+function auto_farm_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_AUTO_FARM,$param);
+}
+
+function auto_farm_delete($ref, $add='') {
+    global $db_2;
+    if(!$ref && !$add) return false;
+    common_delete($db_2,TABLE_AUTO_FARM,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function farm_user_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_FARM_USERS,$ref,$add);
+}
+
+function farm_user_save($param) {
+	global $db_2;
+	if (!$param['id'] && !$param['farm_id']) return false;
+	return common_save($db_2,TABLE_FARM_USERS,$param,FIELD_FARM_USERS);
+}
+
+function farm_user_delete($ref=false) {
+	global $db_2;
+	return common_delete($db_2,TABLE_FARM_USERS,$ref);
+}
+
+function farm_lock($loc_key, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$loc_key) return false;
+	return $tq->capture('FARM_'.$loc_key,$timewait,$timelock);
+}
+
+function farm_unlock($loc_key) {
+	global $tq;
+	if (!$loc_key) return false;
+	return $tq->release('FARM_'.$loc_key);
+}
+
+// =================================================================================================================
+
+function farm_get_exp($farm_skill_value, $user_skill_value, $user_level_value) {
+	require_once("lib/recipe.lib");
+	return recipe_get_exp($farm_skill_value, $user_skill_value, $user_level_value);
+}
+
+// =================================================================================================================
+
+function farms_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_FARMS,$ref,$add);
+}
+
+function farms_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_FARMS,$ref,$add);
+}
+
+function farms_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_FARMS,$ref,$add);
+}
+
+function farms_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_FARMS,$param,FIELD_FARMS);
+}
+
+function farms_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_FARMS,$ref,$add,'area_id');
+}
+
+function farms_loc_data_pack($data) {
+	$bin = pack('N', $data['max_respawn_time']);
+	if (!$data['farm_info']) $data['farm_info'] = array();
+
+	$bin .= pack('S', count($data['farm_info']));
+	foreach ($data['farm_info'] as $num => $item) {
+		$bin .= pack('NssNssC', 
+			intval($num),
+			intval($item['id']),
+			intval($item['farm_id']),
+			intval($item['rtime']), 
+			intval($item['x']), 
+			intval($item['y']), 
+			intval($item['active'])
+		);
+	} 
+	return $bin;
+}
+
+function farms_loc_data_unpack($bin) {
+	if (!$bin) return array('farm_info' => array());	
+	$data = unpack('Nmax_respawn_time', $bin);
+	$bin = substr($bin, 4);
+	$tmp_data = unpack('Scount', $bin);
+	$farm_info_cnt = reset($tmp_data);
+	$bin = substr($bin, 2);
+	$data['farm_info'] = array();
+	while ($farm_info_cnt > 0) {
+		$item = unpack('Nnum/sid/sfarm_id/Nrtime/sx/sy/Cactive', $bin);
+		$data['farm_info'][$item['num']] = $item;
+		$bin = substr($bin, 17);
+		$farm_info_cnt--;
+	}
+	return $data;
+}
+
+function farms_loc_data_get($area_id, $instance_id) {
+	$data = array(
+		'farm_state' => array(),
+		'farm_info' => array(),
+	);
+	
+	$cache = new Cache('FARM_'.$area_id.'_'.$instance_id);
+	if ($cache->isAvail()) {
+		$cache = $cache->get();
+		$data['farm_state'] = (array) $cache['farm_state'];
+		$data['farm_info'] = (array) $cache['farm_info'];
+	}
+	
+	$item = farms_get(array('area_id' => $area_id, 'instance_id' => $instance_id));
+	$data['id'] = $item['id'];
+	$item_data = farms_loc_data_unpack($item['data']);
+	if ($item_data['farm_info']) {
+		foreach($item_data['farm_info'] as $num => $item) {
+			$data['farm_info'][$num] = array(
+				'id' => intval($item['id']),
+				'farm_id' => intval($item['farm_id']),
+				'rtime' => intval($item['rtime']),
+				'x' => intval($item['x']),
+				'y' => intval($item['y']),
+				'active' => intval($item['active']),
+			);		
+		}		
+	}
+	
+	if ($data['farm_info']) {
+		$list = make_hash(farm_list(array('id' => get_hash($data['farm_info'], 'farm_id', 'farm_id'))));
+		foreach ($data['farm_info'] as &$item) {
+			if ($list[$item['farm_id']]) $item = array_merge($list[$item['farm_id']], $item);
+		}
+	}
+	
+	return $data;
+}
+
+function farms_loc_data_save($area_id, $instance_id, $farm_data) {
+	$data = array(
+		'farm_info' => array(),
+		'farm_state' => $farm_data['farm_state'],
+	);
+	
+	$sensative_data = array();
+	
+	if ($farm_data['farm_info']) {
+		foreach ($farm_data['farm_info'] as $num => $item) {
+			$entry = array(
+				'id' => intval($item['id']),
+				'farm_id' => intval($item['farm_id']),
+				'rtime' => intval($item['rtime']),
+				'x' => intval($item['x']),
+				'y' => intval($item['y']),
+				'active' => intval($item['active']),
+			);
+		
+			if ($item['respawn_time'] >= 3600) {
+				$sensative_data['farm_info'][$num] = $entry;
+			} else {
+				$data['farm_info'][$num] = $entry;
+			}
+		}
+	}
+
+	$param = array(
+		'area_id' => $area_id,
+		'instance_id' => $instance_id,
+		'data' => farms_loc_data_pack($sensative_data),
+	);
+	
+	if ($farm_data['id']) $param['id'] = $farm_data['id'];
+	farms_save($param);
+	
+	$cache = new Cache('FARM_'.$area_id.'_'.$instance_id);
+	$cache->update($data, FARM_CACHE_TIME + $farm_data['max_respawn_time']);	
+}
+
+?>

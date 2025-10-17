@@ -1,0 +1,164 @@
+<?
+//Действие создать портал создатель Игорь.
+
+/*ini_set('error_reporting', E_ERROR);
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);*/
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id'] || $subject['instance_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+
+global $area_checkpoint_info;
+
+$user_area = area_get($subject['area_id']);
+$user_parent_area = area_get($user_area['parent_id']);
+
+$checkpoint_list = make_hash(artifact_list(false, $subject['id'], null, false, false, ' AND type_id = '.ARTIFACT_TYPE_ID_CHECKPOINT),'param1');
+$cnt_checkpoints = count($checkpoint_list);
+
+if($checkpoint_list[$subject['area_id']]){
+    $out['error'] = 'У вас уже есть Свиток портала на данную локацию';
+    return;
+}
+
+if($cnt_checkpoints >= CHECKPOINT_MAX_CNT){
+    $out['error'] = 'У вас уже максимум порталов';
+    return;
+}
+
+if ($user_area['code'] == 'stronghold' || $user_area['code'] == 'castle_hall') {
+    $out['error'] = sprintf(translate('Подождите! Замок? портал в замок? Нет!'));
+    return;
+}
+if ($user_area['code'] == 'store' || $user_area['huckster']) {
+    $out['error'] = sprintf(translate('Подождите! Магазин? портал в магазин? Нет!'));
+    return;
+}
+if ($user_area['code'] == 'post') {
+    $out['error'] = sprintf(translate('Подождите! Почта? портал в почту? Нет!'));
+    return;
+}
+if ($user_area['code'] == 'jail') {
+    $out['error'] = sprintf(translate('Подождите! Тюрьма? портал в тюрьму? Нет!'));
+    return;
+}
+if ($user_area['code'] == 'cusnica') {
+    $out['error'] = sprintf(translate('Подождите! Кузница? портал в кузницу? Нет!'));
+    return;
+}
+if ($user_area['code'] == 'clan') {
+    $out['error'] = sprintf(translate('Подождите! Регистрационная палата? портал в регистрационную палату? Нет!'));
+    return;
+}
+if ($user_area['code'] == 'cell') {
+    $out['error'] = sprintf(translate('Подождите! Банковская ячейка? портал в банковскую ячейку? Нет!'));
+    return;
+}
+if ($user_area['code'] == 'bg') {
+    $out['error'] = sprintf(translate('Подождите! Поле битвы? портал на поле битвы? Нет!'));
+    return;
+}
+if ($user_area['code'] == 'bank') {
+    $out['error'] = sprintf(translate('Подождите! Банк? портал в банк? Нет!'));
+    return;
+}
+if ($user_area['code'] == 'auction') {
+    $out['error'] = sprintf(translate('Подождите! Аукцион? портал в аукцион? Нет!'));
+    return;
+}
+
+if ($user_area['code']) {
+    $out['error'] = sprintf(translate('На данную локацию нельзя создать портал!'));
+    return;
+}
+
+if ($user_area['flags'] & AREA_FLAG_NO_CHECKPOINT) {
+    $out['error'] = sprintf(translate('На данную локацию нельзя создать портал!'));
+    return;
+}
+
+if($user_parent_area['flags'] & AREA_FLAG_NO_CHECKPOINT){
+    $out['error'] = sprintf(translate('На данную локацию нельзя создать портал!'));
+    return;
+}
+
+
+$kind_plague = false; // Лока другой расы
+// Если текущая локация на территории людей или магмаров
+if ((($user_area['flags'] & AREA_FLAG_NO_INVISIBLE_MAGMAR) && ($subject['kind'] == KIND_MAGMAR)) ||
+    (($user_area['flags'] & AREA_FLAG_NO_INVISIBLE_HUMAN) && ($subject['kind'] == KIND_HUMAN))) {
+    //То цена в бриллиантах...
+    $kind_plague = true;
+}
+
+$m_type = ($kind_plague ? MONEY_TYPE_GOLD : MONEY_TYPE_GAME);
+$m_val = $area_checkpoint_info[$cnt_checkpoints + 1][$m_type]['price'];
+
+$money_true = user_get_money_amount($m_type, $subject['id']);
+if($money_true < $m_val){
+    $out['error'] = "У вас недостаточно денег!";
+    return;
+}
+
+$payment = user_make_payment($m_type, $subject['id'], -$m_val);
+
+if(!$payment){
+    $out['error'] = 'Ошибка операции оплаты!';
+    return;
+}
+
+$create = create_checkpoint($subject['id'], $user_area['id']);
+
+if($create['error'] || !$create){
+    if($create['error']){
+        $out['error'] = $create['error'];
+    }else{
+        $out['error'] = 'Не удалось создать Свиток портала!';
+    }
+    return;
+}
+
+chat_msg_send_system("Вы успешно создали Свиток портала на локацию \"".$user_area['title']."\". Вы заплатили: ".html_money_str($m_type, $m_val), CHAT_CHF_USER, $subject['id']);
+
+$out['status'] = ACTION_STATUS_OK;
+
+function create_checkpoint($user_id = false, $area_id = false){
+    if(!$user_id) return false;
+    if(!$area_id) return false;
+
+    $artifact_ff = artifact_get(array('user_id' => $user_id, 'param1' => $area_id));
+    if($artifact_ff){
+        return array('error' => 'Уже имеется портал на данную локацию.');
+    }
+    $area = area_get($area_id);
+    if(!$area){
+        return array('error' => 'Система не уверена в вашей правомерности!');
+    }
+
+    $artikul = artifact_artikul_get(CHECKPOINT_ARTIKUL_ID);
+    if (!$artikul) return false;
+
+    $artifact = get_params($artikul,ARTIFACT_CREATE_FIELDS);
+
+    $artifact['param1'] = $area_id;
+    $artifact['param2'] = time_current();
+
+    $artifact['title'] = 'Свиток портала «'.$area['title'].'»';
+    $artifact['artikul_id'] = $artikul['id'];
+    if ($artikul['validity']) $artifact['time_expire'] = time_current() + $artikul['validity'];
+    $artifact['ctime'] = time_current();
+    if ($user_id) $artifact['user_id'] = $user_id;
+    $artifact['storage_type'] = ARTIFACT_STORAGE_TYPE_USER;
+    $artifact['artikul_skills'] = 1;
+    $artifact['artikul_actions'] = 1;
+    $ids = array();
+    $in = array('time_expire' => intval($artifact['time_expire']));
+    $artifact_id = artifact_save($artifact);
+    return $artifact_id;
+}
+
+?>

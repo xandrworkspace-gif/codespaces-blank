@@ -1,0 +1,110 @@
+<?php
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/common.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/user_info.lib");
+
+define('TABLE_USER_FONS','user_fons');
+define('FIELD_USER_FONS','');
+define('TABLE_USER_FON_ARTIKULS','user_fon_artikuls');
+define('FIELD_USER_FON_ARTIKULS','');
+
+define('USER_FON_FLAG_HUMAN',  0x01);
+define('USER_FON_FLAG_MAGMAR', 0x02);
+define('USER_FON_FLAG_MALE',   0x04);
+define('USER_FON_FLAG_FEMALE', 0x08);
+define('USER_FON_FLAG_UNIQUE', 0x10);
+
+function user_fon_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff, TABLE_USER_FONS, $ref, $add);
+}
+
+function user_fon_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff, TABLE_USER_FONS, $ref, $add);
+}
+
+function user_fon_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_USER_FONS, $ref, $add);
+}
+
+function user_fon_save($param) {
+    global $db_diff;
+    return common_save($db_diff, TABLE_USER_FONS, $param, FIELD_USER_FONS);
+}
+
+function user_fon_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff, TABLE_USER_FONS, $ref, $add);
+}
+
+function user_fon_check_expired($user_id) {
+    $expire_list = user_fon_list(array('user_id' => $user_id), sql_pholder(' AND (dtime > 0 AND dtime <= ?) ', time_current()));
+    foreach ($expire_list as $expire_fon) {
+        $artikul = user_fon_artikul_get($expire_fon['artikul_id']);
+        user_fon_delete($expire_fon);
+        logserv_log_note(array(
+            'note' => sprintf(translate('Удаление фона %s.'), $artikul['title']),
+            'comment' => translate('Фон удален по сроку годности.'),
+        ),$user_id);
+    }
+
+    $user_info = user_info_get($user_id);
+    if (!$user_info['fon_id']) return false; //TODO: Сюда станадртный фон будем писать дефолтный
+    $fon = user_avatar_get($user_info['fon_id']);
+    if (!$fon) {
+        user_info_save(array(
+            '_set' => ' fon_id = 0 ',
+            '_add' => sql_pholder(' AND uid = ? ', $user_id),
+        )); //TODO: Установим ФОН НИКАКОЙ!
+        return false;
+    }
+    return $fon;
+}
+
+function user_fon_check_avail($user, $fon_artikul) {
+    $flags = $fon_artikul['flags'];
+    if ($flags & USER_FON_FLAG_UNIQUE) return false; //TODO:Уникальный фоны всем доступны ЙОДА
+
+    $avail = false;
+    if ($user['kind'] == KIND_HUMAN) $avail = ($avail || ($flags & USER_FON_FLAG_HUMAN));
+    if ($user['kind'] == KIND_MAGMAR) $avail = ($avail || ($flags & USER_FON_FLAG_MAGMAR));
+    if ($user['gender'] == GENDER_MALE) $avail = ($avail || ($flags & USER_FON_FLAG_MALE));
+    if ($user['gender'] == GENDER_FEMALE) $avail = ($avail || ($flags & USER_FON_FLAG_FEMALE));
+    return $avail;
+}
+
+function user_fon_artikul_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff, TABLE_USER_FON_ARTIKULS, $ref, $add);
+}
+
+function user_fon_artikul_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff, TABLE_USER_FON_ARTIKULS, $ref, $add);
+}
+
+function user_fon_artikul_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_USER_FON_ARTIKULS, $ref, $add);
+}
+
+function user_fon_artikul_save($param) {
+    global $db_diff;
+    return common_save($db_diff, TABLE_USER_FON_ARTIKULS, $param, FIELD_USER_FON_ARTIKULS);
+}
+
+function user_fon_artikul_delete($artikul_id) {
+    global $db_diff;
+    if (!$artikul_id) return false;
+    $fon_ids = get_hash(user_fon_list(array('artikul_id' => $artikul_id)), 'id', 'id');
+    user_info_save(array(
+        '_set' => ' fon_id = 0 ',
+        '_add' => sql_pholder(' AND fon_id IN (?@) ', $fon_ids),
+    ));
+    user_fon_delete(array('id' => $fon_ids));
+    return common_delete($db_diff, TABLE_USER_FON_ARTIKULS, array('id' => $artikul_id));
+}
+
+

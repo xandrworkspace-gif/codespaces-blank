@@ -1,0 +1,51 @@
+<?
+
+// Имена и поля таблиц
+define('TABLE_SOC_STAT','soc_stat');
+define('FIELD_SOC_STAT','');
+
+define('SOC_STAT_TYPE_ASSOC', 1);
+define('SOC_STAT_TYPE_INVITE', 2);
+define('SOC_STAT_TYPE_MESSAGE', 3);
+define('SOC_STAT_TYPE_COUNT', 4);
+
+function soc_stat_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_SOC_STAT,$ref,$add);
+}
+
+function soc_stat_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_SOC_STAT,$ref,$add);
+}
+
+function soc_stat_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_SOC_STAT, $ref, $add);
+}
+
+function soc_stat_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_SOC_STAT,$param,FIELD_SOC_STAT);
+}
+
+function soc_stat_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_SOC_STAT,$ref,$add);
+}
+
+function soc_stat_action($soc_system_id = 0, $code = '') {
+	global $db_diff;
+	$data = array();
+	$data[] = array(
+		'day_start' => strtotime(date('Y-m-d')),
+		'soc_system_id' => $soc_system_id,
+		'stat_type' => $code,
+		'value' => 1,
+	);
+	
+	$data_fields = array('day_start', 'soc_system_id', 'stat_type', 'value');
+	$update_fields = array(array('field' => 'value', 'value' => 'value+1'));
+	
+	common_multi_update($db_diff, TABLE_SOC_STAT, $data, $data_fields, $update_fields);
+}

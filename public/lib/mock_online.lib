@@ -1,0 +1,4 @@
+<?php
+
+define('TABLE_MOCK_ONLINE_USERS', 'mock_online_users');
+

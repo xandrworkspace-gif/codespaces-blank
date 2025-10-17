@@ -1,0 +1,497 @@
+<? # $Id: logserv.lib,v 1.42 2010-02-02 11:08:36 p.knoblokh Exp $
+
+// Имена и поля таблиц
+define('TABLE_LOGSERV_BUFFER','logserv_buffer');
+define('FIELD_LOGSERV_BUFFER','');
+define('TABLE_LOGSERV_BUFFER_CROSSSERVER','logserv_buffer_crossserver');
+define('FIELD_LOGSERV_BUFFER_CROSSSERVER','');
+define('TABLE_LOGSERV_ACCESS_LOG','logserv_access_log');
+define('FIELD_LOGSERV_ACCESS_LOG','');
+
+define('LOGSERV_PHP', '/logserv/logserv.php');
+
+// тип записи
+define('LS_TYPE_ACTION',    1);	// действие
+define('LS_TYPE_OPERATION', 2);	// операция
+define('LS_TYPE_NOTE',      3);	// примечание
+define('LS_TYPE_MARK',      4);	// заметка
+
+// тип операции
+define('LS_OPTYPE_MONEY',   1);	// деньги
+define('LS_OPTYPE_ART',     2);	// вещь
+
+// флаги
+define('LS_FLAG_REVERSE',    0x00001);	// обратная запись
+define('LS_FLAG_SUSPICIOUS', 0x00002);	// подозрительная запись
+define('LS_FLAG_IMPORTANT',  0x00004);	// важная запись
+
+
+// структура ключей
+$logserv_keys = array(
+	array(	// INT
+		0x00000001 => 'ctime',            // время
+		0x00000002 => 'type',             // тип записи
+		0x00000004 => 'flags',            // флаги
+		0x00000008 => 'opp_id',           // контрагент
+		0x00000010 => 'opp_level',        // уровень контрагента
+		0x00000020 => 'opp_clan_id',      // клан контрагента
+		0x00000040 => 'src_code',         // код источника
+
+		// действие
+		0x00000100 => 'act_code',         // код действия
+		0x00000200 => 'act_priority',     // приоритет действия
+
+		// операция
+		0x00001000 => 'optype',           // тип операции
+		0x00002000 => 'money_type',       // тип денег
+		0x00004000 => 'money_amount',     // сумма
+		0x00008000 => 'art_id',           // вещь
+		0x00010000 => 'art_artikul_id',   // артикул вещи
+		0x00020000 => 'art_cnt',          // количество
+
+		// общие ключи
+		0x00100000 => 'int1',
+		0x00200000 => 'int2',
+		0x00400000 => 'int3',
+		0x00800000 => 'int4',
+		0x01000000 => 'int5',
+		0x02000000 => 'int6',
+		0x04000000 => 'int7',
+		0x08000000 => 'int8',
+	),
+	array(	// STR
+		0x00000001 => 'trace',            // след вызова
+		0x00000002 => 'comment',          // комментарий
+		0x00000004 => 'opp_nick',         // ник контрагента
+
+		0x00000100 => 'note',             // текст примечания
+		0x00000200 => 'mark',             // текст заметки
+
+		// общие ключи
+		0x00100000 => 'str1',
+		0x00200000 => 'str2',
+		0x00400000 => 'str3',
+		0x00800000 => 'str4',
+	),
+);
+
+// Коды источников
+// Внимание!!! При автоматическом определении приоритет у первых в списке
+$logserv_src_code_info = array(
+	1010 => array('code' => 1010, 'title' => translate('Банк'), 'regexp' => '(bank|tbg_new)'),
+	1020 => array('code' => 1020, 'title' => translate('Клан'), 'regexp' => 'clan'),
+	1030 => array('code' => 1030, 'title' => translate('Тюрьма'), 'regexp' => 'jail'),
+	1040 => array('code' => 1040, 'title' => translate('Магазин'), 'regexp' => 'store'),
+	1050 => array('code' => 1050, 'title' => translate('Группа'), 'regexp' => 'party'),
+	1060 => array('code' => 1060, 'title' => translate('Торговля'), 'regexp' => 'trade'),
+	1070 => array('code' => 1070, 'title' => translate('Крафт'), 'regexp' => '(craft|recipe)'),
+	1080 => array('code' => 1080, 'title' => translate('Квест'), 'regexp' => '(quest|npc)'),
+	1090 => array('code' => 1090, 'title' => translate('Почта'), 'regexp' => 'post'),
+	1100 => array('code' => 1100, 'title' => translate('Аукцион'), 'regexp' => 'auction'),
+	1110 => array('code' => 1110, 'title' => translate('Клановая казна'), 'regexp' => 'cell'),
+
+	3010 => array('code' => 3010, 'title' => translate('Лог-сервис'), 'regexp' => 'logserv'),
+	3020 => array('code' => 3020, 'title' => translate('Крон'), 'regexp' => 'cron'),
+	3030 => array('code' => 3030, 'title' => translate('Админка'), 'regexp' => 'admin'),
+
+	5010 => array('code' => 5010, 'title' => translate('Модуль действий'), 'regexp' => 'action\.lib'),
+	5020 => array('code' => 5020, 'title' => translate('Модуль боев'), 'regexp' => 'fight\.lib'),
+	5030 => array('code' => 5030, 'title' => translate('Модуль бонусов'), 'regexp' => 'bonus\.lib'),
+);
+
+// Коды действий
+$logserv_act_code_info = array(
+	1010 => array('code' => 1010, 'title' => translate('Игровое действие')),
+	1020 => array('code' => 1020, 'title' => translate('Обмен валюты')),
+	1021 => array('code' => 1021, 'title' => translate('Получение бонуса размена')),
+	1030 => array('code' => 1030, 'title' => translate('Покупка вещей')),
+	1031 => array('code' => 1031, 'title' => translate('Сдача скупщику')),
+	1040 => array('code' => 1040, 'title' => translate('Ремонт вещей')),
+	1050 => array('code' => 1050, 'title' => translate('Продажа вещей в скупку')),
+	1060 => array('code' => 1060, 'title' => translate('Торговля')),
+	1070 => array('code' => 1070, 'title' => translate('Распределение лута')),
+	1080 => array('code' => 1080, 'title' => translate('Крафт')),
+	1090 => array('code' => 1090, 'title' => translate('Вход в игру')),
+	1091 => array('code' => 1091, 'title' => translate('Смена пароля')),
+	1092 => array('code' => 1092, 'title' => translate('Смена вопроса')),
+	1093 => array('code' => 1093, 'title' => translate('Выход из игры')),
+	1100 => array('code' => 1100, 'title' => translate('Отправка почты')),
+	1101 => array('code' => 1101, 'title' => translate('Получение почты')),
+	1102 => array('code' => 1102, 'title' => translate('Отправка смс')),
+	1110 => array('code' => 1110, 'title' => translate('Добавление ценностей в казну клана')),
+	1111 => array('code' => 1111, 'title' => translate('Получение ценностей из казны клана')),
+	1200 => array('code' => 1200, 'title' => translate('Конфискация')),
+	1300 => array('code' => 1300, 'title' => translate('Получение уровня здания')),
+	1301 => array('code' => 1301, 'title' => translate('Трата энергии')),
+	1302 => array('code' => 1301, 'title' => translate('Получение наёмного энергии')),
+);
+
+
+$logserv_type_hash = array(
+	LS_TYPE_ACTION => translate('Действие'),
+	LS_TYPE_OPERATION => translate('Операция'),
+	LS_TYPE_NOTE => translate('Примечание'),
+	LS_TYPE_MARK => translate('Заметка'),
+);
+
+$logserv_optype_hash = array(
+	LS_OPTYPE_MONEY => translate('Деньги'),
+	LS_OPTYPE_ART => translate('Вещь'),
+);
+
+
+function logserv_error($str) {
+	$bt = debug_backtrace();
+	$t = array();
+	foreach ($bt as $v) $t[] = basename($v['file']).':'.$v['line'];
+	$trace = implode(',',array_reverse($t));
+	$str = sprintf("(logserv) %d: %s (trace: %s)",getmypid(),$str,$trace);
+	logfile(PATH_LOGS.'logserv.log',$str);
+//	error_log($str);
+}
+
+function &logserv_subst_keys(&$in, $reverse=false) {
+	global $logserv_keys;
+
+	$out = array();
+	if (!$reverse) {	// символьные --> табличные
+		for ($i=0; $i<=1; $i++) {
+			foreach ($logserv_keys[$i] as $k=>$v) {
+				if (!array_key_exists($v,$in)) continue;
+				$out[$i][$k] = $in[$v];
+			}
+		}
+	} else {	// табличные --> символьные
+		for ($i=0; $i<=1; $i++) {
+			foreach ($in[$i] as $k=>$v) {
+				$k = $logserv_keys[$i][$k];
+				if (!$k) continue;
+				$out[$k] = $v;
+			}
+		}
+	}
+	return $out;
+}
+
+function logserv_fill_opponent(&$in, &$opponent) {
+	list($in['opp_id'],$in['opp_nick'],$in['opp_level']) = array_values(get_params($opponent,'id,nick,level'));
+	if ($opponent['clan_id']) $in['opp_clan_id'] = $opponent['clan_id'];
+}
+
+// точка логирования
+function logserv_log_record($in, $uid) {
+	global $logserv_keys, $logserv_src_code_info, $auth_hash;
+
+	if (!$in || !$uid) {
+		logserv_error("Invalid arguments");
+		return false;
+	}
+	$bt = debug_backtrace();
+	$files = $t = array();
+	foreach ($bt as $v) {
+		if ($v['file'] == __FILE__) continue;
+		$fn = basename($v['file']);
+		$files[] = $fn;
+		$t[] = $fn.':'.$v['line'];
+	}
+	$files = array_reverse($files);
+	$trace = implode(' ',array_reverse($t));
+	if (!isset($in['src_code'])) {	// определяем код источника
+		foreach ($logserv_src_code_info as $k=>$v) {
+			if (!preg_match('/'.$v['regexp'].'/',$trace)) continue;
+			$in['src_code'] = $k;
+			break;
+		}
+	}
+	$in['ctime'] = time_current();
+	$in['trace'] = $trace;
+	$data = logserv_subst_keys($in);
+	$user_auth = cache_fetch($auth_hash,$uid,'auth_get');
+	// записываем в буффер
+	if ($user_auth['server_id'] && ($user_auth['server_id'] != SERVER_ID)) {
+		logserv_buffer_crossserver_save(array(
+			'uid' => $uid,
+			'ctime' => $in['ctime'],
+			'type' => intval($in['type']),
+			'data' => serialize($data),
+		));
+	} else {
+		logserv_buffer_save(array(
+			'uid' => $uid,
+			'ctime' => $in['ctime'],
+			'type' => intval($in['type']),
+			'data' => serialize($data),
+		));
+	}
+	return true;
+}
+
+// сброс буфера
+function logserv_flush_buffer() {
+	require_once("include/logserv.inc");
+
+	$container = new lsContainer();
+	// Для оптимизации сохранения - позволяет без архивирования сохранять несколько рядов для каждого пользователя 
+	$container->useOpenCache = true;
+	$data = logserv_buffer_list(false," ORDER BY id LIMIT 1000", array('_index_hint' => 'FORCE INDEX (PRI)'));
+	$data = make_hash($data, 'uid', true);
+	$ids = array();
+	foreach ($data as $uid=>$rows) {
+		$container->open($uid);
+		foreach ($rows as $item) {
+			$ids[] = intval($item['id']);
+			$d = unserialize($item['data']);
+			if (!is_array($d)) {
+				logserv_error("Can't unserialize data: $d");
+				continue;
+			}
+			if (!$container->saveRecord($d[0],$d[1],$item['ctime'])) logserv_error("Can't save record");
+		}
+		$container->close();
+	}
+	if ($ids) {
+		logserv_buffer_delete(array('id' => $ids));
+	}
+
+    return true;
+}
+
+// сброс буфера
+function logserv_flush_buffer_v2($limit = 10000) {
+    require_once("include/logserv.inc");
+
+    $container = new lsContainer();
+    // Для оптимизации сохранения - позволяет без архивирования сохранять несколько рядов для каждого пользователя
+    $container->useOpenCache = true;
+    $data = logserv_buffer_list(false," ORDER BY id LIMIT ".$limit, array('_index_hint' => 'FORCE INDEX (PRI)'));
+    $data = make_hash($data, 'uid', true);
+    $ids = array();
+    foreach ($data as $uid=>$rows) {
+    	echo 'start:'.$uid.PHP_EOL;
+        $container->open($uid);
+        foreach ($rows as $item) {
+            echo 'row:'.$item['id'].PHP_EOL;
+            $ids[] = intval($item['id']);
+            $d = unserialize($item['data']);
+            if (!is_array($d)) {
+                logserv_error("Can't unserialize data: $d");
+                continue;
+            }
+            if (!$container->saveRecord($d[0],$d[1],$item['ctime'])) logserv_error("Can't save record");
+        }
+        $container->close();
+        echo 'end:'.$uid.PHP_EOL;
+    }
+    if ($ids) {
+    	if($limit >= 10000){
+    		logserv_buffer_delete(false, ' AND id >= '.min($ids).' AND id <= '.max($ids));
+		}else{
+            logserv_buffer_delete(array('id' => $ids));
+		}
+    }
+
+    return true;
+}
+
+// Логирование действия
+function logserv_log_action($in, $user, $opponent=false) {
+	global $logserv_act_code_info;
+	global $user_hash, $auth_hash, $action_hash;
+
+	if (!$in || !$user) {
+		logserv_error("Invalid arguments");
+		return false;
+	}
+	$in['type'] = LS_TYPE_ACTION;
+	$in['act_code'] = intval($in['act_code']);
+	if ($in['action']) {	// Выполнение игрового действия
+		require_once("lib/action.lib");
+		$action = is_array($in['action']) ? $in['action'] : cache_fetch($action_hash,intval($in['action']),'action_get');
+		if (!$action) {
+			logserv_error("Can't get action information");
+			return false;
+		}
+		$in['act_code'] = reset(array_keys($logserv_act_code_info));
+		$in['int1'] = $action['action_id'] ? $action['action_id'] : $action['id'];
+		$in['str1'] = $action['title'];
+	}
+	if ($opponent) {	// создаем обратную запись и определяем контрагента
+		if (!is_array($user)) $user = cache_fetch($user_hash,intval($user),'user_get');
+		if (!is_array($opponent)) $opponent = cache_fetch($user_hash,intval($opponent),'user_get');
+		if (!$user || !$opponent) {
+			logserv_error("Can't get user information");
+			return false;
+		}
+		$user_auth = cache_fetch($auth_hash,$user['id'],'auth_get');
+		$opponent_auth = cache_fetch($auth_hash,$opponent['id'],'auth_get');
+		if ($user_auth['last_cid'] && ($user_auth['last_cid'] == $opponent_auth['last_cid'])) $in['flags'] |= LS_FLAG_SUSPICIOUS;
+		$in2 = $in;
+		$in2['flags'] |= LS_FLAG_REVERSE;
+		logserv_fill_opponent($in,$opponent);
+		logserv_fill_opponent($in2,$user);
+		logserv_log_record($in,$user['id']);
+		logserv_log_record($in2,$opponent['id']);
+	} else {	// делаем единичную запись
+		$uid = is_array($user) ? $user['id'] : intval($user);
+		logserv_log_record($in,$uid);
+	}
+	return true;
+}
+
+// Логирование операции
+function logserv_log_operation($in, $user, $opponent=false) {
+	global $user_hash, $auth_hash, $artikul_hash;
+
+	if (!$in || !$user) {
+		logserv_error("Invalid arguments");
+		return false;
+	}
+	$in['type'] = LS_TYPE_OPERATION;
+	if ($in['money_type']) {	// деньги
+		$in['optype'] = LS_OPTYPE_MONEY;
+		$in['money_amount'] = intval(round($in['amount']*100));
+	} elseif ($in['artifact'] || $in['artikul']) {	// вещь
+		require_once("lib/artifact.lib");
+		$art = false;
+		if ($in['artifact']) {
+			$art = is_array($in['artifact']) ? $in['artifact'] : artifact_get_safe(intval($in['artifact']));
+			if ($art) {
+				$artikul = artifact_artikul_get($art['artikul_id']);
+				$art['title'] = $artikul['title'];
+				$art['price'] = $artikul['price'];
+				$art['price_type'] = $artikul['price_type'];
+			}
+		}
+		elseif ($in['artikul']) {
+			$art = is_array($in['artikul']) ? $in['artikul'] : cache_fetch($artikul_hash,intval($in['artikul']),'artifact_artikul_get');
+			if (!$art['artikul_id']) $art['artikul_id'] = $art['id'];
+			unset($art['id']);
+		}
+		if (!$art) {
+			logserv_error("Can't get artifact information");
+			return false;
+		}
+		if ($in['force_flags']) $art['flags'] |= intval($in['force_flags']);
+		$in['optype'] = LS_OPTYPE_ART;
+		$in['art_id'] = $art['id'];
+		$in['art_artikul_id'] = $art['artikul_id'];
+		$in['art_cnt'] = intval(isset($in['cnt']) ? $in['cnt'] : $art['cnt']);
+		$in['int1'] = intval(round($art['price']*100));
+		$in['int2'] = $art['price_type'];
+		$in['int3'] = $art['durability'];
+		$in['int4'] = $art['durability_max'];
+		$in['int5'] = $art['time_expire'];
+		$in['int6'] = $art['enchant_id'];
+		$in['int7'] = $art['flags'];
+		$in['str1'] = $art['title'];
+	} else {
+		logserv_error("Can't define operation type");
+		return false;
+	}
+	if ($opponent && $user != $opponent) {	// создаем обратную запись и определяем контрагента
+		if (!is_array($user)) $user = cache_fetch($user_hash,intval($user),'user_get');
+		if (!is_array($opponent)) $opponent = cache_fetch($user_hash,intval($opponent),'user_get');
+		if (!$user || !$opponent) {
+			logserv_error("Can't get user information");
+			return false;
+		}
+		$user_auth = cache_fetch($auth_hash,$user['id'],'auth_get');
+		$opponent_auth = cache_fetch($auth_hash,$opponent['id'],'auth_get');
+		if ($user_auth['last_cid'] && ($user_auth['last_cid'] == $opponent_auth['last_cid'])) $in['flags'] |= LS_FLAG_SUSPICIOUS;
+		$in2 = $in;
+		$in2['flags'] |= LS_FLAG_REVERSE;
+		$k = $in2['optype'] == LS_OPTYPE_MONEY ? 'money_amount' : 'art_cnt';
+		$in2[$k] *= -1;
+		logserv_fill_opponent($in,$opponent);
+		if (!$in['not_log_opponent'])
+			logserv_fill_opponent($in2,$user);
+		logserv_log_record($in,$user['id']);
+		if (!$in['not_log_opponent'])
+			logserv_log_record($in2,$opponent['id']);
+	} else {	// делаем единичную запись
+		$uid = is_array($user) ? $user['id'] : intval($user);
+		logserv_log_record($in,$uid);
+	}
+	return true;
+}
+
+// Логирование примечания/заметки
+function logserv_log_note($in, $user, $opponent=false) {
+	global $user_hash;
+
+	if (!$in || !$user) {
+		logserv_error("Invalid arguments");
+		return false;
+	}
+	if ($in['note']) $in['type'] = LS_TYPE_NOTE;
+	elseif ($in['mark']) $in['type'] = LS_TYPE_MARK;
+	else {
+		logserv_error("Can't define note/mark type");
+		return false;
+	}
+	if ($opponent) {	// определяем контрагента
+		if (!is_array($opponent)) $opponent = cache_fetch($user_hash,intval($opponent),'user_get');
+		if (!$opponent) {
+			logserv_error("Can't get user information");
+			return false;
+		}
+		logserv_fill_opponent($in,$opponent);
+	}
+	$uid = is_array($user) ? $user['id'] : intval($user);
+	logserv_log_record($in,$uid);
+	return true;
+}
+
+// ------------------------------------------------------------------------------------------------
+
+function logserv_buffer_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_LOGSERV_BUFFER,$ref,$add);
+}
+
+function logserv_buffer_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,TABLE_LOGSERV_BUFFER,$ref,$add);
+}
+
+function logserv_buffer_list($ref=false, $add='', $param = array()) {
+	global $db_diff;
+	return common_list($db_diff,TABLE_LOGSERV_BUFFER,$ref,$add,'*',false,$param);
+}
+
+function logserv_buffer_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_LOGSERV_BUFFER,$param,FIELD_LOGSERV_BUFFER);
+}
+
+function logserv_buffer_delete($ref, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_LOGSERV_BUFFER,$ref,$add);
+}
+
+function logserv_access_log_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_LOGSERV_ACCESS_LOG,$ref,$add);
+}
+
+function logserv_access_log_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_LOGSERV_ACCESS_LOG,$param,FIELD_LOGSERV_ACCESS_LOG);
+}
+
+function logserv_access_log_delete($ref, $add) {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_LOGSERV_ACCESS_LOG,$ref,$add);	
+}
+
+function logserv_buffer_crossserver_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_LOGSERV_BUFFER_CROSSSERVER,$param,FIELD_LOGSERV_BUFFER_CROSSSERVER);
+}
+
+function logserv_buffer_crossserver_delete($ref, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_LOGSERV_BUFFER_CROSSSERVER,$ref,$add);
+}
+
+?>

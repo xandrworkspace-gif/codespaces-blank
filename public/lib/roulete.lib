@@ -1,0 +1,330 @@
+<?
+require_once("lib/restriction.lib");
+
+
+define('TABLE_ROULETE','roulete');
+define('TABLE_ROULETE_SPINS','roulete_spins');
+define('TABLE_ROULETE_GROUPS','roulete_groups');
+define('TABLE_BLITZ', 'blitz');
+define('ROULETE_BONUS', 11579);
+define('BLITZ_CNT_DAY', 5); //5 попыток в день
+define('BLITZ_RAZBROS', 5); //5 варианта примера
+
+define('ROULETE_ARTIKUL_NOWIN', 10621); //Проигрыш
+
+define('ROULETE_NS', 123456789); //Че это не знает никто
+
+define('ROULETE_FREE_SPINS', 	3); //3 бесплатных спина
+define('ROULETE_GLOBAL_PROB', 100000); //Глобальный проб, можно в будущем вынести в админку? Думаю не стоит!
+
+define('ROULETE_FLAG_ADMIN', 	0x0000001); //Только для администратора
+define('ROULETE_FLAG_CHAT', 	0x0000002); //Выводить в чат
+
+define('ROULETE_GAMETYPE_1', 1);
+define('ROULETE_GAMETYPE_2', 2);
+
+$roulete_price_hash = array(
+    ROULETE_GAMETYPE_1 => array(
+        'artikul_id' => 11483,
+        'artikul_cnt' => 1,
+    ),
+    ROULETE_GAMETYPE_2 => array(
+        'artikul_id' => 11482,
+        'artikul_cnt' => 1,
+    ),
+);
+
+$roulete_flags_hash = array(
+    ROULETE_FLAG_ADMIN => 'Только для администратора',
+    ROULETE_FLAG_CHAT => 'Выводить в чат всем',
+);
+
+#Работа с базой данных
+function roulete_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ROULETE,$ref,$add);
+}
+
+function roulete_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_ROULETE,$ref,$add,$field_list);
+}
+
+function roulete_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ROULETE, $ref, $add);
+}
+
+function roulete_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ROULETE,$param);
+}
+
+function roulete_delete($ref, $add='') {
+    global $db_path;
+    if (is_array($ref)) return false;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ROULETE,$ref,$add);
+    return true;
+}
+
+//SPINS
+
+function roulete_spins_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ROULETE_SPINS,$ref,$add);
+}
+
+function roulete_spins_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_ROULETE_SPINS,$ref,$add,$field_list);
+}
+
+function roulete_spins_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ROULETE_SPINS, $ref, $add);
+}
+
+function roulete_spins_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ROULETE_SPINS,$param);
+}
+
+function roulete_spins_delete($ref, $add='') {
+    global $db_path;
+    if (is_array($ref)) return false;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ROULETE_SPINS,$ref,$add);
+    return true;
+}
+
+//GROUPS
+
+function roulete_groups_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ROULETE_GROUPS,$ref,$add);
+}
+
+function roulete_groups_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_ROULETE_GROUPS,$ref,$add,$field_list);
+}
+
+function roulete_groups_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ROULETE_GROUPS, $ref, $add);
+}
+
+function roulete_groups_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ROULETE_GROUPS,$param);
+}
+
+function roulete_groups_delete($ref, $add='') {
+    global $db_path;
+    if (is_array($ref)) return false;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ROULETE_GROUPS,$ref,$add);
+    return true;
+}
+
+
+function roulete_spins_init($user_id = false){
+    if(!$user_id) return false;
+    $roulete_spins = roulete_spins_get(array('user_id' => $user_id));
+    if(!$roulete_spins){
+        $roulete_spins = array(
+            'user_id' => $user_id,
+            'spins' => ROULETE_FREE_SPINS,
+        );
+        roulete_spins_save($roulete_spins);
+    }
+    return $roulete_spins;
+}
+
+//Это временная мера)
+function roulete_spin($param = array(), $user = array()) {
+    global $roulete_list;
+
+    $roulete_spin = array(
+        'spin' => -1, //Default
+    );
+
+    if(!$roulete_list) return $roulete_spin;
+    $roulete_list_temp = $roulete_list;
+
+    //Узнаем индексы) уф да говнокодим пох))) легче же
+    unset($roulete_list_temp[-1]);
+    $_id = 0;
+    foreach ($roulete_list_temp as $k=>$roulete_temp) {
+        if($k == -1) {
+            $roulete_list_temp[$k]['_id'] = $k;
+        }else{
+            $roulete_list_temp[$k]['_id'] = $_id;
+            $_id++;
+        }
+    }
+
+    if(!$roulete_list_temp) return $roulete_spin;
+    foreach($roulete_list_temp as $k=>$roulete) {
+        if($param['prob']){
+            $drop = calculate_chanse_roulete($roulete['prob'], $param['prob']);
+            //vardump($roulete['prob']);
+            //vardump($param['prob']);
+            //vardump($drop);
+        }else{
+            $drop = calculate_chanse_roulete($roulete['prob']);
+        }
+
+        if($drop){
+            $roulete_list_temp[$k]['drop'] = true;
+        }else{
+            unset($roulete_list_temp[$k]);
+        }
+    }
+
+    //vardump($roulete_list_temp);
+
+    if(!$roulete_list_temp){
+        return $roulete_spin;
+    }
+    $roulete_prob_win = (defined('ROULETE_PROB_WIN') && ROULETE_PROB_WIN ? ROULETE_PROB_WIN : 50);
+    foreach($roulete_list_temp as $k=>$roulete){
+        $drop = calculate_chanse_roulete($roulete_prob_win, 100);
+        //vardump($drop);
+        if($drop){
+            $roulete_list_temp[$k]['drop'] = true;
+        }else{
+            unset($roulete_list_temp[$k]);
+        }
+    }
+    if(!$roulete_list_temp){
+        return $roulete_spin;
+    }
+
+    $restriction_object_list = array();
+    if($user) restriction_get_dependent($user,$restriction_object_list);
+
+    foreach($roulete_list_temp as $k=>$roulete){
+        $roulete['object_class'] = OBJECT_CLASS_ROULETE_ITEM;
+        $out_restriction = restriction_check(0,array($roulete),$restriction_object_list);
+        if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) {
+            unset($roulete_list_temp[$k]);
+        }
+    }
+
+    //vardump($roulete_list_temp);
+
+    if(!$roulete_list_temp){
+        return $roulete_spin;
+    }
+
+    //vardump(array_rand($roulete_list_temp)); exit;
+    $roulete_spin['spin'] = array_rand($roulete_list_temp);
+    $roulete_spin['spin_id'] = $roulete_list_temp[$roulete_spin['spin']]['_id'];
+    return $roulete_spin;
+}
+
+function calculate_chanse_roulete($chanse = -1, $prob = 1000) {
+    $rand = mt_rand(0,$prob);
+    if($rand <= $chanse){return true;}
+    return false;
+}
+
+function roulete_get_count($user_id){
+    global $roulete_price_hash;
+    $arr = array();
+    foreach ($roulete_price_hash as $gtype=>$roulete_ginfo){
+        switch ($gtype){
+            case ROULETE_GAMETYPE_1:
+            case ROULETE_GAMETYPE_2:
+                $arr[$gtype] = floor(artifact_amount($roulete_ginfo['artikul_id'], $user_id) / $roulete_ginfo['artikul_cnt']);
+                break;
+        }
+    }
+    return $arr;
+}
+
+
+//BLITZ
+function blitz_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_BLITZ,$ref,$add);
+}
+
+function blitz_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_BLITZ,$ref,$add,$field_list);
+}
+
+function blitz_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_BLITZ, $ref, $add);
+}
+
+function blitz_save($param, $add = '') {
+    global $db_path;
+    return common_save($db_path,TABLE_BLITZ,$param,'','id', $add);
+}
+
+function blitz_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_BLITZ,$ref,$add);
+    return true;
+}
+
+$math_making = array(
+    1 => array('id' => 1, 'oper' => '+', 'min' => 0, 'max' => 5),
+    2 => array('id' => 2, 'oper' => '-', 'min' => 0, 'max' => 5),
+    3 => array('id' => 3, 'oper' => '*', 'min' => 0, 'max' => 3),
+);
+
+define('BLITZ_AWARD_TYPE_MONEY', 1);
+$blitz_awards = array(
+    0 => array('id' => 0, 'type' => BLITZ_AWARD_TYPE_MONEY, 'money_type' => MONEY_TYPE_GAME, 'money' => 10),
+    1 => array('id' => 1, 'type' => BLITZ_AWARD_TYPE_MONEY, 'money_type' => MONEY_TYPE_GAME, 'money' => 5),
+);
+
+function blitz_generate(){
+    global $math_making;
+
+    $math = $math_making[mt_rand(1,3)];
+    $x = mt_rand($math['min'],$math['max']);
+    $y = mt_rand($math['min'],$math['max']);
+    $primer = array();
+    $otvet = 0;
+    if($math['oper'] == '+'){$otvet = $x + $y;}
+    elseif($math['oper'] == '-'){$otvet = $x - $y;}
+    elseif ($math['oper'] == '*'){$otvet = $x * $y;}
+    $valid_otvet = mt_rand(1, BLITZ_RAZBROS);
+    $primer['otvet'] = $otvet;
+    $primer['valud'] = array();
+    for($i = 1; $i <= BLITZ_RAZBROS; $i++){
+        if($valid_otvet == $i){
+            $primer['valud'][$i] = $i;
+            $primer['pr_'.$i] = $x.$math['oper'].$y;
+        }else{
+            $t_x = mt_rand($math['min'],$math['max']); $t_y = mt_rand($math['min'],$math['max']); $t_otvet = 0;
+            if($math['oper'] == '+'){$t_otvet = $t_x + $t_y;}
+            elseif($math['oper'] == '-'){$t_otvet = $t_x - $t_y;}
+            elseif ($math['oper'] == '*'){$t_otvet = $t_x * $t_y;}
+            if($t_otvet == $otvet){
+                $primer['valud'][$i] = $i;
+            }
+            $primer['pr_'.$i] = $t_x.$math['oper'].$t_y;
+        }
+    }
+    return $primer;
+}
+
+function blitz_cron(){
+    blitz_save(array('_set' => sql_pholder(' cnt = ?, ctime = ?', BLITZ_CNT_DAY, (mktime(23,59,59) + 1))), ' AND ctime <= '.time_current());
+}
+
+function roulete_open($session_user=array()){
+    if(((defined('ROULETTE_GLOBAL_OPEN_ADMIN') && ROULETTE_GLOBAL_OPEN_ADMIN) && $session_user['flags'] & USER_FLAG_ADMIN) || (defined('ROULETTE_GLOBAL_OPEN') && ROULETTE_GLOBAL_OPEN)) {
+        return true;
+    }
+    return false;
+}

@@ -1,0 +1,134 @@
+<?php
+
+
+define('TABLE_ADV_MEDAL', 'adv_medal');
+define('TABLE_ADV_MEDAL_ITEM', 'adv_medal_item');
+define('TABLE_ADV_MEDAL_USER', 'adv_medal_user');
+
+
+define('ADV_MEDAL_FLAG_ACTIVE', 0x0000001); //Активная медаль
+define('ADV_MEDAL_FLAG_ADMIN',  0x0000002); //Только для админов
+define('ADV_MEDAL_FLAG_OTHER',  0x0000004); //...
+
+define('ADV_MEDAL_MAX_CNT_UPDATE', 10);
+
+$medal_level_color_hash = array(
+    0 => '#666666',
+    1 => '#666666',
+    2 => '#339900',
+    3 => '#3300ff',
+    4 => '#990099',
+    5 => '#ff0000',
+    6 => '#22BDC2',
+    7 => '#a2a528',
+    8 => '#009688',
+    9 => '#9b84a2',
+    10 => '#300',
+);
+
+
+$adv_medal_flags_hash = array(
+    ADV_MEDAL_FLAG_ACTIVE => 'Активный орден',
+    ADV_MEDAL_FLAG_ADMIN => 'Только для админов',
+    //ADV_MEDAL_FLAG_OTHER => '...',
+);
+
+define('ADV_MEDAL_ITEM_FLAG_BONUS',     0x0000001); //Можно получить только бонусом
+define('ADV_MEDAL_ITEM_FLAG_COMPLETE',  0x0000002); //Завершающая цепочку медаль
+define('ADV_MEDAL_ITEM_FLAG_CHAT',      0x0000004); //Писать в чат
+define('ADV_MEDAL_ITEM_FLAG_CHAT_ALL',  0x0000008); //Писать в чат всем
+
+$adv_medal_item_flags_hash = array(
+    ADV_MEDAL_ITEM_FLAG_BONUS => 'Можно получить только бонусом',
+    ADV_MEDAL_ITEM_FLAG_COMPLETE => 'Завершающая цепочку ордена',
+    ADV_MEDAL_ITEM_FLAG_CHAT => 'Писать в чат',
+    ADV_MEDAL_ITEM_FLAG_CHAT_ALL => 'Писать в чат всем',
+);
+
+#Работа с базой данных
+
+function adv_medal_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_MEDAL,$ref,$add);
+}
+
+function adv_medal_list($ref=false, $add='', $ex = false) {
+    global $db_path;
+    $list = common_list($db_path,TABLE_ADV_MEDAL,$ref,$add);
+    if($ex){
+        foreach ($list as $k=>$item){
+            $list[$k]['items'] = adv_medal_item_list(array('adv_medal_id' => $item['id']));
+        }
+    }
+    return $list;
+}
+
+function adv_medal_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path,TABLE_ADV_MEDAL,$ref,$add,true);
+}
+
+function adv_medal_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_MEDAL,$param);
+}
+
+function adv_medal_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_ADV_MEDAL,$ref,$add);
+}
+
+
+///////////////////////////////////////////
+
+function adv_medal_item_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_MEDAL_ITEM,$ref,$add);
+}
+
+function adv_medal_item_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_MEDAL_ITEM,$ref,$add);
+}
+
+function adv_medal_item_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path,TABLE_ADV_MEDAL_ITEM,$ref,$add,true);
+}
+
+function adv_medal_item_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_MEDAL_ITEM,$param);
+}
+
+function adv_medal_item_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_ADV_MEDAL_ITEM,$ref,$add);
+}
+
+///////////////////////////////////////////
+
+function adv_medal_user_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_MEDAL_USER,$ref,$add);
+}
+
+function adv_medal_user_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_MEDAL_USER,$ref,$add);
+}
+
+function adv_medal_user_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path,TABLE_ADV_MEDAL_USER,$ref,$add,true);
+}
+
+function adv_medal_user_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_MEDAL_USER,$param);
+}
+
+function adv_medal_user_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_ADV_MEDAL_USER,$ref,$add);
+}

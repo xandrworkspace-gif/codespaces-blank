@@ -1,0 +1,431 @@
+<?
+// Имена и поля таблиц
+define('TABLE_FRIENDS','friends');
+define('FIELD_FRIENDS','');
+define('TABLE_FRIEND_RETURN_REQUESTS','friend_return_requests');
+define('FIELD_FRIEND_RETURN_REQUESTS','');
+
+define('FRIEND_REFERRALS_PAGE_COUNT', 20);
+
+define('FRIEND_SETTING_MEDAL_FLAG',     0x000001); //Получение медалей
+define('FRIEND_SETTING_LEVEL_FLAG',     0x000002); //Получение уровня
+define('FRIEND_SETTING_RANK_FLAG',      0x000004); //Получение звания
+define('FRIEND_SETTING_ENTER_FLAG',     0x000008); //Вход и выход из игры
+define('FRIEND_SETTING_PARTYF_FLAG',    0x000010); //Друг ищет группу
+define('FRIEND_SETTING_BG_FLAG',        0x000020); //Встал в очередь на Поле битвы
+
+define('FRIEND_SETTING_STATUS_INSTANCE_FLAG',   0x000040); //Статус инстансов
+define('FRIEND_SETTING_STAUS_BG_FLAG',          0x000080); //Поля битв
+define('FRIEND_SETTING_SHOW_MY_FRIENDS_FLAG',   0x000100); //Отображать тех, кто дружит со мной
+
+//Подарки
+define('TABLE_FRIENDS_GIFT', 'friends_gifts');
+define('TABLE_FRIENDS_GIFT_DAY', 'friends_gifts_day');
+
+//Подарки жетоны друже
+define('TABLE_FRIENDS_GIFT_TOKEN', 'friends_gifts_token');
+define('TABLE_FRIENDS_GIFT_DAY_TOKEN', 'friends_gifts_day_token');
+
+//Подарки настройка
+define('FRIEND_GIFS_MAX_DAY', 5); //Пять подарков в день!
+
+define('FRIEND_FLAG_TOP', 0x0000001); //Избранный
+
+$friend_gift_MAX_DAY = array(
+	3 => 2,
+	4 => 3,
+	5 => 4,
+	6 => 4,
+	7 => 5,
+	8 => 5,
+	9 => 6,
+	10 => 7,
+    11 => 8,
+    12 => 9,
+    13 => 9,
+    14 => 10,
+    15 => 10,
+
+    16 => 3,
+    17 => 4,
+    18 => 5,
+    19 => 6,
+    20 => 7,
+);
+
+function friend_get_max_day($level, $dp = array()){
+	global $friend_gift_MAX_DAY;
+
+	$add=0;
+	if(intval($dp[DP_USER_GIFT_ADD]['var'])){$add=intval($dp[DP_USER_GIFT_ADD]['var']);} // ADV_DP_PREM
+
+	if(!$level) return 0;
+	if(!$friend_gift_MAX_DAY[$level]) return 0;
+	return $friend_gift_MAX_DAY[$level] + $add;
+}
+
+function friend_get_token_max_day($level){
+    return $level;
+}
+
+/*
+ * artikul_id = артефакт
+ * lvl = огранка по уровню
+ * rank = огранка по званию
+ * dp = огранка по спец-пакету
+ * dp_level = огранка по уровню спец-пакета
+ * d_id = важность подарка (влияет на отображение
+ * */
+$friend_gift_artikul_list = array(
+    8836 => array(
+        'artikul_id' => 8836,
+        'lvl' => 3,
+        'rank' => 0,
+        'd_id' => 1,
+    ),
+    8837 => array(
+        'artikul_id' => 8837,
+        'lvl' => 3,
+        'rank' => 2,
+        'd_id' => 2,
+    ),
+    8838 => array(
+        'artikul_id' => 8838,
+        'lvl' => 3,
+        'rank' => 4,
+        'd_id' => 3,
+    ),
+    8839 => array(
+        'artikul_id' => 8839,
+        'lvl' => 3,
+        'rank' => 6,
+        'd_id' => 4,
+    ),
+    /*
+    8840 => array(
+        'artikul_id' => 8840,
+        'lvl' => 3,
+        'rank' => 8,
+        'd_id' => 5,
+    ),
+    */
+    /*
+    8841 => array(
+        'artikul_id' => 8841,
+        'lvl' => 3,
+        'rank' => 10,
+        'd_id' => 6,
+    ),
+    */
+    /*
+    9043 => array(
+        'artikul_id' => 9043,
+        'lvl' => 3,
+        'rank' => 0,
+        'dp' => 1,
+        'dp_level' => 1,
+        'd_id' => 7,
+    ),
+    */
+);
+
+define('FRIEND_DEFAULT_GIFT_TOKEN_ID', 7734);
+
+$friend_gift_token_artikul_list = array(
+    7734 => array(
+        'artikul_id' => 7734,
+        'lvl' => 3,
+        'rank' => 0,
+        'd_id' => 1,
+    ),
+);
+
+function fr_gift_restriction($friend_gift = array(), $dp = array()){
+    global $session_user, $session_premium, $rank_info, $_DP_premium_list;
+    $restriction = false;
+    $out = array();
+    if($friend_gift['lvl'] && $friend_gift['lvl'] > $session_user['level']){
+        $restriction = true;
+        $out['error'] .= '<br>-необходимо достигнуть '.$friend_gift['lvl'].' уровня.';
+    }
+
+    //Если есть господство, выбираем его!
+    $rank = $session_user['rank'];
+    if($session_user['dominance'] && $session_user['dominance'] > $rank) $rank = $session_user['dominance'];
+
+    if($friend_gift['rank'] && $friend_gift['rank'] > $rank){
+        $restriction = true;
+        $out['error'] .= '<br>-необходимо достигнуть звания <br><img src="'.PATH_IMAGE_RANKS.'rank'.$friend_gift['rank'].'.gif">&nbsp;'.$rank_info[$friend_gift['rank']]['title'].'.';
+    }
+    if($friend_gift['dp'] && (!$dp[$friend_gift['dp']] || $friend_gift['dp_level'] > $dp[$friend_gift['dp']]['level'])){
+        $restriction = true;
+        $out['error'] .= '<br>-необходим спец-пакет премиума <br> "'.$_DP_premium_list[$friend_gift['dp']]['title2'].'" - '.$friend_gift['dp_level'].' Уровня';
+    }
+    $out['allow'] = !$restriction;
+    return $out;
+}
+
+// Статусы
+define('FRIEND_STATUS_FRIEND', 0);		// Друг
+define('FRIEND_STATUS_OPPONENT', 1);	// Враг
+define('FRIEND_STATUS_IS_FRIEND', -1);	// Фейковый статус (mode): "В друзьях у"
+
+define('FRIEND_RETURN_TIME',	60*60*24*30);
+define('FRIEND_RETURN_REQUEST_COOLDOWN',	60*60*24);
+
+define('FRIEND_LIST_LIMIT', 40); // Количество участников в каждом из списков
+define('FRIEND_LIST_CONFIRM_EXPIRE', 3600); // Время жизни ссылки на подтверждение в секундах
+define('FRIEND_RETURN_BONUS_LIMIT', 3); // Лимит на количество бонусов за возвращение друга
+
+function friend_get($ref=false) {
+	global $db_2;
+	return common_get($db_2,TABLE_FRIENDS,$ref);
+}
+
+function friend_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_FRIENDS,$ref,$add);
+}
+
+function friend_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_FRIENDS,$param,FIELD_FRIENDS);
+}
+
+function friend_delete($ref) {
+	global $db_2;
+	return common_delete($db_2,TABLE_FRIENDS,$ref);
+}
+
+function friend_count($ref) {
+	global $db_2;
+	return common_count($db_2,TABLE_FRIENDS,$ref);
+}
+
+function friend_return_request_get($ref=false) {
+	global $db_2;
+	return common_get($db_2,TABLE_FRIEND_RETURN_REQUESTS,$ref);
+}
+
+function friend_return_request_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_FRIEND_RETURN_REQUESTS,$ref,$add);
+}
+
+function friend_return_request_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_FRIEND_RETURN_REQUESTS,$param,FIELD_FRIEND_RETURN_REQUESTS);
+}
+
+function friend_return_request_delete($ref) {
+	global $db_2;
+	return common_delete($db_2,TABLE_FRIEND_RETURN_REQUESTS,$ref);
+}
+
+function friend_return_request_count($ref) {
+	global $db_2;
+	return common_count($db_2,TABLE_FRIEND_RETURN_REQUESTS,$ref);
+}
+
+
+
+function friend_gift_get($ref=false) {
+    global $db_path;
+    return common_get($db_path,TABLE_FRIENDS_GIFT,$ref);
+}
+
+function friend_gift_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_FRIENDS_GIFT,$ref,$add);
+}
+
+function friend_gift_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_FRIENDS_GIFT,$param);
+}
+
+function friend_gift_delete($ref, $add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_FRIENDS_GIFT,$ref,$add);
+}
+
+function friend_gift_count($ref) {
+    global $db_path;
+    return common_count($db_path,TABLE_FRIENDS_GIFT,$ref);
+}
+
+function friend_gift_day_get($ref=false) {
+    global $db_path;
+    return common_get($db_path,TABLE_FRIENDS_GIFT_DAY,$ref);
+}
+
+function friend_gift_day_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_FRIENDS_GIFT_DAY,$ref,$add);
+}
+
+function friend_gift_day_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_FRIENDS_GIFT_DAY,$param);
+}
+
+function friend_gift_day_delete($ref,$add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_FRIENDS_GIFT_DAY,$ref,$add);
+}
+
+function friend_gift_day_count($ref) {
+    global $db_path;
+    return common_count($db_path,TABLE_FRIENDS_GIFT_DAY,$ref);
+}
+
+function friend_gift_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('FRIEND_GIFT_'.intval($ref),$timewait,$timelock);
+}
+
+function friend_gift_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('FRIEND_GIFT_'.intval($ref));
+}
+
+function friend_gift_cron(){
+	friend_gift_delete(false, ' AND dtime <= '.time_current());
+    friend_gift_day_delete(false, ' AND dtime <= '.time_current());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+function friend_gift_token_get($ref=false) {
+    global $db_path;
+    return common_get($db_path,TABLE_FRIENDS_GIFT_TOKEN,$ref);
+}
+
+function friend_gift_token_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_FRIENDS_GIFT_TOKEN,$ref,$add);
+}
+
+function friend_gift_token_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_FRIENDS_GIFT_TOKEN,$param);
+}
+
+function friend_gift_token_delete($ref, $add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_FRIENDS_GIFT_TOKEN,$ref,$add);
+}
+
+function friend_gift_token_count($ref) {
+    global $db_path;
+    return common_count($db_path,TABLE_FRIENDS_GIFT_TOKEN,$ref);
+}
+
+function friend_gift_day_token_get($ref=false) {
+    global $db_path;
+    return common_get($db_path,TABLE_FRIENDS_GIFT_DAY_TOKEN,$ref);
+}
+
+function friend_gift_day_token_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_FRIENDS_GIFT_DAY_TOKEN,$ref,$add);
+}
+
+function friend_gift_day_token_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_FRIENDS_GIFT_DAY_TOKEN,$param);
+}
+
+function friend_gift_day_token_delete($ref,$add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_FRIENDS_GIFT_DAY_TOKEN,$ref,$add);
+}
+
+function friend_gift_day_token_count($ref) {
+    global $db_path;
+    return common_count($db_path,TABLE_FRIENDS_GIFT_DAY_TOKEN,$ref);
+}
+
+function friend_gift_token_lock($ref, $timewait=20, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('FRIEND_GIFT_TOKEN_'.intval($ref),$timewait,$timelock);
+}
+
+function friend_gift_token_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('FRIEND_GIFT_TOKEN_'.intval($ref));
+}
+
+function friend_gift_token_cron(){
+    friend_gift_token_delete(false, ' AND dtime <= '.time_current());
+    friend_gift_day_token_delete(false, ' AND dtime <= '.time_current());
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+function user_gift_open($user = array()){
+    if(((defined('USER_GIFT_GLOBAL_OPEN_ADMIN') && USER_GIFT_GLOBAL_OPEN_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('USER_GIFT_GLOBAL_OPEN') && USER_GIFT_GLOBAL_OPEN)) {
+        return true;
+    }
+    return false;
+}
+
+function _friends_trigger($user, $trigger, $param = array()){
+    global $rank_info;
+    //Поиск по игрокам у которых я есть в друзьях и на ком стоит оповещения от меня ...
+    $member_hash = friend_list(array('friend_id' => $user['id'], 'status' => FRIEND_STATUS_FRIEND, 'alarm' => 1));
+
+    #logfile(NODE_FILE_LOG, print_r($member_hash, true));
+
+    if(!$member_hash) return false;
+    $member_hash = make_hash($member_hash, 'user_id');
+    $user_ids = array_keys($member_hash);
+    if(!$user_ids) return false;
+
+    //... на данный триггер
+    $user_hash = make_hash(user_list(array('id' => $user_ids), sql_pholder(' AND settings_flags & ?', $trigger), false, 'id,nick,level,rank'));
+
+
+
+    $artikul_hash = array();
+    foreach ($user_hash as $_user){
+        if(!user_is_online($_user['id'], true)) continue;
+        $msg = '';
+        switch ($trigger){
+            case FRIEND_SETTING_MEDAL_FLAG:
+                if($param['artikul_id'] && !$param['artikul']) $artikul = cache_fetch($artikul_hash, $param['artikul_id'], 'artifact_artikul_get');
+                if($param['artikul']) $artikul = $param['artikul'];
+                if($artikul['medal_id']) $medal_title = artifact_medal_title_get($artikul['medal_id']);
+                $msg .= 'Ваш друг '.html_user_info($user).' получил '.tpl_artikul_info($artikul).' <b>'.($medal_title ? $medal_title['title'] : '').'</b>';
+                break;
+            case FRIEND_SETTING_LEVEL_FLAG:
+                if(!$param) $param = 0;
+                $msg .= 'Ваш друг '.html_user_info($user).' достиг нового уровня '.$param.'!';
+                break;
+            case FRIEND_SETTING_RANK_FLAG:
+                if(!$param) $param = 0;
+                $msg .= 'Ваш друг '.html_user_info($user).' достиг нового звания <img src="/images/ranks/rank'.$param.'.gif" alt="'.$rank_info[$param]['title'].'">'.$rank_info[$param]['title'].'!';
+                break;
+            case FRIEND_SETTING_ENTER_FLAG:
+                if($param == 1){
+                    $msg .= 'Ваш друг '.html_user_info($user).' вошел в игру!';
+                }else{
+                    $msg .= 'Ваш друг '.html_user_info($user).' вышел из игры!';
+                }
+                break;
+            case FRIEND_SETTING_PARTYF_FLAG:
+                $msg .= 'Ваш друг '.html_user_info($user).' ищет группу!';
+                break;
+            case FRIEND_SETTING_BG_FLAG:
+                $msg .= 'Ваш друг '.html_user_info($user).' подал заявку на участие в полях битв "'.$param['title'].'"!';
+                break;
+        }
+        if($msg) chat_msg_send_system($msg, CHAT_CHF_USER, $_user['id']);
+    }
+}
+
+?>

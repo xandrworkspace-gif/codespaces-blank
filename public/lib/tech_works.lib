@@ -1,0 +1,44 @@
+<?php
+
+function tech_works_fill_swf_vars(&$vars) {
+	global $session_user;
+	do{
+        if (!defined('ENABLE_TECH_WORKS') || !ENABLE_TECH_WORKS ||
+            !defined('TECH_WORKS_START_TIME') || !TECH_WORKS_START_TIME ||
+            !defined('TECH_WORKS_DURATION') || !TECH_WORKS_DURATION ||
+            !defined('TECH_WORKS_NAME') || !TECH_WORKS_NAME ||
+            !$session_user
+        ) {
+            break;
+        }
+        $start_time = strtotime(TECH_WORKS_START_TIME);
+        if (($start_time === false) || ($start_time == -1)) {
+            break;
+        }
+        $stop_time = strtotime('+'.TECH_WORKS_DURATION.'min', $start_time);
+        $vars['tech_works_start'] = $start_time;
+        $vars['tech_works_stop'] = $stop_time;
+        $vars['tech_works_name'] = TECH_WORKS_NAME;
+        $vars['tech_works_description'] = defined('TECH_WORKS_DESCRIPTION') ? TECH_WORKS_DESCRIPTION : '';
+        $vars['current_time'] = time();
+    }while(0);
+    do{
+        if (!defined('ENABLE_NOBREAK') || !ENABLE_NOBREAK ||
+            !defined('NOBREAK_START_TIME') || !NOBREAK_START_TIME ||
+            !defined('NOBREAK_DURATION') || !NOBREAK_DURATION ||
+            !defined('NOBREAK_NAME') || !NOBREAK_NAME ||
+            !$session_user
+        ) {
+            break;
+        }
+        $start_time = strtotime(NOBREAK_START_TIME);
+        if (($start_time === false) || ($start_time == -1)) {
+            break;
+        }
+        $stop_time = strtotime(NOBREAK_DURATION);
+        $vars['info_start'] = $start_time;
+        $vars['info_stop'] = $stop_time;
+        $vars['info_name'] = NOBREAK_NAME;
+        $vars['info_description'] = defined('NOBREAK_DESCRIPTION') ? NOBREAK_DESCRIPTION : '';
+    }while(0);
+}

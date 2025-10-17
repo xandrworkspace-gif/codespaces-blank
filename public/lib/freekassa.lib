@@ -1,0 +1,792 @@
+<?php
+
+require_once("lib/money_transfer.lib");
+require_once("lib/user_campaign.lib");
+require_once("lib/bank_stock.lib");
+require_once("lib/lite_pass.lib");
+
+
+global $kassa_hash;
+$kassa_hash = array(
+    0 => array('title' => 'FreeKassa', 'id' => 0, 'enabled' => true, 'minimum' => 0.15, 'img' => 'FreeKassa.png', 'get_balance' => 'freekassa_get_balance',),
+    //2 => array('title' => 'UnitPay', 'id' => 2, 'enabled' => false, 'minimum' => 0.15, 'img' => 'Unitpay.png', 'get_balance' => 'unitpay_get_balance',),
+    111 => array('title' => 'Manual Kassa', 'id' => 0, 'enabled' => true, 'minimum' => 0.15, 'img' => 'FreeKassa.png', 'get_balance' => 'freekassa_get_balance',),
+);
+
+#unitpay
+define('UNI_PUBLIC_KEY', '410267-0e198');
+define('UNI_SECRET_KEY', 'a41d559106eb5943356bfbb542711fb2');
+define('UNI_PARTNER_EMAIL', 'legelem@ya.ru');
+
+//////////////////////////////////////
+
+define('FREEKASSA_MANUAL_PAYMENTS_CALL', false); //Вручную обрабатывать платежи
+$FREEKASSA_MANUAL_PAYMENTS_CALL_BONUS_TIME = 3600;
+$FREEKASSA_MANUAL_PAYMENTS_CALL_BONUS_ID = 413600;
+$FREEKASSA_MANUAL_PAYMENTS_CALL_METHOD = array(
+    1 => array(
+        'id' => 1,
+        'title' => 'QIWI',
+        'picture' => '/images/psystem/dark_big_logo_10.png',
+        'bill' => '+79168116477',
+        'description' => 'Для оплаты переведите на указанный номер QIWI точную сумму указанную в платеже.',
+    ),
+    2 => array(
+        'id' => 2,
+        'title' => 'Сбербанк',
+        'picture' => '/images/psystem/dark_big_logo_5.png',
+        //'bill' => '4276 4000 9991 9509',
+		'bill' => 'Временно не принимается.',
+        'description' => 'Для оплаты переведите на указанную карту точную сумму (до копейки! Для итентификации платежа в случае повторов) указанную в платеже.',
+    ), 
+	3 => array(
+        'id' => 3,
+        'title' => 'FunPay - для игроков с Украины',
+        'picture' => '/images/psystem/dark_big_logo_6.png',
+        'bill' => 'https://funpay.com/users/10526811/',
+        'description' => 'Для оплаты пройдите по ссылке и купите необходимое количество бриллиантов. После зачисления бриллиантов - получение необходимо будет <b>подтвердить</b>. <br><b style=color:green>За положительные отзывы начислим скромный бонус к платежу.</b>',
+    ),
+	4 => array(
+        'id' => 4,
+        'title' => 'VISA Card',
+        'picture' => '/images/psystem/dark_big_logo_4.png',
+        'bill' => '2200 7009 8712 7957',
+        'description' => 'Для оплаты переведите на указанный аккаунт точную сумму (до копейки! Для итентификации платежа в случае повторов) указанную в платеже.',
+    ), 
+);
+
+//define('MERCHANT_ID', 154470); //ID магазина
+define('MERCHANT_ID', 56414); //ID магазина
+define('API_KEY_FREEKASSA', 'ec7a6430ea2cb43abd8318585b2c033d');
+define('SECRET_KEY', 'MFOq?%)O[(wsY?Q'); //Сектертное слово
+define('SECRET_KEY2', '5]28^HuT^fZI$DK'); //Сектертное слово 2
+//define('CASH_URL','http://www.free-kassa.ru/merchant/cash.php');
+define('CASH_URL','https://pay.freekassa.com/');
+
+define('SECRET_CHECK_KEY', 'CoderBog777'); //Секретное слово проверка
+
+define('TIME_FOR_ONE_PAY', 259200); # 3 Дня на 1 платеж
+
+define('CHECK_NEW_PAY_STATUS_NOTHINK',0); #Заявки не существовало
+define('CHECK_NEW_PAY_STATUS_REALTIME',1); #Заявка была создана и еще не просрочена по времени
+define('CHECK_NEW_PAY_STATUS_THROUTE',2); #Заявка была создана и просрочена по времени
+
+define('FC_TYPE_MONEY', 0);
+define('FC_TYPE_SEASON_PASS', 1);
+define('FC_TYPE_BANK_PACK', 2);
+
+$fc_type_hash = array(
+    FC_TYPE_MONEY => 'Деньги',
+    FC_TYPE_SEASON_PASS => 'Сезонный пропуск',
+    FC_TYPE_BANK_PACK => 'Пакет',
+);
+
+define('CHACHE_BALANSE_TIME', 600); // сек
+
+$check_new_pay_status = array(
+    CHECK_NEW_PAY_STATUS_NOTHINK => 'Нет завявки',
+    CHECK_NEW_PAY_STATUS_REALTIME => 'Ожидание оплаты',
+    CHECK_NEW_PAY_STATUS_THROUTE => 'Платеж просрочен',
+);
+
+define('TABLE_FREEKASSA_PAYMENTS_LIST','freekassa_payments');
+define('FIELD_FREEKASSA_PAYMENTS_LIST','');
+define('TABLE_MANUAL','_manual');
+define('TABLE_FREEKASSA_CURRENCY_LIST','freekassa_currency');
+define('FIELD_FREEKASSA_CURRENCY_LIST','');
+define('TABLE_FREEKASSA_OUT_LIST','freekassa_out');
+define('FIELD_FREEKASSA_OUT_LIST','');
+
+$freekassa_price_list = array(
+    MONEY_TYPE_GOLD => 0.15,
+    MONEY_TYPE_SILVER => 0.15,
+);
+
+#API
+define('FREEKASSA_API_URL' , 'https://api.freekassa.ru/v1/');
+
+//ooopay, yandex, qiwi, payeer, card (VISA/MASTERCARD), wmr, wmz, w1, fkw (Free-kassa Wallet)
+$earn_money_types_hash = array(
+    //'yandex' => 'Yandex',
+    'card' => 'VISA Card',
+	'sber' => 'Сбербанк',
+	'qiwi' => 'QIWI',
+	'funpay' => 'FunPay',
+);
+
+#Работа с базой данных
+function freekassa_payments_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_FREEKASSA_PAYMENTS_LIST,$ref,$add);
+}
+
+function freekassa_payments_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_FREEKASSA_PAYMENTS_LIST,$ref,$add);
+}
+
+function freekassa_payments_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_FREEKASSA_PAYMENTS_LIST, $ref, $add);
+}
+
+function freekassa_payments_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_FREEKASSA_PAYMENTS_LIST,$param,FIELD_FREEKASSA_PAYMENTS_LIST);
+}
+
+function freekassa_payments_delete($ref, $add='') {
+    global $db_diff;
+    common_delete($db_diff,TABLE_FREEKASSA_PAYMENTS_LIST,$ref,$add);
+    return true;
+}
+////////////////////////////////////////////
+function freekassa_payments_manual_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_FREEKASSA_PAYMENTS_LIST.TABLE_MANUAL,$ref,$add);
+}
+
+function freekassa_payments_manual_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_FREEKASSA_PAYMENTS_LIST.TABLE_MANUAL,$ref,$add);
+}
+
+function freekassa_payments_manual_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_FREEKASSA_PAYMENTS_LIST.TABLE_MANUAL, $ref, $add);
+}
+
+function freekassa_payments_manual_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_FREEKASSA_PAYMENTS_LIST.TABLE_MANUAL,$param,FIELD_FREEKASSA_PAYMENTS_LIST);
+}
+
+function freekassa_payments_manual_delete($ref, $add='') {
+    global $db_diff;
+    common_delete($db_diff,TABLE_FREEKASSA_PAYMENTS_LIST.TABLE_MANUAL,$ref,$add);
+    return true;
+}
+////////////////////////////////////////////
+function freekassa_currency_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_FREEKASSA_CURRENCY_LIST,$ref,$add);
+}
+
+function freekassa_currency_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_FREEKASSA_CURRENCY_LIST,$ref,$add);
+}
+
+function freekassa_currency_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_FREEKASSA_CURRENCY_LIST, $ref, $add);
+}
+
+function freekassa_currency_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_FREEKASSA_CURRENCY_LIST,$param,FIELD_FREEKASSA_CURRENCY_LIST);
+}
+
+function freekassa_currency_delete($ref, $add='') {
+    global $db_diff;
+    if(!$ref)return false;
+    common_delete($db_diff,TABLE_FREEKASSA_CURRENCY_LIST,$ref,$add);
+    return true;
+}
+////////////////////////////////////////////
+function freekassa_out_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_FREEKASSA_OUT_LIST,$ref,$add);
+}
+
+function freekassa_out_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_FREEKASSA_OUT_LIST,$ref,$add);
+}
+
+function freekassa_outs_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_FREEKASSA_OUT_LIST, $ref, $add);
+}
+
+function freekassa_out_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_FREEKASSA_OUT_LIST,$param,FIELD_FREEKASSA_OUT_LIST);
+}
+
+function freekassa_out_delete($ref, $add='') {
+    global $db_diff;
+    if(!$ref)return false;
+    common_delete($db_diff,TABLE_FREEKASSA_OUT_LIST,$ref,$add);
+    return true;
+}
+////////////////////////////////////////////
+
+#Функционал инициализации нового платежа
+function freekassa_new_payment($reply = array()){
+    global $freekassa_price_list,$session_user;
+    if(!$reply) return false;
+    if(!$reply['user_id']){die("Невозможно получить данные об игроке!");}
+    $user = user_get($reply['user_id']);
+    if(!$user){die("Невозможно получить данные об игроке!");}
+
+    $new_payments = freekassa_payments_save(array(
+        'kassa_type' => $reply['kassa_type'],
+        'fc_type' => $reply['fc_type'],
+        'field' => $reply['field'],
+        'user_id' => $reply['user_id'],
+        'money' => doubleval($reply['money']),
+        'money_type' => intval($reply['money_type']),
+        'money_rub' => $reply['money_rub'],
+        'time_create' => time_current(), //Текущее время создания
+    ));
+    return $new_payments;
+}
+
+#Функционал проверки и проведение платежа
+/*
+ * reply - Передаваемый массив данны с FREEKASSA
+ * param[force] - Провести старый платеж, без учета мерчанта
+ * param[id] - Номер счета для force
+ */
+function freekassa_payment_checkout($reply, $param = array()) {
+    global $money_type_info, $freekassa_price_list, $lucky_star_multipliers;
+
+    $log_out = '['.$reply['MERCHANT_ORDER_ID'].'|'.$reply['P_EMAIL'].'|'.$reply['intid'].']  ';
+
+    logfile(BANK_FILE_LOG, $log_out.'(Запрос от фрикассы '.$reply['AMOUNT'].' рублей.)');
+    switch (intval($reply['kassa_type'])) {
+        case 0:
+            $ch_sign = md5(MERCHANT_ID.':'.$reply['AMOUNT'].':'.SECRET_KEY2.':'.$reply['MERCHANT_ORDER_ID']);
+            $return = (mb_strtoupper($ch_sign) != mb_strtoupper($reply['SIGN'])) ? (!$param['force'] ? "error" : "success") : "success";
+            if(!($return == "success" || $param['force'] == true)) { echo "NO"; logfile(BANK_FILE_LOG, $log_out.'(Не прошли проверку SIGN.)'); return false;} //Не прошли проверку секретнейшего ключа
+            break;
+        case 2: //Подпись пока не проверяется похуй!
+            $return = "success";
+            break;
+        case 111:
+            $return = "success";
+            break;
+    }
+
+    if($reply['AMOUNT'] < 0){ logfile(BANK_FILE_LOG, $log_out.'(Сумма меньше 0.)'); return false;}
+
+    $freekassa_payment = array(); #Old $pay = array();
+    if(!$param['force']){
+        $freekassa_payment = freekassa_payments_get($reply['MERCHANT_ORDER_ID']);
+    }else{
+        $freekassa_payment = freekassa_payments_get($param['id']);
+    }
+
+    $add_donat_money = 0;
+    if($freekassa_price_list[$freekassa_payment['money_type']]){
+        $skidka = 0;
+        if(defined('FREEKASSA_PRICE_PERCENT') && FREEKASSA_PRICE_PERCENT){
+            $skidka = FREEKASSA_PRICE_PERCENT / 100;
+        }
+        $money_rub = ($freekassa_price_list[$freekassa_payment['money_type']]);
+        #logfile(DEBUG_FILE_LOG_DEV, $money_rub);
+        if($skidka){$money_rub = $money_rub - ($skidka * $money_rub);}
+        #logfile(DEBUG_FILE_LOG_DEV, $skidka);
+        #logfile(DEBUG_FILE_LOG_DEV, FREEKASSA_PRICE_PERCENT);
+        #logfile(DEBUG_FILE_LOG_DEV, $money_rub);
+        $add_donat_money = round ($reply['AMOUNT'] / $money_rub, 2);
+        #logfile(DEBUG_FILE_LOG_DEV, $add_donat_money);
+        $freekassa_payment['money'] = $add_donat_money;
+    }
+    $payment = false;
+
+    if(!$param['force']){
+        $payment = freekassa_payments_save(array(
+            '_cnt' => true,
+            '_mode' => CSMODE_UPDATE,
+            'id' => $reply['MERCHANT_ORDER_ID'],
+            'status' => 1,
+            'money' => $add_donat_money,
+            'money_rub_real' => $reply['AMOUNT'],
+            'intid' => $reply['intid'],
+            'time' => time_current(),
+            'currency' => intval($reply['currency']),
+        ),' AND id = '.$reply['MERCHANT_ORDER_ID'].' AND status = 0');
+    }else{
+        $payment = true;
+    }
+
+    if(!$payment){ echo "NO"; logfile(BANK_FILE_LOG, $log_out.'(Не можем записать платеж.)'); return false;} //Если не удалось провести платеж в нашу уже систему по открытому счету
+    #Тут разработать начисление
+
+    if($freekassa_payment && $freekassa_payment['status_admin'] != 2){ //Начисляем деньги
+        //Если реально задонатил чувак то начисляем ему
+        $user = user_get($freekassa_payment['user_id']);
+        if(!$user) { return false; }
+
+        switch ($freekassa_payment['fc_type']){
+            case FC_TYPE_MONEY:
+                if(!money_transfer_set_block(PAYMENT_TYPE_TB, $freekassa_payment['id'], $user['id'], $freekassa_payment['money_type'], $freekassa_payment['money'])){ logfile(BANK_FILE_LOG, $log_out.'(Ошибка money_transfer_set_block.)');  return false;};
+
+                $comment = sprintf(translate('Оплата через ФриКассу. ID=%s, Sum=%s, date=%s'),$reply['MERCHANT_ORDER_ID'],$reply['AMOUNT'],html_date_str(time_current()));
+                $status = user_make_payment($freekassa_payment['money_type'], $user["id"], $freekassa_payment['money'], $comment, false, MONEY_STAT_OPERATION_RECEIVE);
+
+                if(!$status){logfile(BANK_FILE_LOG, $log_out.'(Ошибка user_make_payment.)'); return false;}
+
+                //Пользователь задонатил) Учтем во флагах авторизации
+                auth_save(array(
+                    'uid' => $user["id"],
+                    '_set' => 'auth_flags = auth_flags | '.(int)AUTH_FLAG_INCOME,
+                ));
+
+                // Сохраняем поступившую сумму в общую сумму вложений пользователя
+                $user_credit = user_credit_get(array('user_id' => $user['id']));
+                if (!$user_credit) {
+                    $user_credit = array(
+                        '_mode' => CSMODE_INSERT,
+                        'user_id' => $user['id'],
+                        'payments_total' => 0,
+                    );
+                }
+                $user_credit['payments_total'] += floatval($freekassa_payment['money']);
+                user_credit_save($user_credit);
+
+                require_once("lib/log_stat_uniform.lib");
+                log_stat_uniform::income($user["id"], $freekassa_payment['money']);
+
+                // снятие блокировки
+                money_transfer_save(array(
+                    'user_id' => $user["id"],
+                    'money_type' => $freekassa_payment['money_type'],
+                    'amount' => $freekassa_payment['money'],
+                    'stime' => time_current(),
+                    'comment' => $comment,
+                ));
+
+                // лог-сервис -----------------------
+                logserv_log_operation(array(
+                    'money_type' => $freekassa_payment['money_type'],
+                    'amount' => $freekassa_payment['money'],
+                    'comment' => translate('Оплата через ФриКассу'),
+                ),$user);
+
+                chat_msg_send_system(sprintf(translate('На Ваш счет успешно зачислено %s '.($freekassa_payment['money_type'] == MONEY_TYPE_GOLD ? 'бриллиант' : 'рубинов').'.'),html_money_str($freekassa_payment['money_type'],$freekassa_payment['money'])),CHAT_CHF_USER,$user["id"]);
+
+                // АКЦИЯ ПУЛ ЗОЛОТА
+                if (
+                    $freekassa_payment['money_type'] == MONEY_TYPE_GOLD &&
+                    defined('GOLDPOOL_ACTION_ON') && GOLDPOOL_ACTION_ON &&
+                    defined('GOLDPOOL_PERCENT') && GOLDPOOL_PERCENT &&
+                    defined('GOLDPOOL_START_TIME') && (strtotime(GOLDPOOL_START_TIME)<time_current())
+                ) {
+                    $cache = new Cache('GOLDPOOL_GOLD_AVAIL');
+                    $avail = $cache->get();
+                    if ($avail && (intval($avail['GOLDPOOL_GOLD_AVAIL'])>0)) {
+                        $bonus_sum = round($freekassa_payment['money'] * GOLDPOOL_PERCENT / 100, 2);
+                        $comment = sprintf(translate('Акция "Продай миллион". Бонусное начисление к оплате через ФриКассу. ID=%s, Sum=%s, date=%s'), $freekassa_payment['id'], $bonus_sum, $freekassa_payment['money']);
+                        $status = user_make_payment(MONEY_TYPE_GOLD, $user['id'], $bonus_sum, $comment, false, MONEY_STAT_OPERATION_RECEIVE);
+                        if ($status) {
+                            chat_msg_send_system(sprintf(translate('Вы получили бонус %s бриллиант.'), html_money_str(MONEY_TYPE_GOLD, $bonus_sum)), CHAT_CHF_USER, $user['id']);
+                            logserv_log_operation(array(
+                                'money_type' => MONEY_TYPE_GOLD,
+                                'amount' => $bonus_sum,
+                                'comment' => $comment,
+                            ),$user);
+                        }
+                    }
+                }
+                // КОНЕЦ АКЦИИ ПУЛ ЗОЛОТА
+
+                // Акция Ваучер
+                NODE_SWITCH(null, $user['id']);
+                $user_vaucher = user_price_vaucher_get($user['id'], true); //Скидка на донат
+                if($user_vaucher){
+                    do{
+                        if(!intval($user_vaucher['param1']) || !intval($user_vaucher['param2'])) break;
+                        //artifact_artikul_get_title($user_vaucher);
+                        $bonus_sum_max = intval($user_vaucher['param1']);
+                        $bonus_sum_perc = intval($user_vaucher['param2']);
+
+                        $bonus_sum = round($freekassa_payment['money'] * ($bonus_sum_perc / 100), 2);
+                        if ($bonus_sum > $bonus_sum_max) $bonus_sum = $bonus_sum_max;
+                        if ($bonus_sum >= 1) {
+                            $comment = sprintf(translate('Купон "%s". Бонусное начисление к оплате через ФриКассу. ID=%s, Sum=%.2f, date=%s'),$user_vaucher['title'], $freekassa_payment['id'], $bonus_sum, $freekassa_payment['money']);
+                            $status = user_make_payment(MONEY_TYPE_GOLD, $user['id'], $bonus_sum, $comment, false, MONEY_STAT_OPERATION_RECEIVE);
+
+                            if ($status) {
+                                freekassa_payments_save(array('id' => $freekassa_payment['id'], '_set' => sql_pholder(' bonus_money = bonus_money + ?', $bonus_sum))); //Учтем бонус
+                                chat_msg_send_system(sprintf(translate('Вы использовали купон %s и получили бонус %s бриллиант.'), $user_vaucher['title'], html_money_str(MONEY_TYPE_GOLD, $bonus_sum)), CHAT_CHF_USER, $user['id']);
+                                logserv_log_operation(array(
+                                    'money_type' => MONEY_TYPE_GOLD,
+                                    'amount' => $bonus_sum,
+                                    'comment' => $comment,
+                                ), $user);
+                            }
+                        }
+
+                        $user_vaucher = user_price_vaucher_get($user['id']);
+                        if($user_vaucher){
+                            artifact_delete($user_vaucher['id']);
+                        }
+                    }while(0);
+                }
+                // Конце Ваучер
+
+                // Прочия хуита
+                _freekassa_money_trigger($user, $freekassa_payment['money_type'], $freekassa_payment['money'], $reply['summ']);
+                // Прочия хуита
+
+                //BANK_STOCK_ACTION_START
+                bank_stock_freekassa_action($freekassa_payment, $user);
+                //BANK_STOCK_ACTION_END
+
+                if (NODE_PUSH(null, $user['id'])) {
+                    $profile_pvp = skill_object_get(OBJECT_CLASS_USER, $user['id'], array('skill_id' => 'PROFILE_PVP'));
+                    if ($profile_pvp && ($profile_pvp['value'] > 50)) metric_group_add(METRIC_TYPES_PVP, array('level' => $user['level']), array('pvp_payments' => 100 * $freekassa_payment['money']));
+                    NODE_POP();
+                }
+                break;
+            case FC_TYPE_SEASON_PASS:
+                $lite_pass = lite_pass_get($freekassa_payment['field']);
+                if($lite_pass['lite_pass_artikul_id']){
+                    artifact_add($lite_pass['lite_pass_artikul_id'], 1, $user['id']);
+                    $artifact = artifact_artikul_get($lite_pass['lite_pass_artikul_id']);
+                    chat_msg_send_system('<b class="redd">Вы получили: '.tpl_artikul_info($artifact, 1, array('small_img' => true)).'</b>', CHAT_CHF_USER, $user['id']);
+                }
+                break;
+            case FC_TYPE_BANK_PACK:
+                $bank_pack = bank_pack_get($freekassa_payment['field']);
+                if ($bank_pack['artikul_id']) {
+                    artifact_add($bank_pack['artikul_id'], max(1, $bank_pack['artikul_cnt']), $user['id']);
+                    $artifact = artifact_artikul_get($bank_pack['artikul_id']);
+                    chat_msg_send_system('<b class="redd">Вы получили: ' . tpl_artikul_info($artifact, max(1, $bank_pack['artikul_cnt']), array('small_img' => true)) . '</b>', CHAT_CHF_USER, $user['id']);
+                }
+                if ($bank_pack['money']) {
+                    user_make_payment(MONEY_TYPE_GOLD, $user['id'], $bank_pack['money']);
+                    chat_msg_send_system(sprintf(translate('На Ваш счет успешно зачислено %s ' . 'бриллиант' . '.'), html_money_str(MONEY_TYPE_GOLD, $bank_pack['money'])), CHAT_CHF_USER, $user["id"]);
+                }
+                if ($bank_pack['flags'] & BANK_PACK_FLAG_ONE_TIME) {
+                    bank_pack_user_save(array(
+                        'bank_pack_id' => $bank_pack['id'],
+                        'user_id' => $user['id'],
+                        'ctime' => time_current(),
+                    ));
+                }
+                break;
+        }
+
+        freekassa_payments_save(array('id' => $freekassa_payment['id'], 'status_admin' => 2)); //Укажем что выдано все.
+
+        logfile(BANK_FILE_LOG, $log_out.'(Платеж успешно обработан.)');
+    }
+    //return up_json_reply($return, $reply);
+}
+
+#Проведение платежа сразу без проверки на оплату, подрузамеваем что клиент заплатил.
+function freekassa_payment_out($reply, $param = array()) {
+    global $money_type_info, $freekassa_price_list, $lucky_star_multipliers;
+    global $session_admin;
+
+    logfile(BANK_FILE_LOG, '(Администратор '.($session_admin['id'] ? $session_admin['id'] : '0').' подал запрос игроку '.$reply['user_id'].' на '.$reply['summ'].' рублей'.($reply['summ2'] ? ' + плюшка '.$reply['summ2'].' руб :)' : '').'.)');
+
+    $add_donat_money = 0;
+
+    $reply['summ_save'] = $reply['summ'];
+    if($reply['summ2']){
+        $reply['summ'] += $reply['summ2'];
+    }
+
+    if($freekassa_price_list[$reply['money_type']]){
+        $skidka = 0;
+        if(defined('FREEKASSA_PRICE_PERCENT') && FREEKASSA_PRICE_PERCENT){
+            $skidka = FREEKASSA_PRICE_PERCENT / 100;
+        }
+        $money_rub = ($freekassa_price_list[$reply['money_type']]);
+        if($skidka){$money_rub = $money_rub - ($skidka * $money_rub);}
+        $add_donat_money = round ($reply['summ'] / $money_rub, 2);
+        $freekassa_payment['money'] = $add_donat_money;
+    }
+
+
+
+    $freekassa_payment = array(
+        'status' => 1,
+        'user_id' => $reply['user_id'],
+        'money_type' => $reply['money_type'],
+        'money' => $add_donat_money,
+        'money_rub' => $reply['summ_save'],
+        'money_rub_real' => $reply['summ_save'],
+        'time' => time_current(),
+    );
+
+    if($reply['summ2']){
+        $freekassa_payment['money_rub_add'] = $reply['summ2'];
+    }
+
+    $payment = freekassa_payments_manual_save($freekassa_payment);
+
+    if(!$payment){ echo "NO"; logfile(BANK_FILE_LOG, '(Не можем записать ручной платеж.)'); return false;} //Если не удалось провести платеж в нашу уже систему по открытому счету
+    #Тут разработать начисление
+
+    if($freekassa_payment && $freekassa_payment['status_admin'] != 2){ //Начисляем деньги
+        //Если реально задонатил чувак то начисляем ему
+        $user = user_get($freekassa_payment['user_id']);
+        if(!$user) { return false; }
+        if(!money_transfer_set_block(PAYMENT_TYPE_SMS, $payment, $user['id'], $freekassa_payment['money_type'], $freekassa_payment['money'])){ logfile(BANK_FILE_LOG, '(Ошибка ручного пополнения money_transfer_set_block.)');  return false;};
+
+        $comment = sprintf(translate('Ручное начисление средств. Sum=%s, date=%s'),$reply['summ'],html_date_str(time_current()));
+        $status = user_make_payment($freekassa_payment['money_type'], $user["id"], $freekassa_payment['money'], $comment, false, MONEY_STAT_OPERATION_RECEIVE);
+
+        if(!$status){logfile(BANK_FILE_LOG, 'Ручной платеж (Ошибка user_make_payment.)'); return false;}
+
+        //Пользователь задонатил) Учтем во флагах авторизации
+        auth_save(array(
+            'uid' => $user["id"],
+            '_set' => 'auth_flags = auth_flags | '.(int)AUTH_FLAG_INCOME,
+        ));
+
+        // Сохраняем поступившую сумму в общую сумму вложений пользователя
+        $user_credit = user_credit_get(array('user_id' => $user['id']));
+        if (!$user_credit) {
+            $user_credit = array(
+                '_mode' => CSMODE_INSERT,
+                'user_id' => $user['id'],
+                'payments_total' => 0,
+            );
+        }
+        $user_credit['payments_total'] += floatval($freekassa_payment['money']);
+        user_credit_save($user_credit);
+
+        require_once("lib/log_stat_uniform.lib");
+        log_stat_uniform::income($user["id"], $freekassa_payment['money']);
+
+        // снятие блокировки
+        money_transfer_save(array(
+            'user_id' => $user["id"],
+            'money_type' => $freekassa_payment['money_type'],
+            'amount' => $freekassa_payment['money'],
+            'stime' => time_current(),
+            'comment' => $comment,
+        ));
+
+        // лог-сервис -----------------------
+        logserv_log_operation(array(
+            'money_type' => $freekassa_payment['money_type'],
+            'amount' => $freekassa_payment['money'],
+            'comment' => translate('Ручное пополнение через админку'),
+        ),$user);
+
+        chat_msg_send_system(sprintf(translate('На Ваш счет успешно зачислено %s '.($freekassa_payment['money_type'] == MONEY_TYPE_GOLD ? 'бриллиант' : 'рубин').'.'),html_money_str($freekassa_payment['money_type'],$freekassa_payment['money'])),CHAT_CHF_USER,$user["id"]);
+
+        // АКЦИЯ ПУЛ ЗОЛОТА
+        if (
+            $freekassa_payment['money_type'] == MONEY_TYPE_GOLD &&
+            defined('GOLDPOOL_ACTION_ON') && GOLDPOOL_ACTION_ON &&
+            defined('GOLDPOOL_PERCENT') && GOLDPOOL_PERCENT &&
+            defined('GOLDPOOL_START_TIME') && (strtotime(GOLDPOOL_START_TIME)<time_current())
+        ) {
+            $cache = new Cache('GOLDPOOL_GOLD_AVAIL');
+            $avail = $cache->get();
+            if ($avail && (intval($avail['GOLDPOOL_GOLD_AVAIL'])>0)) {
+                $bonus_sum = round($freekassa_payment['money'] * GOLDPOOL_PERCENT / 100, 2);
+                $comment = sprintf(translate('Акция "Продай миллион". Бонусное начисление к оплате через ФриКассу. ID=%s, Sum=%s, date=%s'), $freekassa_payment['id'], $bonus_sum, $freekassa_payment['money']);
+                $status = user_make_payment(MONEY_TYPE_GOLD, $user['id'], $bonus_sum, $comment, false, MONEY_STAT_OPERATION_RECEIVE);
+                if ($status) {
+                    chat_msg_send_system(sprintf(translate('Вы получили бонус %s бриллиант.'), html_money_str(MONEY_TYPE_GOLD, $bonus_sum)), CHAT_CHF_USER, $user['id']);
+                    logserv_log_operation(array(
+                        'money_type' => MONEY_TYPE_GOLD,
+                        'amount' => $bonus_sum,
+                        'comment' => $comment,
+                    ),$user);
+                }
+            }
+        }
+        // КОНЕЦ АКЦИИ ПУЛ ЗОЛОТА
+
+        // Акция Ваучер
+        NODE_SWITCH(null, $user['id']);
+        $user_vaucher = user_price_vaucher_get($user['id'], true); //Скидка на донат
+        if($user_vaucher){
+            do{
+                if(!intval($user_vaucher['param1']) || !intval($user_vaucher['param2'])) break;
+                //artifact_artikul_get_title($user_vaucher);
+                $bonus_sum_max = intval($user_vaucher['param1']);
+                $bonus_sum_perc = intval($user_vaucher['param2']);
+
+                $bonus_sum = round($freekassa_payment['money'] * ($bonus_sum_perc / 100), 2);
+                if ($bonus_sum > $bonus_sum_max) $bonus_sum = $bonus_sum_max;
+                if ($bonus_sum >= 1) {
+                    $comment = sprintf(translate('Купон "%s". Бонусное начисление к оплате через ФриКассу. ID=%s, Sum=%.2f, date=%s'),$user_vaucher['title'], $freekassa_payment['id'], $bonus_sum, $freekassa_payment['money']);
+                    $status = user_make_payment(MONEY_TYPE_GOLD, $user['id'], $bonus_sum, $comment, false, MONEY_STAT_OPERATION_RECEIVE);
+
+                    if ($status) {
+                        freekassa_payments_manual_save(array('id' => $payment, '_set' => sql_pholder(' bonus_money = bonus_money + ?', $bonus_sum))); //Учтем бонус
+                        chat_msg_send_system(sprintf(translate('Вы использовали купон %s и получили бонус %s бриллиант.'), $user_vaucher['title'], html_money_str(MONEY_TYPE_GOLD, $bonus_sum)), CHAT_CHF_USER, $user['id']);
+                        logserv_log_operation(array(
+                            'money_type' => MONEY_TYPE_GOLD,
+                            'amount' => $bonus_sum,
+                            'comment' => $comment,
+                        ), $user);
+                    }
+                }
+
+                $user_vaucher = user_price_vaucher_get($user['id']);
+                if($user_vaucher){
+                    artifact_delete($user_vaucher['id']);
+                }
+            }while(0);
+        }
+        // Конце Ваучер
+
+        // Прочия хуита
+        _freekassa_money_trigger($user, $freekassa_payment['money_type'], $freekassa_payment['money'], $reply['summ']);
+        // Прочия хуита
+
+        //BANK_STOCK_ACTION_START
+        bank_stock_freekassa_action($freekassa_payment, $user);
+        //BANK_STOCK_ACTION_END
+
+        if (NODE_PUSH(null, $user['id'])) {
+            $profile_pvp = skill_object_get(OBJECT_CLASS_USER, $user['id'], array('skill_id' => 'PROFILE_PVP'));
+            if ($profile_pvp && ($profile_pvp['value'] > 50)) metric_group_add(METRIC_TYPES_PVP, array('level' => $user['level']), array('pvp_payments' => 100 * $freekassa_payment['money']));
+            NODE_POP();
+        }
+
+        freekassa_payments_manual_save(array('id' => $payment, 'status_admin' => 2)); //Укажем что выдано все.
+
+        logfile(BANK_FILE_LOG, '(Ручной Платеж успешно обработан.)');
+        echo "YES";
+    }
+    //return up_json_reply($return, $reply);
+}
+
+#Расчет
+function freekassa_payment_raschet($reply, $param = array()) {
+    global $money_type_info, $freekassa_price_list, $lucky_star_multipliers;
+
+    $add_donat_money = 0;
+    if($freekassa_price_list[$reply['money_type']]){
+        $skidka = 0;
+        if(defined('FREEKASSA_PRICE_PERCENT') && FREEKASSA_PRICE_PERCENT){
+            $skidka = FREEKASSA_PRICE_PERCENT / 100;
+        }
+        $money_rub = ($freekassa_price_list[$reply['money_type']]);
+        if($skidka){$money_rub = $money_rub - ($skidka * $money_rub);}
+        $add_donat_money = round ($reply['summ'] / $money_rub, 2);
+        $freekassa_payment['money'] = $add_donat_money;
+    }
+
+    $ret = array('money_type' => $reply['money_type'], 'money' => $add_donat_money, 'price' => FREEKASSA_PRICE_PERCENT);
+    // АКЦИЯ ПУЛ ЗОЛОТА
+    if (
+        $freekassa_payment['money_type'] == MONEY_TYPE_GOLD &&
+        defined('GOLDPOOL_ACTION_ON') && GOLDPOOL_ACTION_ON &&
+        defined('GOLDPOOL_PERCENT') && GOLDPOOL_PERCENT &&
+        defined('GOLDPOOL_START_TIME') && (strtotime(GOLDPOOL_START_TIME)<time_current())
+    ) {
+        $cache = new Cache('GOLDPOOL_GOLD_AVAIL');
+        $avail = $cache->get();
+        if ($avail && (intval($avail['GOLDPOOL_GOLD_AVAIL'])>0)) {
+            $bonus_sum = round($freekassa_payment['money'] * GOLDPOOL_PERCENT / 100, 2);
+            $ret['gold_pool_summ'] = $bonus_sum;
+        }
+    }
+    return $ret;
+}
+
+function freekassa_get_balance($update = false){
+    $balance_cacher = new Cache('BALANCE_'.md5(MERCHANT_ID).'_PAGE6');
+    if (!$balance_cacher->get() || $update == true) {// Проверим кеш
+        $data = [
+            'shopId'=>MERCHANT_ID,
+            'nonce'=>time(),
+        ];
+        ksort($data);
+        $sign = hash_hmac('sha256', implode('|', $data), API_KEY_FREEKASSA);
+        $data['signature'] = $sign;
+
+        $request = json_encode($data);
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, FREEKASSA_API_URL.'balance');
+        curl_setopt($ch, CURLOPT_HEADER, 0);
+        curl_setopt($ch, CURLOPT_FAILONERROR, 0);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $request);
+        $result = trim(curl_exec($ch));
+        curl_close($ch);
+
+        $response = json_decode($result, true);
+
+        $balance = array('time' => time_current(), 'balance' => $response['balance'][0]['value']);
+        $balance_cacher->update($balance,CHACHE_BALANSE_TIME);
+        return $balance;
+    }else{
+        return $balance_cacher->get();
+    }
+}
+
+
+function unitpay_get_balance($update = false) {
+    $balance_cacher = new Cache('BALANCE_UNITPAY_'.md5(MERCHANT_ID));
+    if (!$balance_cacher->get() || $update == true) {// Проверим кеш
+        $out = json_decode(file_get_contents('https://unitpay.ru/api?method=getPartner&params[login]='.UNI_PARTNER_EMAIL.'&params[secretKey]='.UNI_SECRET_KEY), true);
+        $balance = array('time' => time_current(), 'balance' => $out['result']['balance']);
+        $balance_cacher->update($balance,CHACHE_BALANSE_TIME);
+        return $balance;
+    }else{
+        return $balance_cacher->get();
+    }
+}
+
+function freekassa_get_money($request = array()){ //Вывод средств из фрикассы
+
+    return false;
+
+    $uri = FREEKASSA_API_URL.'currency='.$request['currency'].'&merchant_id='.MERCHANT_ID.'&s='.md5(MERCHANT_ID.SECRET_KEY2).'&action=payment&amount='.$request['amount'];
+    $xml = file_get_contents($uri);
+    /*$p = xml_parser_create();
+    xml_parse_into_struct($p, $xml, $vals, $index);
+    xml_parser_free($p);
+
+    logfile(NODE_FILE_LOG, $xml);
+
+    $array = array(
+        'answer' => $vals[$index['ANSWER'][0]]['value'],
+        'desc' => $vals[$index['DESC'][0]]['value'],
+        'PaymentId' => $vals[$index['PaymentId']][0]['value'],
+    );*/
+
+    preg_match("/<answer>(.*?)<\/answer>/", $xml, $match_1);
+    preg_match("/<desc>(.*?)<\/desc>/", $xml, $match_2);
+    preg_match("/<PaymentId>(.*?)<\/PaymentId>/", $xml, $match_3);
+    $array = array(
+        'answer' => $match_1[1],
+        'desc' => $match_2[1],
+        'PaymentId' => $match_3[1],
+    );
+
+
+    return $array;
+}
+
+function _freekassa_money_trigger($user, $money_type, $money, $money_rub){
+    $user_id = intval($user['id']);
+    if(!$user_id) return false;
+    if(!($money_type || $money_rub)) return false;
+    if($money_type && $money <= 0) return false;
+
+    //Дальше делай че хочешь!
+    if($user_id != 1) return false;
+
+    do{
+        $user_campaign_user = user_campaign_user_get(array('user_id' => $user['id']));
+        $cur_campaign = user_campaign_generate_user($user_campaign_user, $user);
+
+        if(!$cur_campaign) break;
+
+        if($cur_campaign['flags'] & USER_CAMPAIGN_FLAG_BUY) break; //НЕТ!
+        if($money_type != MONEY_TYPE_GOLD) break;
+        if($cur_campaign['money_br'] > $money) break; //Не прошли :(
+
+        user_campaign_buy($cur_campaign, $money_type, $money, $user_campaign_user);
+    }while(0);
+}

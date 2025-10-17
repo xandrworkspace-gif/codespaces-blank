@@ -1,0 +1,37 @@
+<? # $Id: fight_scheduler.lib,v 1.29 2010-01-15 09:50:10 p.knoblokh Exp $
+
+require_once("lib/fight.lib");
+
+// Имена и поля таблиц
+define('TABLE_FIGHT_SCHEDULER','fight_scheduler');
+define('FIELD_FIGHT_SCHEDULER','');
+
+// флаги
+define('FIGHT_SCHEDULER_FLAG_ACTIVE',     0x0001);	// статус - активна\выключена
+define('FIGHT_SCHEDULER_FLAG_NO_GREAT',     0x0002);	// Создавать битву драконов
+
+
+function fight_scheduler_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_FIGHT_SCHEDULER,$ref,$add);
+}
+
+function fight_scheduler_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_FIGHT_SCHEDULER,$ref,$add);
+}
+
+function fight_scheduler_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff,TABLE_FIGHT_SCHEDULER,$ref,$add);
+}
+
+function fight_scheduler_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_FIGHT_SCHEDULER,$param,FIELD_FIGHT_SCHEDULER);
+}
+
+function fight_scheduler_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_FIGHT_SCHEDULER,$ref,$add);
+}

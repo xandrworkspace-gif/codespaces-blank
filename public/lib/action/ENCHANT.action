@@ -1,0 +1,74 @@
+<? # $Id: ENCHANT.action,v 1.10 2010-02-02 11:08:36 p.knoblokh Exp $
+
+// действие "наложить руну"
+// Параметры:
+//	$in['artifact_id'] - артефакт на который нужно наложить руну
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+
+if (!$artifact || $artifact['slot_id']) { // неверный или одетый предмет
+	$out['error'] = translate('Нужно выбрать предмет в который вставляется руна!');
+	return;
+}
+
+if ($artifact['flags'] & ARTIFACT_FLAG_ARMOR_STYLE) {
+	$out['error'] = translate('Нельзя встроить руну в этот предмет!');
+	return;
+}
+if ($artifact['flags2'] & ARTIFACT_FLAG2_LEGENDARY) {
+	$out['error'] = translate('Нельзя встроить обычную руну в легендарный предмет!');
+	return;
+}
+
+
+$enchant = $object['param1'] ? artifact_artikul_get($object['param1']) : false;
+if (!$enchant || !$enchant['kind_id']) {
+	$out['error'] = translate('Невозможно выполнить действие!');
+	return;
+}
+if (!artifact_enchant_compatible($artifact, $enchant)) {
+	$out['error'] = translate('Невозможно наложить руну на этот предмет, он не подходит по уровню!');
+	return;
+}
+
+$artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+if ($enchant['trend'] && $artifact_artikul['quality'] && ($artifact_artikul['trend'] != $enchant['trend'])) { // для не "серых" вещей должен совпадать тип раскачки
+	$out['error'] = translate('Невозможно наложить руну на этот предмет, неверный cтиль боя!');
+	return;
+}
+
+if (!$artifact_artikul['slot_id'] || ($enchant['kind_id'] != $artifact['kind_id'])) {
+	$out['error'] = translate('Невозможно наложить руну на этот предмет!');
+	return;
+}
+artifact_save(array(
+	'id' => $artifact['id'],
+	'enchant_id' => $enchant['id'],
+	'flags' => intval($artifact['flags']) | (intval($enchant['flags'] & (ARTIFACT_FLAG_NOGIVE | ARTIFACT_FLAG_BOE))),
+	'param2' => 0,	//обнулим улучшение руны
+));
+require_once('lib/user_stat.lib');	
+require_once('lib/chat.lib');	
+//user_stat_update($subject['id'], USER_STAT_TYPE_SKILL, USER_STAT_SKILL_REP_KUSYA, 5);
+user_stat_update($subject['id'], USER_STAT_TYPE_SKILL, USER_STAT_SKILL_RUNE_UP, 1);
+//chat_msg_send_system('<b>Вы получили <b style="color:darkred;">5 репутации Кузнеца</b></b>', CHAT_CHF_USER, $subject['id']);
+
+$out['status'] = ACTION_STATUS_OK;
+
+artifact_artikul_get_title($artifact, array($artifact_artikul['id'] => $artifact_artikul));
+// лог-сервис -----------------------
+logserv_log_action(array(
+	'action' => $action,
+	'comment' => sprintf(translate('Наложена руна на "%s"'),$artifact['title']),
+),$action_user);
+// ----------------------------------
+
+artifact_bag_send_diff($subject['id'], $artifact['id']);
+?>

@@ -1,0 +1,749 @@
+<? # $Id: area.lib,v 1.104 2010-01-15 09:50:10 p.knoblokh Exp $
+
+// Имена и поля таблиц
+define('TABLE_AREA_FIGHT_BONUS', 'area_fight_bonus');
+define('FIELD_AREA_FIGHT_BONUS', '');
+define('TABLE_AREA_LINKS','area_links');
+define('FIELD_AREA_LINKS','');
+define('TABLE_AREA_BOTS','area_bots');
+define('FIELD_AREA_BOTS','');
+define('TABLE_AREA_SETTINGS','area_settings');
+define('FIELD_AREA_SETTINGS','');
+define('TABLE_AREA_XML_MAPS', 'area_xml_maps');
+define('FIELD_AREA_XML_MAPS', '');
+define('TABLE_AREA_RESSURECT', 'area_ressurect');
+define('FIELD_AREA_RESSURECT', '');
+define("PATH_AREA","area/");
+define("PATH_LIBRARY","library/");
+define('TABLE_AREA_CHAT_SUBCHANNELS','area_chat_subchannels');
+define('FIELD_AREA_CHAT_SUBCHANNELS','id,title');
+
+// Флаги локаций
+define('AREA_FLAG_DIE_NO_GHOST',		0x00001);	// После гибели не становится призраком
+define('AREA_FLAG_GIVEHONOR',			0x00002);	// Выдавать доблесть в бою
+define('AREA_FLAG_NO_CHATUSERS',		0x00004);	// Нет списка пользователей в чате
+define('AREA_FLAG_NO_MINIMAP',			0x00008);	// Не отображать миникарту
+define('AREA_FLAG_NO_FIGHT',			0x00010);	// Запрет на бои/нападения
+define('AREA_FLAG_NO_COOLDOWN',			0x00020);	// Не ставить кд на перемещение при выходе
+define('AREA_FLAG_ALLOW_MOROC',			0x00040);	// Разрешить участие мороков в Великих боях
+define('AREA_FLAG_NO_INVISIBLE_MAGMAR',	0x00080);	// Сбрасывать невидимость для магмаров
+define('AREA_FLAG_NO_INVISIBLE_HUMAN',	0x00100);	// Сбрасывать невидимость для людей
+define('AREA_FLAG_NO_TRANSFER_BG',      0x00200);    // Запретить перемещение на Поля битв
+define('AREA_FLAG_FARM_NO_REGENERATION',0x00400);	// Не обновлять фарм автоматически
+define('AREA_FLAG_FARM_FLORA_REFRESH',	0x00800);	// Обновить фарм на локации
+define('AREA_FLAG_ALLOW_FRIEND_ATTACK', 0x01000);    // Можно нападать на своих
+define('AREA_FLAG_ENABLE_FIGHT_LEAVE',  0x02000);    // Запрет выхода из боя
+define('AREA_FLAG_NO_MORE_FIGTH',		0x04000);    // Нельзя нападать при наличии незавершенных боев
+define('AREA_FLAG_NO_MARRIAGE_TELEPORT',0x08000);	// Запретить телепорт к супругу, находящемуся в этой локации
+define('AREA_FLAG_ENABLE_BONUS_PVP',	0x10000);	// Включить выдачу бонуса PvP
+define('AREA_FLAG_NO_MOROC_FIGHT',		0x20000);    // Запрет призыва мороков в бою
+define('AREA_FLAG_NO_MOUNT_FIGHT',		0x40000);    // Запрет призыва ездовых животных в бою
+define('AREA_FLAG_NO_MOROC_SET_ON',		0x80000);    // Запретить натравливать морока
+define('AREA_FLAG_ENABLE_USER_ESTATE',  0x100000);	// Можно покупать поместье с рук
+define('AREA_FLAG_ENABLE_GOV_ESTATE',  	0x200000);	// Можно покупать поместье у государства
+define('AREA_FLAG_NESLOM',		0x400000);    // Запретить поломку вещей на локации
+define('AREA_FLAG_NO_PROVOCATION', 0x800000); //Провокация в данной локации недоступна
+define('AREA_FLAG_NO_CHECKPOINT', 0x1000000); //Запрет чекпоинта на этой локации
+
+define('AREA_FLAG2_NO_CHAOT_TELEPORT',  0x0000001); //Нельзя телепортироваться на Хаотическую битву
+define('AREA_FLAG2_CHAOT_LOCATION',     0x0000002); //Локация является Хаотической территорией (Территория хаотических битв)
+define('AREA_FLAG2_NO_ENJURY',          0x0000004); //Не выдавать травмы
+define('AREA_FLAG2_FORCE_EXIT',         0x0000008); //Выход для кланового лобби
+define('AREA_FLAG2_NO_BOSS_TELEPORT',   0x0000010); //Нельзя телепортироваться на Битву с боссом
+define('AREA_FLAG2_BOSS_LOCATION',      0x0000020); //Локация является Битвой с боссом (Территория босса битв)
+define('AREA_FLAG2_BONUSES_WB_ALL',     0x0000040); //Бонусы великой битвы распространяются без учета великой битвы
+define('AREA_FLAG2_ALL_INVISIBLE',	    0x0000080);	// Все неведимки
+define('AREA_FLAG2_ALL_PVP',	        0x0000100);	// Все враги
+define('AREA_FLAG2_FIGHT_NO_BLOCK',     0x0000200); //Бои без блока
+
+define('AREA_FLAG2_NO_OBCAST',          0x0000400); //Не учитывать каст
+define('AREA_FLAG2_NO_TALENTS',         0x0000800); //Не учитывать таланты
+define('AREA_FLAG2_NO_CLAN_TALENTS',    0x0001000); //Не учитывать клановые таланты
+define('AREA_FLAG2_NO_CLAN_BONUS',      0x0002000); //Не учитывать клановые бонусы
+
+
+define('AREA_FLAG_ENABLE_ESTATE', AREA_FLAG_ENABLE_USER_ESTATE|AREA_FLAG_ENABLE_GOV_ESTATE);
+
+// Флаги связей
+define('AREA_LINK_FLAG_NO_GHOST',    0x0001); // Запрещен переход для призраков
+define('AREA_LINK_FLAG_NPC',         0x0002); // Привязка NPC
+define('AREA_LINK_FLAG_CONFIRM',     0x0004); // Спрашивать подтверждение
+define('AREA_LINK_FLAG_HOUSE',       0x0008); // Вход в здание
+define('AREA_LINK_FLAG_HIDDEN',      0x0010); // Скрытая функциональная область, в браузерную версию уходит без названия, в мобильную как открытая текстовка
+define('AREA_LINK_FLAG_SIMPLE_MOVE', 0x0020); // Облегчённый переход без перегрузки флэшки
+define('AREA_LINK_FLAG_STAT',        0x0040); // Писать статистику
+define('AREA_LINK_FLAG_HUNT',        0x0080); // Переход в охоту
+define('AREA_LINK_FLAG_MAGMAR',      0x0100); // Локация магмаров
+define('AREA_LINK_FLAG_HUMAN',       0x0200); // Локация людей
+
+// Флаги скрытия разделов магазина
+define('AREA_STORE_HIDE_STORE',		0x0001); // скрыть магазин
+define('AREA_STORE_HIDE_REPAIR',	0x0002); // скрыть мастерскую
+define('AREA_STORE_HIDE_SELL',		0x0004); // скрыть старьевщика
+
+// Типы данных, хранящиеся в area_settings
+define('AREA_SETTING_TYPE_STRING',      1); // строка
+define('AREA_SETTING_TYPE_INTEGER',     3); // число
+
+
+define('AREA_RESSURECT_FLAG_ADMIN', 0x00000001); //Только для админов xD
+define('AREA_RESSURECT_FLAG_HIDE', 0x00000002); //Скрыт
+define('AREA_RESSURECT_FLAG_RESTRICTION', 0x00000004); //Проверять огранки с ограничений (Флаг для разгрузки)
+define('AREA_RESSURECT_MAIN', 0x00000008); //Воскрешение здесь
+
+$area_ressurect_flag_hash = array(
+    AREA_RESSURECT_FLAG_ADMIN => 'Только для админов xD',
+    AREA_RESSURECT_FLAG_HIDE => 'Скрыт',
+    AREA_RESSURECT_FLAG_RESTRICTION => 'Проверять огранки с ограничений (Флаг для разгрузки)',
+    AREA_RESSURECT_MAIN => 'Воскрешение здесь (Вместо названия кол-во серебра)',
+);
+
+function area_get($ref=false, $add='') {
+	global $db;
+	$area = common_get($db,TABLE_AREAS,$ref,$add);
+	if ($area) $area['object_class'] = OBJECT_CLASS_AREA;
+	return $area;
+}
+
+function area_list($ref=false, $add='', $field_list='*') {
+	global $db;
+	return common_list($db,TABLE_AREAS,$ref,$add,$field_list);
+}
+
+function area_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_AREAS, $ref, $add);
+}
+
+function area_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREAS,$param,FIELD_AREAS);
+}
+
+function area_delete($ref) {
+	global $db;
+	if (!$ref || is_array($ref)) return false;
+	$area = area_get($ref);
+	$nn = $area['node_num'];
+	common_delete($db,TABLE_AREAS,$ref);
+	area_link_delete(false,$ref);
+	area_bot_delete(array('area_id' => $ref));
+
+	try{area_fight_bonus_delete(array('area_id' => $ref));}catch (Exception $e){} //WHY!
+	
+	require_once("lib/bot.lib");
+	foreach (bot_list(null,null,$ref) as $bot) bot_delete($bot['id']);
+	
+	foreach (area_list(array('parent_id' => $ref)) as $area) area_delete($area['id']);
+	return true;
+}
+
+function area_fight_bonus_get($ref=false, $add='') {
+    global $db;
+    return common_get($db,TABLE_AREA_FIGHT_BONUS,$ref,$add);
+}
+
+function area_fight_bonus_list($ref=false, $add='', $field_list='*') {
+    global $db;
+    return common_list($db,TABLE_AREA_FIGHT_BONUS,$ref,$add,$field_list);
+}
+
+function area_fight_bonus_count($ref=false, $add='') {
+    global $db;
+    return common_count($db, TABLE_AREA_FIGHT_BONUS, $ref, $add);
+}
+
+function area_fight_bonus_save($param) {
+    global $db;
+    return common_save($db,TABLE_AREA_FIGHT_BONUS,$param,FIELD_AREA_FIGHT_BONUS);
+}
+
+function area_fight_bonus_delete($ref=false, $add='') {
+    global $db;
+    common_delete($db,TABLE_AREA_FIGHT_BONUS,$ref,$add);
+    return true;
+}
+
+function area_link_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_AREA_LINKS,$ref,$add);
+}
+
+function area_link_list($from_id=false, $to_id=false, $add='', $extended=false) {
+	global $db;
+	$query_add = '';
+	if ($from_id) $query_add .= sql_pholder(" AND from_id=?",$from_id);
+	if ($to_id) $query_add .= sql_pholder(" AND to_id=?",$to_id);
+	if (!$extended) {
+		$data = common_list($db,TABLE_AREA_LINKS,false,$query_add.$add);
+	} else {
+		$query = sql_pholder("SELECT t.*,if(t.title<>'',t.title,a.title) AS title FROM ?#TABLE_AREA_LINKS AS t LEFT JOIN ?#TABLE_AREAS AS a ON t.to_id=a.id WHERE 1");
+		$query .= $query_add.$add;
+		$db->db_GetQueryArray($query,$data);
+		translate_data_all_rows($data, 'area_links');
+	}
+	return $data;
+}
+
+function area_link_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_LINKS,$param,FIELD_AREA_LINKS);
+}
+
+function area_link_delete($ref=false, $area_id=false, $add='') {
+	global $db;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($area_id) $add .= sql_pholder(" AND (from_id=? OR to_id=?)",$area_id,$area_id);
+	if (!$ref && !$add) return false;
+	$data = common_list($db,TABLE_AREA_LINKS,$ref,$add);
+	foreach ($data as $k=>$item) $data[$k]['object_class'] = OBJECT_CLASS_AREA_LINK;
+	restriction_objects_list($data);
+	foreach ($data as $item) {
+		foreach ($item['object_restrictions'] as $restriction) restriction_delete($restriction['id']);
+	}
+	return common_delete($db,TABLE_AREA_LINKS,$ref,$add);
+}
+
+function area_bot_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_AREA_BOTS,$ref,$add);
+}
+
+function area_bot_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_AREA_BOTS,$ref,$add);
+}
+
+function area_bot_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_BOTS,$param,FIELD_AREA_BOTS);
+}
+
+function area_bot_delete($ref, $add='') {
+	global $db;
+	$data = common_list($db,TABLE_AREA_BOTS,$ref,$add);
+	foreach ($data as $k=>$item) $data[$k]['object_class'] = OBJECT_CLASS_AREA_BOT;
+	restriction_objects_list($data);
+	foreach ($data as $item) {
+		if ($item['object_restrictions']) foreach ($item['object_restrictions'] as $restriction) restriction_delete($restriction['id']);
+	}
+	return common_delete($db,TABLE_AREA_BOTS,$ref,$add);
+}
+
+function area_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('AREA_'.intval($ref),$timewait,$timelock);
+}
+
+function area_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('AREA_'.intval($ref));
+}
+
+function area_link_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('AREA_LINK_'.intval($ref),$timewait,$timelock);
+}
+
+function area_link_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('AREA_LINK_'.intval($ref));
+}
+
+function area_get_location_info($area) {
+	$location = $area;
+	while ($location && !$location['swf']) $location = area_get($location['parent_id']);
+	if (!$location['swf']) return false;
+	$t = explode('.',$location['swf']);
+	$location['pic'] = $t[0].'.jpg';
+	return array(
+		'area' => $area,
+		'location' => $location,
+		'location_p' => area_get($location['parent_id']),
+	);
+}
+
+function area_chain($area_id, $depth=0) {
+	if (!$area_id) return false;
+	$out = array();
+	while ($area = area_get($area_id)) {
+		$out[] = $area;
+		$area_id = $area['parent_id'];
+		if (!$area_id || ($depth && !--$depth)) break;
+	}
+	return $out;
+}
+
+function area_select($root_id=0) {
+	return common_tree(area_list(),$root_id);
+}
+
+function area_setting_get($ref=false, $area_id=false, $add='') {
+	global $db;
+	$query_add = '';
+	if ($area_id) $query_add .= sql_pholder(" AND area_id=?",$area_id);
+	return common_get($db,TABLE_AREA_SETTINGS,$ref,$query_add.$add);
+}
+
+function area_setting_list($area_id=null, $area_code=null, $add='') {
+	global $db;
+	$ref = false;
+	if (isset($area_id)) $ref['area_id'] = $area_id;
+	if (isset($area_code)) $ref['area_code'] = $area_code;
+	return common_list($db,TABLE_AREA_SETTINGS,$ref,$add);
+}
+
+function area_get_settings(&$area) { // полный хеш установок для локации, включая общие
+	return get_hash(array_merge(area_setting_list($area['id']), area_setting_list(0, $area['code'])), 'name', 'value');
+}
+
+function area_setting_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_SETTINGS,$param,FIELD_AREA_SETTINGS);
+}
+
+function area_setting_delete($ref) {
+	global $db;
+	return common_delete($db,TABLE_AREA_SETTINGS,$ref);
+}
+
+function area_get_artifact_list($area_id, $owner_id=false, $add='') {
+	if (!$area_id) return false;
+	$area = area_get($area_id);
+	if (!$area['node_num']) return false;
+	NODE_PUSH($area['node_num']);
+	$query = sql_pholder(' AND area_id=? ', $area_id);
+	if ($owner_id) $query .= sql_pholder(' AND owner_id=? ', intval($owner_id));
+	$artifact_list = artifact_list(false, false, '', true, false, $query.$add);
+	NODE_POP();
+	common_fldsort($artifact_list, false, 'artikul_id');
+	return $artifact_list;
+}
+
+function area_conf_link_list(&$user, &$session) {
+	$area_id = $user['area_id'];
+	if (!$area_id) return;
+	$key = $user['area_id'].'-'.$session['sid'];
+	$items = array();
+	$link_list = area_link_list($area_id,false," AND active=1",true);
+	uasort($link_list,'area_links_sort');
+	foreach ($link_list as $link) {
+		if (($link['flags'] & AREA_LINK_FLAG_NO_GHOST) && ($user['flags'] & USER_FLAG_GHOST)) continue;
+		$item = array(
+			'id' => $link['f_id'],
+		);
+		if ($link['title']) $item['name'] = $link['title'];
+		$simple_move = ($link['flags'] & AREA_LINK_FLAG_SIMPLE_MOVE);
+		if ($link['flags'] & AREA_LINK_FLAG_HUNT) {
+			$item['type'] = 'hunt';
+			$item['href'] = '/hunt.php';
+		} elseif ($link['to_id']) {
+			if (!$link['bot_group_id'] && $link['kind'] && ($link['kind'] != $user['kind'])) continue;
+			$item['type'] = 'area';
+			if ($simple_move) {
+				$item['href'] = '/'.action_run_request(array(
+					'code' => 'COME_IN',
+					'area_id' => $link['to_id'],
+                    'url_success' => 'main_iframe.php?mode=update_swf&tar[]=area&tar[]=event&tar[]=area_fight',
+                    'url_error' => 'main_iframe.php?mode=update_swf&tar[]=area&tar[]=event&tar[]=area_fight',
+				));
+				$item['hidden'] = 1;
+			} else {
+				$item['href'] = '/'.action_run_request(array(
+					'code' => 'COME_IN',
+					'area_id' => $link['to_id'],
+					'url_success' => 'area.php',
+					'url_error' => 'area.php',
+				));
+			}
+			$item['loc_id'] = $link['to_id'];
+		} else if ($link['bot_group_id']) {
+			$item['type'] = 'bot';
+			$item['href'] = '/'.action_run_request(array(
+				'code' => 'ATTACK_BOT',
+				'in[group_id]' => $link['bot_group_id'],
+				'url_success' => common_fight_php(),
+				'url_error' => 'area.php',
+			));
+		} else if ($link['action_id']) {
+			if ($link['kind'] && ($link['kind'] != $user['kind'])) continue;
+			require_once('lib/action.lib');
+			$item['type'] = 'action';
+			if ($simple_move) {
+				$item['href'] = '/'.action_run_request(array(
+					'object_class' => OBJECT_CLASS_AREA,
+					'object_id' => $user['area_id'],
+					'action_id' => $link['action_id'],
+					//'url_success' => 'main_iframe.php?mode=update_swf&tar[]=area&tar[]=event&tar[]=area_fight',
+					//'url_error' => 'main_iframe.php?mode=update_swf&tar[]=area&tar[]=event&tar[]=area_fight',
+				));
+				$item['hidden'] = 1;
+			} else {
+				$item['href'] = '/'.action_run_request(array(
+					'object_class' => OBJECT_CLASS_AREA,
+					'object_id' => $user['area_id'],
+					'action_id' => $link['action_id'],
+					'url_success' => 'area.php',
+					'url_error' => 'area.php',
+				));
+			}
+			$action = action_object_get(OBJECT_CLASS_AREA,$user['area_id'],$link['action_id'],'',true);
+			if ($action['ltime']) {
+				$item['ltime'] = $action['ltime'];
+				if ($session['action_id'] == $action['id']) $item['dtime'] = $session['ltime'];
+			}
+		} else if ($link['inst_artikul_id']) {
+			if ($link['kind'] && ($link['kind'] != $user['kind'])) continue;
+			$item['type'] = 'instance';
+			$item['href'] = '/'.secure_url($key,'instance.php?action=enter&ref='.$link['id']);
+		} else if ($link['flags'] & AREA_LINK_FLAG_NPC) {
+			if ($link['kind'] && ($link['kind'] != $user['kind'])) continue;
+			$item['type'] = 'npc';
+			$item['href'] = '/'.secure_url($key,'npc.php?action=enter&ref='.$link['id']);
+		}
+		if ($link['flags'] & AREA_LINK_FLAG_CONFIRM) $item['confirm'] = 1;
+		if ($link['flags'] & AREA_LINK_FLAG_HIDDEN) {
+			unset($item['name']);
+		}
+		if ($link['code']) $item['code'] = $link['code'];
+		if ($link['flags'] & AREA_LINK_FLAG_NPC) $item['mode'] = 'npc';
+		elseif ($link['flags'] & AREA_LINK_FLAG_HOUSE) $item['mode'] = 'house';
+		else $item['mode'] = 'area';
+
+		$enemy_area = (($user['kind'] == KIND_HUMAN) && ($link['flags'] & AREA_LINK_FLAG_MAGMAR)) || (($user['kind'] == KIND_MAGMAR) && ($link['flags'] & AREA_LINK_FLAG_HUMAN));
+
+		// при переходе во вражескую локацию сбрасывается невидимость, нужно оповестить игрока об этом
+		if ($enemy_area || $item['type'] == 'instance') {
+			if (user_is_invisible($user)) {
+				$item['confirm_text'] = $item['type'] == 'instance' ? translate('Внимание, при входе в инстанс вы станете видимым!') : translate('Внимание, при переходе на вражескую локацию вы станете видимым!');
+			}
+		}
+
+		$items[] = $item;
+	}
+
+	require_once("lib/buildings.lib");
+	$estate = estate_get(array('user_id' => $user['id']));
+	if ($estate && ($estate['area_id'] == $user['area_id'])) {
+		$items[] = array(
+			'id'   => 1000000,
+			'type' => 'area',
+			'name' => translate('В Поместье'),
+			'href' => '/estate.php?mode=enter',
+		);
+	}
+
+	return $items;
+}
+
+
+function area_conf($area) {
+	global $session_user,$session;
+	// вынесено в отдельную функцию для единообразия с мобильными клиентами
+	$items = area_conf_link_list($session_user,$session);
+	$area_info = area_get_location_info($area);
+	$area_ftime = ($session_user['flags'] & USER_FLAG_GHOST) ? 0 : max($session_user['area_ftime']-time_current(),0);
+	$location = &$area_info['location'];
+	return '<town title="'.$location['title'].'" sky_type="'.($area['sky_type'] ? PATH_SWF_AREA_SKY.$area['sky_type'] : '').'" bg="'.file_url(PATH_SWF_AREAS.$location['swf']).
+		'" ftime="'.$area_ftime.'" ftime_max="'.$area['freeze_time'].'" weather="'.$area['weather'].'" curtime="'.time_current().'">'.
+		construct_xml($items).'</town>';
+}
+
+function area_conf_json($area) {
+    global $session_user,$session;
+
+    // вынесено в отдельную функцию для единообразия с мобильными клиентами
+    $items = area_conf_link_list($session_user,$session);
+    $area_info = area_get_location_info($area);
+    $area_ftime = ($session_user['flags'] & USER_FLAG_GHOST) ? 0 : max($session_user['area_ftime']-time_current(),0);
+    $location = &$area_info['location'];
+    $json_area = array(
+        'town' => array(
+            'area_id' => $area['id'],
+            'title' => $area['title'],
+            'sky_type' => ($area['sky_type'] ? PATH_SWF_AREA_SKY.$area['sky_type'] : ''),
+            'bg' => file_url(PATH_SWF_AREAS.$location['swf']),
+            'bg_mid' => ($location['swf_big'] ? file_url(PATH_SWF_AREAS_DELAYED.$location['swf_big']) : ''),
+            'ftime' => $area_ftime,
+            'ftime_max' => $area['freeze_time'],
+            'weather' => $area['weather'],
+            'curtime' => time_current(),
+            'fronts' => 0,
+            'dy' => 0,
+            'is_copy_location_id' => 0,
+            'code' => $area['code'],
+            'items' => $items,
+            'resurrectCost' => 15, // 15 серы
+            'show_minimap' => ($area['flags'] & AREA_FLAG_NO_MINIMAP ? '' : 1),
+            'chaotic_fight_time' => 0,
+        ),
+    );
+
+    return $json_area;
+}
+
+function area_ressurect_get_info($mode = 1){
+    global $session_user,$session_premium;
+    if(!$session_user) return false;
+
+    $not_admin = sql_pholder('AND !(flags & ?#AREA_RESSURECT_FLAG_ADMIN)');
+    $add = sql_pholder(' '.(!($session_user['flags'] & USER_FLAG_ADMIN) ? $not_admin : '').' AND !(flags & ?#AREA_RESSURECT_FLAG_HIDE) AND kind_id = ?',$session_user['kind']);
+
+    $add .= sql_pholder(' ORDER BY (flags & ?#AREA_RESSURECT_MAIN) DESC');
+    //Оказывается не надо, будем же выводить почему нельзя...
+    /*$add .= sql_pholder(' AND (min_lvl <= ? OR min_lvl = 0)',$session_user['level']);
+    $add .= sql_pholder(' AND (max_lvl >= ? OR max_lvl = 0)',$session_user['level']);
+    $add .= sql_pholder(' AND (prem_lvl <= ? OR prem_lvl = 0)',$session_premium['level']);*/
+    $area_ressurec_list = area_ressurect_list(false, $add);
+    $area_ressurect_return = array();
+
+    $area = $garea = array();
+    if($session_user['area_id']) $area = area_get($session_user['area_id']);
+    if($session_user['garea_id']) $garea = area_get($session_user['garea_id']);
+
+    if($mode == 2){
+        foreach ($area_ressurec_list as $area_ressurect){
+            $area_ressurect['id'] = ($area_ressurect['flags'] & AREA_RESSURECT_MAIN ? 1 : $area_ressurect['id']);
+            $area_ressurect_return[] = $area_ressurect;
+        }
+        return $area_ressurect_return;
+    }
+    foreach ($area_ressurec_list as $k=>$area_ressurect){
+        //Проверка на возможность тп xD тупая пизда
+        $out = area_ressurect_check($area_ressurect, $area, $garea);
+        $area_ressurect_return[] = array(
+            'id' => ($area_ressurect['flags'] & AREA_RESSURECT_MAIN ? 1 : $area_ressurect['id']),
+            'state' => ($out['status'] == 100 ? true : false),
+            'title' => ($area_ressurect['flags'] & AREA_RESSURECT_MAIN ? $area_ressurect['title'] : $area_ressurect['title']),
+            'picture' => PATH_IMAGE_RESSURECT_ICONS.$area_ressurect['picture'],
+            'error' => ($out['error'] ? $out['error'] : ''),
+        );
+    }
+    return $area_ressurect_return;
+}
+
+function area_ressurect_check($area_ressurect = array(), $area = array(), $garea = array()){
+    global $session_user,$session_premium;
+    $out = array();
+    if(!$area_ressurect){
+        $out['status'] = -1;
+        $out['error'] = 'Недоступно';
+        return $out;
+    }
+
+    $out['status'] = 100;
+    $min_lvl = $area_ressurect['min_lvl']; $max_lvl = $area_ressurect['max_lvl']; $prem_lvl = $area_ressurect['prem_lvl'];
+    $user_lvl = $session_user['level']; $user_prem_lvl = $session_premium['level'];
+    if($area_ressurect['flags'] & AREA_RESSURECT_MAIN){
+        if($area['flags'] & AREA_FLAG_NO_INVISIBLE_HUMAN && $session_user['kind'] == 1){
+            $out['status'] = -1;
+            $out['error'] = 'Невозможно на локации Древних';
+            return $out;
+        }
+        if($area['flags'] & AREA_FLAG_NO_INVISIBLE_MAGMAR && $session_user['kind'] == 2){
+            $out['status'] = -1;
+            $out['error'] = 'Невозможно на локации Людей';
+            return $out;
+        }
+        if(!($area['flags'] & AREA_FLAG_NO_INVISIBLE_HUMAN) && !($area['flags'] & AREA_FLAG_NO_INVISIBLE_MAGMAR)){
+            $out['status'] = -1;
+            $out['error'] = 'Невозможно в данной локации!';
+            return $out;
+        }
+        if($garea && $garea['id'] != $area['id']){
+            $out['status'] = -1;
+            $out['error'] = 'Воскреснуть возможно на месте смерти "'.$garea['title'].'"';
+            return $out;
+        }
+    }
+    if($min_lvl > $user_lvl && $min_lvl){
+        $out['status'] = -1;
+        $out['error'] = 'От '.$min_lvl.' уровня.';
+        return $out;
+    }
+    if($max_lvl < $user_lvl && $max_lvl){
+        $out['status'] = -1;
+        $out['error'] = 'До '.$min_lvl.' уровня.';
+        return $out;
+    }
+    if($prem_lvl > $user_prem_lvl && $prem_lvl){
+        $out['status'] = -1;
+        $out['error'] = 'От '.$prem_lvl.' уровня премиума.';
+        return $out;
+    }
+
+    //Проверим огранку..
+    //Флаг для разгрузки...
+    if($area_ressurect['flags'] & AREA_RESSURECT_FLAG_RESTRICTION){
+        $check_object_list = array();
+        restriction_get_dependent($session_user,$check_object_list);
+
+        $area_ressurect['object_class'] = OBJECT_CLASS_AREA_RESSURECT;
+        $restrinction = restriction_check(0, array($area_ressurect), $check_object_list);
+        if($restrinction['status'] == RESTRICTION_STATUS_DENY){
+            $out['status'] = -1;
+            $out['error'] = $restrinction['title'];
+            return $out;
+        } //Если не прошли огранки по отдельному таланту...
+    }
+
+    return $out;
+}
+
+function area_links_sort($a,$b) {
+	if (($a['flags'] & AREA_LINK_FLAG_NPC) != ($b['flags'] & AREA_LINK_FLAG_NPC)) return ($a['flags'] & AREA_LINK_FLAG_NPC)-($b['flags'] & AREA_LINK_FLAG_NPC);
+	if (($a['flags'] & AREA_LINK_FLAG_HOUSE) != ($b['flags'] & AREA_LINK_FLAG_HOUSE)) return ($a['flags'] & AREA_LINK_FLAG_HOUSE)-($b['flags'] & AREA_LINK_FLAG_HOUSE);
+	return ($a['ord'] - $b['ord']);
+}
+
+function area_map_xml_update() {
+    return false;
+	$area_list = area_list(false, ' AND xml_map != "" ');
+	$xml_content = '<world><areas_xml>' . PHP_EOL;
+	foreach ($area_list as $area) {
+		if ($area['xml_map']) $xml_content .= '	<file src="' .htmlspecialchars($area['xml_map']) . '" />' . PHP_EOL;
+	}
+	$xml_content .= file_get_contents(PATH_SWF.'ways.xml');
+	$xml_content .= '</areas_xml></world>' . PHP_EOL;
+	
+	$fname = locale_data_path().'world_conf.xml';
+	$fp = fopen($fname, 'w');
+	if (!$fp) {
+		error_log(__FILE__.':'.__FUNCTION__.':'.__LINE__.": Unable to open file `$fname`");
+		return false;
+	}
+	$result = fwrite($fp, $xml_content);
+	if (!$result) {
+		error_log(__FILE__.':'.__FUNCTION__.':'.__LINE__.": Unable to write data to file `$fname`. $result bytes was writen.");
+	}
+	fclose($fp);
+}
+
+function area_xml_map_get($ref=false, $add='') {
+	global $db;
+	return common_get($db, TABLE_AREA_XML_MAPS, $ref, $add);
+}
+
+function area_xml_map_list($ref=false, $add='', $field_list='*') {
+	global $db;
+	return common_list($db, TABLE_AREA_XML_MAPS, $ref, $add, $field_list);
+}
+
+function area_xml_map_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_AREA_XML_MAPS, $ref, $add);
+}
+
+function area_xml_map_save($param) {
+	global $db;
+	return common_save($db, TABLE_AREA_XML_MAPS, $param, FIELD_AREA_XML_MAPS);
+}
+
+function area_xml_map_delete($ref=false, $add='') {
+	global $db;
+	if (!is_array($ref)) $ref = array('id' => $ref);
+	$area_xml_map_list = area_xml_map_list($ref, $add, 'fname');
+	$status = common_delete($db, TABLE_AREA_XML_MAPS, $ref, $add);
+	if ($status) {
+		foreach ($area_xml_map_list as $area_xml_map) {
+			area_xml_map_delete_file($area_xml_map);
+		}
+	}
+	return $status;
+}
+
+// ---------------------------
+
+function area_xml_map_update_file($area_xml_map) {
+    return true;
+	if (!$area_xml_map['fname'] || !$area_xml_map['codetext']) return false;
+	$filename = locale_data_path().PATH_SWF_AREA_XML_MAP.$area_xml_map['fname'];
+	$status = file_put_contents($filename, $area_xml_map['codetext']);
+	@chmod(SERVER_ROOT.$filename, 0664);
+	return $status;
+}
+
+function area_xml_map_delete_file($area_xml_map) {
+	if (!$area_xml_map['fname']) return false;
+
+	$filename = locale_data_path().PATH_SWF_AREA_XML_MAP.$area_xml_map['fname'];
+	return unlink($filename);
+}
+
+// ---------------------------
+
+function area_chat_subchannel_get($ref=false, $add='') {
+	global $db;
+	return common_get($db, TABLE_AREA_CHAT_SUBCHANNELS, $ref, $add);
+}
+
+function area_chat_subchannel_list($ref=false, $add='', $field_list='*') {
+	global $db;
+	return common_list($db, TABLE_AREA_CHAT_SUBCHANNELS, $ref, $add, $field_list);
+}
+
+function area_chat_subchannel_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_AREA_CHAT_SUBCHANNELS, $ref, $add);
+}
+
+function area_chat_subchannel_save($param) {
+	global $db;
+	return common_save($db, TABLE_AREA_CHAT_SUBCHANNELS, $param, FIELD_AREA_CHAT_SUBCHANNELS);
+}
+
+function area_chat_subchannel_delete($ref) {
+	global $db;
+	return common_delete($db, TABLE_AREA_CHAT_SUBCHANNELS, $ref);
+}
+
+//Стоимость для воскрешения
+function area_ressurection_cost($level){
+    $price = 5; // Для первых уровней
+    if($level == 1 || $level == 2){return $price;}
+    $price = 5;
+    if($level == 3){return $price;}
+    $price = 5;
+    if($level == 4){return $price;}
+    $price = 10;
+    if($level == 5){return $price;}
+    $price = 10;
+    if($level >= 5){return $price;}
+    $price = 1;
+    return $price;
+}
+
+function area_ressurect_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_AREA_RESSURECT,$ref,$add);
+}
+
+function area_ressurect_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_AREA_RESSURECT,$ref,$add,$field_list);
+}
+
+function area_ressurect_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_AREA_RESSURECT, $ref, $add);
+}
+
+function area_ressurect_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_AREA_RESSURECT,$param,FIELD_AREA_RESSURECT);
+}
+
+function area_ressurect_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_AREA_RESSURECT,$ref);
+    return true;
+}
+
+
+
+?>

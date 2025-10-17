@@ -1,0 +1,50 @@
+<? # $Id: AMNESTY.action,v 1.5 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "снять наказания временем"
+// параметры:
+//	$in['nick'] - ник
+
+require_once("lib/punishment.lib");
+require_once("lib/guard_awards.lib");
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+$user = user_get(false,$in['nick']);
+if (!$user) {
+	$out['error'] = translate('Пользователь не найден!');
+	return;
+}
+if ($subject['kind'] != $user['kind'] && !($subject['flags'] & USER_FLAG_ADMIN)) {
+	$out['error'] = translate('Снимать наказание можно только игроков своей расы!');
+	return;
+}
+$param = array('user_id' => $user['id'], 'type_id' => PUNISH_TYPE_TIME);
+if ($action['param1']) {
+	$param['crime_id'] = $action['param1'];
+}
+$punishment_list = punishment_user_list($param, false);
+$crime_type_ids = array();
+foreach ($punishment_list as $item) {
+	if (punishment_user_delete($item['id'])) {
+		$crime_type_ids[$item['crime_id']] = $item['crime_id'];
+	}
+}
+if ($crime_type_ids) {
+	global $crime_type_info;
+	punishment_user_flag_sync($user['id']);
+	foreach ($crime_type_ids as $crime_id) {
+		$crime = $crime_type_info[$crime_id];
+		chat_msg_send_system(sprintf(translate('С Вас сняты временные "%s"'),$crime['title2']),CHAT_CHF_USER,$user['id']);
+		chat_msg_send_system(sprintf(translate('Вы сняли "%s" с персонажа %s'), $crime['title2'], user_is_invisible($user) ? translate('Невидимка') : html_user_info($user)),CHAT_CHF_USER,$subject['id']);
+		chat_msg_send_system(sprintf(translate('С игрока %s сняты временные "%s"'), user_is_invisible($user) ? translate('Невидимка') : html_user_info($user), $crime['title2']),CHAT_CHF_AREA,$user['area_id']);
+	}
+}
+$out['status'] = ACTION_STATUS_OK;
+
+// лог-сервис -----------------------
+logserv_log_action(array(
+	'action' => $action,
+),$action_user,$user);
+// ----------------------------------
+
+guard_awards_stat_add($subject['id'], GUARD_AWARD_TYPE_UNBAN, array('param1' => $user['id']));
+?>

@@ -1,0 +1,9 @@
+<? # $Id: PLAY_GAME.action 19659 2011-07-12 14:54:30Z f.omelchanko $
+
+// действие открыть URL
+
+if (!in_array($subject['object_class'], array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+
+$out['status'] = ACTION_STATUS_OK;
+$out['param_success'] = array('url_close'=> '/area_cube.php?action=clear', 'window_reload' => 1);

@@ -1,0 +1,222 @@
+<?
+define('TABLE_ADV_DAYBONUS_LIST','adv_daybonus');
+define('FIELD_ADV_DAYBONUS_LIST','');
+define('TABLE_ADV_DAYBONUSURCHI_LIST','adv_daybonus_urchi');
+define('FIELD_ADV_DAYBONUSURCHI_LIST','');
+define('TABLE_ADV_DAYBONUS_STAT_LIST','adv_daybonus_stat');
+define('FIELD_ADV_DAYBONUS_STAT_LIST','');
+define('TABLE_ADV_DAYBONUSURCHI_STAT_LIST','adv_daybonus_urchi_stat');
+
+define('ADV_DAYBONUS_TIME', 84600);
+define('ADV_DAYBONUS_SBROS_TIME', 172800); //Сбрасывать через 2 дня
+
+define('ADV_DAY_BONUS_FLAG_CLAN', 0x00000001); //Выдавать если есть клан
+
+$adv_day_bonus_flags_hash = array(
+    ADV_DAY_BONUS_FLAG_CLAN => 'Выдавать если есть клан',
+);
+
+$adv_day_bonus_urchi_flags_hash = array();
+
+$adv_link = 'adv_daybonus.php';
+
+#Работа с базой данных
+function adv_daybonus_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_DAYBONUS_LIST,$ref,$add);
+}
+
+function adv_daybonus_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_DAYBONUS_LIST,$ref,$add);
+}
+
+function adv_daybonus_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_DAYBONUS_LIST, $ref, $add);
+}
+
+function adv_daybonus_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_DAYBONUS_LIST,$param,FIELD_ADV_DAYBONUS_LIST);
+}
+
+function adv_daybonus_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_DAYBONUS_LIST,$ref,$add);
+    return true;
+}
+
+#Работа с базой данных
+
+#Работа с базой данных
+function adv_daybonus_stat_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_DAYBONUS_STAT_LIST,$ref,$add);
+}
+
+function adv_daybonus_stat_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_DAYBONUS_STAT_LIST,$ref,$add);
+}
+
+function adv_daybonus_stat_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_DAYBONUS_STAT_LIST, $ref, $add);
+}
+
+function adv_daybonus_stat_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_DAYBONUS_STAT_LIST,$param,FIELD_ADV_DAYBONUS_STAT_LIST);
+}
+
+function adv_daybonus_stat_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_DAYBONUS_STAT_LIST,$ref,$add);
+    return true;
+}
+
+#Работа с базой данных
+
+function adv_daybonus_check($user_id = false){
+    global $adv_link,$session_user;
+
+    if(!$session_user){
+        $session_user = user_get($user_id);
+    }
+    if ($session_user['instance_id']) {
+        return false;
+    } elseif(($session_user['flags'] & USER_FLAG_PUNISH) && user_get_punishment_state($session_user['id'], CRIME_FINANCE2)) {
+        return false;
+    }elseif (($session_user['flags'] & USER_FLAG_PUNISH) && user_get_punishment_state($session_user['id'], CRIME_FINANCE)) {
+        return false;
+    } elseif ($session_user['flags'] & USER_FLAG_JAIL) {
+        return false;
+    }
+
+    if(!$user_id) return false;
+    $adv_daybonus_stat = adv_daybonus_stat_get(array('user_id' => $user_id));
+    if(!$adv_daybonus_stat){
+        //Внесем в базу данных чувака
+        $adv_daybonus_stat = array(
+            'user_id' => $user_id,
+        );
+        adv_daybonus_stat_save($adv_daybonus_stat);
+        return "<script>$(function() {showMsg2('".$adv_link."','',500,420);})</script>";
+    }
+
+    //Проверим
+    if(time_current() > $adv_daybonus_stat['ctime']){
+        return "<script>$(function() {showMsg2('".$adv_link."','',500,420);})</script>";
+    }
+}
+
+
+
+#Работа с базой данных
+function adv_daybonus_urchi_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_DAYBONUSURCHI_LIST,$ref,$add);
+}
+
+function adv_daybonus_urchi_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_DAYBONUSURCHI_LIST,$ref,$add);
+}
+
+function adv_daybonus_urchi_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_DAYBONUSURCHI_LIST, $ref, $add);
+}
+
+function adv_daybonus_urchi_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_DAYBONUSURCHI_LIST,$param);
+}
+
+function adv_daybonus_urchi_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_DAYBONUSURCHI_LIST,$ref,$add);
+    return true;
+}
+
+#Работа с базой данных
+
+#Работа с базой данных
+function adv_daybonus_urchi_stat_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_DAYBONUSURCHI_STAT_LIST,$ref,$add);
+}
+
+function adv_daybonus_urchi_stat_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_DAYBONUSURCHI_STAT_LIST,$ref,$add);
+}
+
+function adv_daybonus_urchi_stat_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_DAYBONUSURCHI_STAT_LIST, $ref, $add);
+}
+
+function adv_daybonus_urchi_stat_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_DAYBONUSURCHI_STAT_LIST,$param);
+}
+
+function adv_daybonus_urchi_stat_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_ADV_DAYBONUSURCHI_STAT_LIST,$ref,$add);
+    return true;
+}
+
+#Работа с базой данных
+
+//Действует при заходе в игру
+function adv_daybonus_urchi_trigger($user_id) {
+    if(!$user_id || $user_id <= 0) return false;
+
+    $user = user_get($user_id);
+    //if(!($user['flags'] & USER_FLAG_ADMIN)) return false;
+
+    $adv_daybonus_stat = adv_daybonus_urchi_stat_get(array('user_id' => $user_id));
+    if(!$adv_daybonus_stat) {
+        adv_daybonus_urchi_stat_save(array('user_id' => $user_id, 'day' => 1, 'day_get' => 0));
+        $adv_daybonus_stat = adv_daybonus_urchi_stat_get(array('user_id' => $user_id));
+    }
+    if(!$adv_daybonus_stat) return false;
+    $chdate = date('d.m.Y', time_current());
+
+    //AddDay
+    if($adv_daybonus_stat['chdate'] == $chdate) {
+        return false;
+    }
+
+    $adv_daybonus_max_day = 0;
+    $adv_daybonus = adv_daybonus_urchi_get(false, sql_pholder(' ORDER BY day DESC'));
+    $adv_daybonus_max_day = intval($adv_daybonus['day']);
+    if(!$adv_daybonus_max_day || $adv_daybonus_max_day <= 0) return false;
+
+    $sbros_time = $adv_daybonus_stat['ctime'] + ADV_DAYBONUS_SBROS_TIME;
+    if(time_current() >= $sbros_time){
+        //Все парень, 2 дня тебя не было возвращайся к началу истоков
+        adv_daybonus_urchi_stat_save(array('id' => $adv_daybonus_stat['id'], 'ctime' => (mktime(23,59,59) + 1), 'day' => 1, 'day_get' => 0, 'chdate' => $chdate));
+        return true;
+    }
+
+    $add_day = $adv_daybonus_stat['day'] + 1;
+
+    if($adv_daybonus_max_day < $add_day) {
+        if($adv_daybonus_stat['day_get'] > 0) {
+            adv_daybonus_urchi_stat_save(array('id' => $adv_daybonus_stat['id'], 'ctime' => (mktime(23,59,59) + 1), 'day' => 1, 'day_get' => 0, 'chdate' => $chdate));
+        }else{
+            adv_daybonus_urchi_stat_save(array('id' => $adv_daybonus_stat['id'], 'ctime' => (mktime(23,59,59) + 1), 'chdate' => $chdate));
+        }
+        return true;
+    }
+    adv_daybonus_urchi_stat_save(array('id' => $adv_daybonus_stat['id'], 'ctime' => (mktime(23,59,59) + 1), 'day' => $add_day, 'chdate' => $chdate));
+    return true;
+}

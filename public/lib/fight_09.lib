@@ -1,0 +1,1731 @@
+<? # $Id: fight.lib,v 1.346 2008/11/17 12:51:08 s.panferov Exp $
+
+require_once("include/fsclient.inc");
+require_once("lib/common.lib");
+
+
+define('FIGHT_TTL', 86400*3);	// Время жизни боя
+define('FIGHT_PENDING_TIMEOUT', 600);	// Время жизни начинающегося боя
+define('FIGHT_REQ_TTL', 1800);	// Время жизни заявки
+define('FIGHT_MAX_USERS', 500);	// Максимальное кол-во пользователей в каждой команде
+
+// Имена и поля таблиц
+define('TABLE_FIGHTS','fights');
+define('FIELD_FIGHTS','');
+define('TABLE_FIGHT_USERS','fight_users');
+define('FIELD_FIGHT_USERS','');
+define('TABLE_FIGHT_USER_SKILLS','fight_user_skills');
+define('FIELD_FIGHT_USER_SKILLS','');
+define('TABLE_FIGHT_REQUESTS','fight_requests');
+define('FIELD_FIGHT_REQUESTS','');
+define('TABLE_FIGHT_REQUEST_USERS','fight_request_users');
+define('FIELD_FIGHT_REQUEST_USERS','');
+
+// Типы боя
+define('FIGHT_TYPE_DUEL', 1);
+define('FIGHT_TYPE_GROUP', 2);
+define('FIGHT_TYPE_CHAOTIC', 3);
+
+// Статусы боя
+define('FIGHT_STATUS_PENDING', 0);
+define('FIGHT_STATUS_RUNNING', 1);
+define('FIGHT_STATUS_FINISHED', 2);
+
+// Флаги боя
+define('FIGHT_FLAG_CHAOSFIGHT', 0x0001);
+define('FIGHT_FLAG_NORESTRICT', 0x0002);	// бой без правил
+define('FIGHT_FLAG_NOINJURY',   0x0004);	// бой без травм
+define('FIGHT_FLAG_PRIVATE',    0x0008);	// закрытый бой
+define('FIGHT_FLAG_BLIND',      0x0010);	// бой вслепую
+
+// Флаги игрока в бою
+define('FIGHT_USER_FLAG_NOEXP',      0x0001); // 0 опыта при наказании
+define('FIGHT_USER_FLAG_GOTLOOT',    0x0002); // получен лут
+define('FIGHT_USER_FLAG_GOTINJURY',  0x0004); // получена травма
+
+// Флаги заявки
+define('FIGHT_REQF_ACCEPTED',  0x0001);
+define('FIGHT_REQF_CONFIRMED', 0x0002);
+
+// Зависимости
+require_once("lib/user.lib");
+require_once("lib/session.lib");
+require_once("lib/bot.lib");
+require_once("lib/bonus.lib");
+require_once("lib/combo.lib");
+require_once("lib/clan.lib");
+require_once("lib/party.lib");
+require_once("lib/injury.lib");
+require_once("lib/instance.lib");
+require_once("lib/slaughter.lib");
+require_once("lib/bg.lib");
+require_once("lib/spell.lib");
+
+
+global $fscl, $fight_type_info;
+
+$fscl = new fsClient(FS_HOST,FS_PORT);
+
+$fight_type_info = array(
+	FIGHT_TYPE_DUEL => array('id' => FIGHT_TYPE_DUEL, 'title' => 'бой 1x1'),
+	FIGHT_TYPE_GROUP => array('id' => FIGHT_TYPE_GROUP, 'title' => 'групповой бой'),
+	FIGHT_TYPE_CHAOTIC => array('id' => FIGHT_TYPE_CHAOTIC, 'title' => 'хаотичный бой'),
+);
+
+
+function _bot_pers_id($bot_id) {
+	return $bot_id > 1000000000 ? $bot_id: $bot_id + 1000000000;
+}
+
+function _get_bot_id($pers_id) {
+	return max($pers_id - 1000000000,0);
+}
+
+function _sk_time($sk, $gender) {
+	$fn = ($sk >= 1000 ? PATH_SWF_IMGS.sprintf("img%04d.swf",$sk): PATH_SWF_SKELETONS.sprintf("%s/sk%02d.swf",($gender == 1 ? 'M': 'F'),$sk));
+	return intval(@filemtime($fn));
+}
+
+// ===========================================================================================================================
+
+function fight_get($ref=false, $add='') {
+	global $db_4;
+	return common_get($db,TABLE_FIGHTS,$ref,$add);
+}
+
+function fight_list($area_id=null, $instance_id=null, $status=null, $add='') {
+	global $db_4;
+	$ref = false;
+	if (isset($area_id)) $ref['area_id'] = $area_id;
+	if (isset($instance_id)) $ref['instance_id'] = $instance_id;
+	if (isset($status)) $ref['status'] = $status;
+	return common_list($db,TABLE_FIGHTS,$ref,$add);
+}
+
+function fight_count($area_id=null, $instance_id=null, $status=null, $add='') {
+	global $db_4;
+	$ref = false;
+	if (isset($area_id)) $ref['area_id'] = $area_id;
+	if (isset($instance_id)) $ref['instance_id'] = $instance_id;
+	if (isset($status)) $ref['status'] = $status;
+	return common_count($db,TABLE_FIGHTS,$ref,$add);
+}
+
+function fight_save($param) {
+	global $db_4;
+	return common_save($db,TABLE_FIGHTS,$param,FIELD_FIGHTS);
+}
+
+function fight_delete($ref=false) {
+	global $db_4;
+	common_delete($db,TABLE_FIGHTS,$ref);
+	fight_user_delete(false,$ref);
+	fight_user_skill_delete(array('fight_id' => $ref));
+	user_bulk_update(false,'fight_id',0,$ref);
+	return true;
+}
+
+function fight_user_get($ref=false, $add='') {
+	global $db_4;
+	return common_get($db,TABLE_FIGHT_USERS,$ref,$add);
+}
+
+function fight_user_list($fight_id, $team=false, $add='', $field_list = '*') {
+	global $db_4;
+	if (!$fight_id && !$add) return false;
+	$query_add = '';
+	if ($fight_id) $query_add .= sql_pholder(" AND fight_id=?",$fight_id);
+	if ($team) $query_add .= sql_pholder(" AND team=?",$team);
+	return common_list($db,TABLE_FIGHT_USERS,false,$query_add.$add, $field_list);
+}
+
+function fight_user_count($fight_id, $team=false, $add='') {
+	global $db_4;
+	if (!$fight_id && !$add) return false;
+	$query_add = '';
+	if ($fight_id) $query_add .= sql_pholder(" AND fight_id=?",$fight_id);
+	if ($team) $query_add .= sql_pholder(" AND team=?",$team);
+	return common_count($db,TABLE_FIGHT_USERS,false,$query_add.$add);
+}
+
+function fight_user_save($param) {
+	global $db_4;
+	if (!$param['id'] && !$param['fight_id']) return false;
+	return common_save($db,TABLE_FIGHT_USERS,$param,FIELD_FIGHT_USERS);
+}
+
+function fight_user_delete($ref=false, $fight_id=false, $add='') {
+	global $db_4;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($fight_id) $ref['fight_id'] = $fight_id;
+	return common_delete($db,TABLE_FIGHT_USERS,$ref,$add);
+}
+
+function fight_user_skill_get($ref=false, $add='') {
+	global $db_4;
+	return common_get($db,TABLE_FIGHT_USER_SKILLS,$ref,$add);
+}
+
+function fight_user_skill_list($ref=false, $add='') {
+	global $db_4;
+	return common_list($db,TABLE_FIGHT_USER_SKILLS,$ref,$add);
+}
+
+function fight_user_skill_save($param) {
+	global $db_4;
+	if (!$param['id'] && !$param['fight_id'] && !$param['user_id']) return false;
+	return common_save($db,TABLE_FIGHT_USER_SKILLS,$param,FIELD_FIGHT_USER_SKILLS);
+}
+
+function fight_user_skill_delete($ref=false) {
+	global $db_4;
+	return common_delete($db,TABLE_FIGHT_USER_SKILLS,$ref);
+}
+
+function fight_request_get($ref=false, $user_id=false, $add='') {
+	global $db_4;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($user_id) $ref['user_id'] = $user_id;
+	return common_get($db,TABLE_FIGHT_REQUESTS,$ref,$add);
+}
+
+function fight_request_list($area_id=null, $type=null, $add='') {
+	global $db_4;
+	$ref = false;
+	if (isset($area_id)) $ref['area_id'] = $area_id;
+	if (isset($type)) $ref['type'] = $type;
+	return common_list($db,TABLE_FIGHT_REQUESTS,$ref,$add);
+}
+
+function fight_request_count($area_id=null, $type=null, $add='') {
+	global $db_4;
+	$ref = false;
+	if (isset($area_id)) $ref['area_id'] = $area_id;
+	if (isset($type)) $ref['type'] = $type;
+	return common_count($db,TABLE_FIGHT_REQUESTS,$ref,$add);
+}
+
+function fight_request_save($param) {
+	global $db_4;
+	return common_save($db,TABLE_FIGHT_REQUESTS,$param,FIELD_FIGHT_REQUESTS);
+}
+
+function fight_request_delete($ref=false, $add='') {
+	global $db_4;
+	common_delete($db,TABLE_FIGHT_REQUESTS,$ref,$add);
+	fight_request_user_delete(false,$ref);
+	return true;
+}
+
+function fight_request_user_get($ref=false, $user_id=false, $add='') {
+	global $db_4;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($user_id) $ref['user_id'] = $user_id;
+	return common_get($db,TABLE_FIGHT_REQUEST_USERS,$ref,$add);
+}
+
+function fight_request_user_list($request_id, $team=false, $add='') {
+	global $db_4;
+	if (!$request_id && !$add) return false;
+	$ref = false;
+	if ($request_id) $ref['request_id'] = $request_id;
+	if ($team) $ref['team'] = $team;
+	return common_list($db,TABLE_FIGHT_REQUEST_USERS,$ref,$add);
+}
+
+function fight_request_user_count($request_id, $team=false, $add='') {
+	global $db_4;
+	if (!$request_id && !$add) return false;
+	$ref = false;
+	if ($request_id) $ref['request_id'] = $request_id;
+	if ($team) $ref['team'] = $team;
+	return common_count($db,TABLE_FIGHT_REQUEST_USERS,$ref,$add);
+}
+
+function fight_request_user_save($param) {
+	global $db_4;
+	if (!$param['id'] && !$param['request_id']) return false;
+	return common_save($db,TABLE_FIGHT_REQUEST_USERS,$param,FIELD_FIGHT_REQUEST_USERS);
+}
+
+function fight_request_user_delete($ref=false, $request_id=false, $add='') {
+	global $db_4;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if ($request_id) $ref['request_id'] = $request_id;
+	return common_delete($db,TABLE_FIGHT_REQUEST_USERS,$ref,$add);
+}
+
+function fight_lock($ref, $timewait=20, $timelock=600) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('FIGHT_'.intval($ref),$timewait,$timelock);
+}
+
+function fight_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('FIGHT_'.intval($ref));
+}
+
+function fight_request_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('FIGHT_REQUEST_'.intval($ref),$timewait,$timelock);
+}
+
+function fight_request_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('FIGHT_REQUEST_'.intval($ref));
+}
+
+function fight_request_sort_by_cost($request_id) {
+	if (!$request_id) return false;
+	$request_user_list = fight_request_user_list($request_id);
+	if (!$request_user_list) return false;
+	$costs = array();
+	foreach ($request_user_list as $request_user) $costs[$request_user['id']] = user_get_cost($request_user['user_id']);
+	arsort($costs);
+	$n = 1;
+	foreach ($costs as $ref=>$cost) {
+		$team = (intval($n/2) % 2) + 1;
+		fight_request_user_save(array(
+			'id' => $ref,
+			'team' => $team,
+		));
+		$n++;
+	}
+	return true;
+}
+
+function fight_cleanup() {
+	// Удаляем просроченные заявки
+	$request_list = fight_request_list(null,null,sql_pholder(" AND stime<=?",time_current()-FIGHT_REQ_TTL));
+	foreach ($request_list as $request) {
+		if (!fight_request_lock($request['id'])) continue;
+		fight_request_delete($request['id']);
+		fight_request_unlock($request['id']);
+	}
+
+	// Удаляем неначатые бои
+	$fight_list = fight_list(null,null,FIGHT_STATUS_PENDING,sql_pholder(" AND ctime<=?",time_current()-FIGHT_PENDING_TIMEOUT));
+	foreach ($fight_list as $fight) fight_delete($fight['id']);
+}
+
+// ===========================================================================================================================
+
+// Управление нападением субьекта на объект
+// $param:
+//   ['attack_subject_avail'] = true - субъект должен быть вне боя
+//   ['attack_object_avail'] = true - объект должен быть вне боя
+function fight_attack(&$subject, &$object, $param=false) {
+	global $object_table_info, $kind_info;
+
+	// надо перечитать записи объектов, т.к. важна текущая ситуация
+	$subject = common_object_get($subject['object_class'],$subject['id']);
+	$object = common_object_get($object['object_class'],$object['id']);
+	if (!$subject || !$object) return false;
+	if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_BOT))) return false;
+	if (!in_array($object['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_BOT))) return false;
+	$error = false;
+	do {
+		if ($param['attack_subject_avail'] && $subject['fight_id']) {
+			$error = 'Инициатор уже находится в бою!';
+			break;
+		}
+		if ($param['attack_object_avail'] && $object['fight_id']) {
+			$error = 'Цель уже находится в бою!';
+			break;
+		}
+		if (($subject['object_class'] == OBJECT_CLASS_USER) && ($subject['flags'] & USER_FLAG_GHOST)) {
+			$error = 'Инициатор является призраком!';
+			break;
+		}
+		if (($object['object_class'] == OBJECT_CLASS_USER) && ($object['flags'] & USER_FLAG_GHOST)) {
+			$error = 'Цель является призраком!';
+			break;
+		}
+		if (!user_is_near($subject,$object)) {
+			$error = 'Инициатор и цель находятся в разных местоположениях!';
+			break;
+		}
+		if ($subject['fight_id'] && $object['fight_id']) {
+			$error = $subject['fight_id'] != $object['fight_id'] ? 'Инициатор и цель находятся в разных боях!': 'Инициатор и цель уже находятся в бою!';
+			break;
+		}
+		if ($subject['fight_id']) {	// затягивание в существующий бой
+			$fight = fight_get($subject['fight_id']);
+			$fight_user = fight_user_get(array('fight_id' => $subject['fight_id'], $object_table_info[$subject['object_class']]['link'] => $subject['id']));
+			if (!$fight || !$fight_user || ($fight['status'] != FIGHT_STATUS_RUNNING)) {
+				common_object_save($subject['object_class'],array(
+					'id' => $subject['id'],
+					'fight_id' => 0,
+				));
+				return fight_attack($subject,$object,$param);
+			}
+			$team = $fight_user['team'] == 1 ? 2 : 1;
+			if (!($param['fight_flags'] & FIGHT_FLAG_PRIVATE) && ($fight['flags'] & FIGHT_FLAG_PRIVATE)) $error = 'Вы не можете затянуть эту цель в закрытый бой!';
+			elseif (!($param['fight_flags'] & FIGHT_FLAG_NORESTRICT)) {	// проверяем правила нападения
+				if ($fight['flags'] & FIGHT_FLAG_NORESTRICT) $error = 'Вы не можете затянуть эту цель в бой без правил!';
+				elseif ($object['kind'] && (fight_user_count($fight['id'],$fight_user['team'],sql_pholder(" AND user_kind=?",$object['kind'])) > 0)) $error = 'Вы не можете затянуть в бой эту цель, т.к. на Вашей стороне есть персонажи той же расы!';
+			} elseif (!($fight['flags'] & FIGHT_FLAG_NORESTRICT)) $error = 'Вы не можете затянуть эту цель в обычный бой!';
+			if ($error) break;
+			if (($fight['flags'] & FIGHT_FLAG_CHAOSFIGHT) && $kind_info[$object['kind']] && (fight_user_count($fight['id'],$team," AND user_kind=100") > 0)) $error = 'Вы не можете затянуть в бой эту цель, т.к. она окажется в закрытой команде!';
+			elseif (!($fight['flags'] & FIGHT_FLAG_CHAOSFIGHT) && fight_user_count($fight['id'],$team," AND user_id>0") >= FIGHT_MAX_USERS) $error = 'Вы не можете затянуть в бой эту цель, т.к. достингуто максимальное количество игроков в противоположной команде!';
+			elseif (!fight_join($fight,$object,$team,$param)) $error = 'Не удалось затянуть в бой!';
+		}
+		elseif ($object['fight_id']) {	// вмешательство в существующий бой
+			$fight = fight_get($object['fight_id']);
+			$fight_user = fight_user_get(array('fight_id' => $object['fight_id'], $object_table_info[$object['object_class']]['link'] => $object['id']));
+			if (!$fight || !$fight_user || ($fight['status'] != FIGHT_STATUS_RUNNING)) {
+				common_object_save($object['object_class'],array(
+					'id' => $object['id'],
+					'fight_id' => 0,
+				));
+				return fight_attack($subject,$object,$param);
+			}
+			$team = $fight_user['team'] == 1 ? 2 : 1;
+			if (!($param['fight_flags'] & FIGHT_FLAG_PRIVATE) && ($fight['flags'] & FIGHT_FLAG_PRIVATE)) $error = 'Вы не можете вмешаться в закрытый бой!';
+			elseif (!($param['fight_flags'] & FIGHT_FLAG_NORESTRICT)) {	// проверяем правила нападения
+				if ($fight['flags'] & FIGHT_FLAG_NORESTRICT) $error = 'Вы не можете вмешаться в бой без правил!';
+				else {
+					if ($subject['instance_id']) $instance_root = instance_get_root($subject['instance_id']);
+					// Допустимо вписывание против своей расы в замках
+					if ((!$instance_root || (($instance_root['castle_id'] == 0) && ($instance_root['slaughter_id'] == 0))) && $subject['kind'] && (fight_user_count($fight['id'],$fight_user['team'],sql_pholder(" AND user_kind=?",$subject['kind'])) > 0)) $error = 'Вы не можете вмешаться в бой, т.к. на стороне цели есть персонажи Вашей расы!';
+				}
+			} elseif (!($fight['flags'] & FIGHT_FLAG_NORESTRICT)) $error = 'Вы не можете вмешаться в обычный бой!';
+			if ($error) break;
+			if (($fight['flags'] & FIGHT_FLAG_CHAOSFIGHT) && $kind_info[$subject['kind']] && (fight_user_count($fight['id'],$team," AND user_kind=100") > 0)) $error = 'Вы не можете вмешаться в бой, т.к. окажетесь в закрытой команде!';
+			elseif (!($fight['flags'] & FIGHT_FLAG_CHAOSFIGHT) && fight_user_count($fight['id'],$team," AND user_id>0") >= FIGHT_MAX_USERS) $error = 'Вы не можете вмешаться в бой, т.к. достингуто максимальное количество игроков в вашей команде!';
+			elseif (!fight_join($fight,$subject,$team,$param)) $error = 'Не удалось вмешаться в бой!';
+			
+			if (!$error) {
+				$not_chat = false;
+				if ($subject['instance_id']) {
+					$instance = instance_get_root($subject['instance_id']);
+					if ($instance['slaughter_id']) $not_chat = true;
+				}
+				if (!$not_chat) {
+					$cht_text1 = sprintf('Член группы %s[%d] вмешался в бой %s. %sВмешаться в бой%s.',$subject['nick'],$subject['level'],'&laquo;'.$fight['title'].'&raquo;','<a href="#" onClick="'.($object['object_class'] == OBJECT_CLASS_BOT  ? 'botAttack(\''.$object['id'] : 'userAttack(\''.addslashes($object['nick'])).'\',\'\');return false;" title="'.'Вмешаться в бой'.'">','</a>');
+					//	$cht_text2 = sprintf('На члена группы %s[%d] совершено %s. %sВмешаться в бой%s.',$object['nick'],$object['level'],'&laquo;'.$fight['title'].'&raquo;','<a href="#" onClick="'.($subject['object_class'] == OBJECT_CLASS_BOT  ? 'botAttack(\''.$subject['id'] : 'userAttack(\''.addslashes($subject['nick'])).'\',\'\');return false;" title="'.'Вмешаться в бой'.'">','</a>');
+					chat_msg_send_party($cht_text1,$subject['party_id'],array('session_user_id'=> $subject['id'], 'area_id' => $subject['area_id']));
+					//	chat_msg_send_party($cht_text2,$object['party_id'],array('session_user_id'=> $object['id'], 'area_id' => $object['area_id']));
+				}
+			}
+		}
+		else {	// создаем новый бой
+			$fight_timeout = 20;
+			if ($subject['instance_id']) {
+				$instance_root = instance_get_root($subject['instance_id']);
+				$fight_timeout = $instance_root['fight_timeout'];
+			}
+			$fight_flags = 0;
+			if ($subject['group_id'] || $object['group_id']) {	// смотрим на группу ботов
+				$group_id = max($subject['group_id'],$object['group_id']);
+				$group = bot_group_get($group_id);
+				if ($group['flags'] & BOT_GRPF_CHAOSFIGHT) $fight_flags |= FIGHT_FLAG_CHAOSFIGHT;
+			}
+			$fight = array(
+				'area_id' => $subject['area_id'],
+				'instance_id' => $subject['instance_id'],
+				'title' => ($param['fight_flags'] & FIGHT_FLAG_BLIND) ? 'Схватка вслепую' : sprintf('Нападение на %s',$object['nick']),
+				'type' => FIGHT_TYPE_DUEL,
+				'timeout' => $fight_timeout,
+				'level_min' => min($subject['level'],$object['level']),
+				'level_max' => max($subject['level'],$object['level']),
+				'team_max' => 0,
+				'flags' => $fight_flags,
+			);
+			$pers_data = array(
+				array($object_table_info[$subject['object_class']]['link'] => $subject['id'], 'team' => 1),
+				array($object_table_info[$object['object_class']]['link'] => $object['id'], 'team' => 2),
+			);
+			$html_subject = $subject['object_class'] == OBJECT_CLASS_USER ? html_user_info($subject): html_bot_info($subject);
+			$html_object = $object['object_class'] == OBJECT_CLASS_USER ? html_user_info($object): html_bot_info($object);
+			if ($subject['object_class'] == OBJECT_CLASS_USER) chat_msg_send_system(sprintf('Вы совершили нападение на %s.',$html_object),CHAT_CHF_USER,($param['fight_flags'] & FIGHT_FLAG_BLIND) ? 'невидимку' : $subject['id']);
+			if ($object['object_class'] == OBJECT_CLASS_USER) chat_msg_send_system(sprintf('На Вас совершено нападение %s.',$html_subject),CHAT_CHF_USER,($param['fight_flags'] & FIGHT_FLAG_BLIND) ? 'невидимкой' : $object['id']);
+			if (!fight_start($fight,$pers_data,$param)) $error = 'Не удалось начать бой!';
+			
+			if (!$error) {
+				$not_chat = false;
+				if ($subject['instance_id']) {
+					$instance = instance_get_root($subject['instance_id']);
+					if ($instance['slaughter_id']) $not_chat = true;
+				}
+				if (!$not_chat) {
+					$cht_text1 = sprintf('Член группы %s[%d] начал бой %s. %sВмешаться в бой%s.',$subject['nick'],$subject['level'],'&laquo;'.$fight['title'].'&raquo;','<a href="#" onClick="'.($object['object_class'] == OBJECT_CLASS_BOT  ? 'botAttack(\''.$object['id'] : 'userAttack(\''.addslashes($object['nick'])).'\',\'\');return false;" title="'.'Вмешаться в бой'.'">','</a>');
+					$cht_text2 = sprintf('На члена группы %s[%d] совершено %s. %sВмешаться в бой%s.',$object['nick'],$object['level'],'&laquo;'.$fight['title'].'&raquo;','<a href="#" onClick="'.($subject['object_class'] == OBJECT_CLASS_BOT  ? 'botAttack(\''.$subject['id'] : 'userAttack(\''.addslashes($subject['nick'])).'\',\'\');return false;" title="'.'Вмешаться в бой'.'">','</a>');
+					chat_msg_send_party($cht_text1,$subject['party_id'],array('session_user_id'=> $subject['id'], 'area_id' => $subject['area_id']));
+					chat_msg_send_party($cht_text2,$object['party_id'],array('session_user_id'=> $object['id'], 'area_id' => $object['area_id']));
+				}
+			}
+		}
+	} while (0);
+	if ($error) $out['error'] = $error;
+	else $out['status'] = true;
+	return $out;
+}
+
+// Вмешательство объекта в текущий бой
+function fight_join(&$fight, &$object, $team, $param=false) {
+	if (!$fight || !$object || ($team < 1) || ($team > 2)) return false;
+	if (!in_array($object['object_class'],array(OBJECT_CLASS_USER,OBJECT_CLASS_BOT))) return false;
+
+	if ($fight['status'] != FIGHT_STATUS_RUNNING) return false;
+	if ($object['object_class'] == OBJECT_CLASS_USER) {
+		if (!fight_bind($fight['id'],$object['id'],$team,$param)) return false;
+		user_save(array(
+			'id' => $object['id'],
+			'fight_id' => $fight['id']
+		));
+		// Сбрасываем длительное действие, если таковое висело на пользователе
+
+		session_save(array(
+			'uid' => $object['id'],
+			'action_id' => 0,
+			'ltime' => 0,
+		));
+		chat_msg_send_system(sprintf('Вы вмешались в бой "<a href="#" onClick="showFightInfo(%d);return false;"><b>%s</b></a>".',$fight['id'],htmlspecialchars($fight['title'])),CHAT_CHF_USER,$object['id']);
+		chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$object['id'],array(
+			'func' => 'fightRedirect('.$fight['id'].')',
+		));
+	} else if ($object['object_class'] == OBJECT_CLASS_BOT) {
+		if (!fight_bind_bot($fight['id'],$object['id'],$team,$param)) return false;
+		bot_save(array(
+			'id' => $object['id'],
+			'fight_id' => $fight['id'],
+		));
+	} else return false;
+	fight_save(array(
+		'id' => $fight['id'],
+		'type' => FIGHT_TYPE_GROUP,
+		'user_cnt' => $fight['user_cnt'] + 1,
+	));
+	return true;
+}
+
+// ===========================================================================================================================
+
+// Формирование и запуск боя по заявке
+function fight_launch($request_id) {
+	global $fight_type_info;
+
+	if (!$request_id) return false;
+	$request = fight_request_get($request_id);
+	if (!$request) return false;
+	if ($request['type'] == FIGHT_TYPE_CHAOTIC) fight_request_sort_by_cost($request_id);
+	$request_user_list = fight_request_user_list($request_id);
+	$team_hash = make_hash($request_user_list,'team',true);
+	$c1 = count($team_hash[1]);
+	$c2 = count($team_hash[2]);
+	if (($c1 == 1) && ($c2 == 1)) $request['type'] = FIGHT_TYPE_DUEL;
+	$fight = get_params($request,'area_id,title,type,timeout,level_min,level_max,team_max');
+	$fight['flags'] = FIGHT_FLAG_NOINJURY;
+	if (!$c1 || !$c2 || !fight_start($fight,$request_user_list)) {
+		$user_ids = get_hash($request_user_list,'user_id','user_id');
+		chat_msg_send_system(sprintf('Невозможно запустить бой по заявке на %s "<b>%s</b>".',$fight_type_info[$request['type']]['title'],htmlspecialchars($request['title'])),CHAT_CHF_USER,$user_ids);
+		return false;
+	}
+	return true;
+}
+
+// Запуск боя
+// $param:
+//   ['fight_flags'] - флаги нового боя
+function fight_start($fight, $pers_data, $param=false) {
+	global $fscl;
+
+	if (!$fight || !$pers_data) return false;
+
+	// creating fight
+	if (!$fight['title']) $fight['title'] = 'Без назавания';
+	$fight_id = fight_save(array(
+		'area_id' => $fight['instance_id'] ? 0 : intval($fight['area_id']),
+		'instance_id' => intval($fight['instance_id']),
+		'title' => $fight['title'],
+		'type' => intval($fight['type']),
+		'status' => FIGHT_STATUS_PENDING,
+		'timeout' => intval($fight['timeout']),
+		'level_min' => intval($fight['level_min']),
+		'level_max' => intval($fight['level_max']),
+		'team_max' => intval($fight['team_max']),
+		'flags' => intval($fight['flags']) | intval($param['fight_flags']),
+		'ctime' => time_current(),
+	));
+	if (!$fight_id) {
+		error_log("[fight_start]: Can't create a new fight in DB!");
+		return false;
+	}
+	$fight_id = intval($fight_id);
+	$fscl->sendCommand(FS_SCCT_CREATE_FIGHT,$fight_id);
+	if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+		error_log(sprintf("[fight_start]: FS STATUS=%d: Can't create fight! (fight_id=%d)",$status,$fight_id));
+		return false;
+	}
+	$fscl->sendCommand(FS_SCCT_SET_FIGHT_PARAMS,$fight_id,intval($fight['timeout']));
+	if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+		error_log(sprintf("[fight_start]: FS STATUS=%d: Can't set fight params! (fight_id=%d)",$status,$fight_id));
+		return false;
+	}
+	// loading personages
+	$user_ids = array();
+	$bot_ids = array();
+	foreach ($pers_data as $item) {
+		if ($item['user_id']) {
+			if (!fight_bind($fight_id,$item['user_id'],$item['team'],$param)) {
+				error_log("[fight_start]: fight_bind() failed!");
+				return false;
+			}
+			$user_ids[] = $item['user_id'];
+		} elseif ($item['bot_id']) {
+			if (!fight_bind_bot($fight_id,$item['bot_id'],$item['team'],$param)) {
+				error_log("[fight_start]: fight_bind_bot() failed!");
+				return false;
+			}
+			$bot_ids[] = $item['bot_id'];
+		}
+	}
+	// starting fight
+	$fscl->sendCommand(FS_SCCT_START_FIGHT,$fight_id);
+	if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+		error_log(sprintf("[fight_start]: FS STATUS=%d: Can't start fight! (fight_id=%d)",$status,$fight_id));
+		return false;
+	}
+	fight_save(array(
+		'id' => $fight_id,
+		'status' => FIGHT_STATUS_RUNNING,
+		'user_cnt' => count($user_ids) + count($bot_ids),
+	));
+	user_bulk_update($user_ids,'fight_id',$fight_id);
+	// Сбрасывание длительного действия
+	session_save(array(
+		'_add' => sql_pholder(' AND uid IN (?@)',$user_ids),
+		'_set' => 'action_id=0,ltime=0'
+	));
+	bot_bulk_update($bot_ids,'fight_id',$fight_id);
+
+	chat_msg_send_system(sprintf('Начался бой "<a href="#" onClick="showFightInfo(%d);return false;"><b>%s</b></a>".',$fight_id,htmlspecialchars($fight['title'])),CHAT_CHF_USER,$user_ids);
+	chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$user_ids,array(
+		'func' => 'fightRedirect('.$fight_id.')',
+	));
+	return $fight_id;
+}
+
+// Подключение персонажа к бою
+// $param:
+//   ['user_skills'][user_id][skill_id] - прибавление скилла
+function fight_bind($fight_id, $user_id, $team, $param=false) {
+	global $fscl;
+	global $artikul_hash, $clan_hash;
+	$fight_id = intval($fight_id);
+	$user_id = intval($user_id);
+	$team = intval($team);
+	if (!$fight_id || !$user_id || ($team < 1) || ($team > 2)) return false;
+	$user = user_get($user_id);
+	if (!$user) return false;
+// Снятие флага фарминга, если таковой стоит
+	if ($user['flags'] & (USER_FLAG_NOACTION | USER_FLAG_FARMING)) user_set_flag($user_id,(USER_FLAG_NOACTION | USER_FLAG_FARMING),false);
+
+// Восстановление способностей для вещей с флагом "Использовать 1 раз за бой"
+	artifact_save(array(
+		'_set' => "flags = flags & ~".ARTIFACT_FLAG_FIGHTONCE,
+		'_add' => sql_pholder(" AND user_id=?", $user_id),
+	));
+
+	if (user_undress($user_id, 'MOUNT')) { // нет жывотным в бою
+		chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$user_id,array('func' => "updateSwf({'items_right':''})",));
+	}
+	$nick_data = array();
+	if ($user['clan_id'] && !($param['fight_flags'] & FIGHT_FLAG_BLIND)) {
+		$clan = cache_fetch($clan_hash,$user['clan_id'],'clan_get');
+//		$nick_data[] = PATH_IMAGE_CLANS.$clan['picture'];
+		$nick_data[] = $clan['picture'];
+	}
+	$skill_info = user_get_skill_info($user_id);
+	$skill_hash = &$skill_info['skills'];
+	if (is_array($param['user_skills'][$user_id])) {
+		foreach ($param['user_skills'][$user_id] as $skill_id=>$value) {
+			$skill_hash[$skill_id]['skill_id'] = $skill_id;
+			$skill_hash[$skill_id]['value'] += $value;
+		}
+	}
+	$user_cfg = user_get_cfg($user_id);
+	$combo_list = combo_user_list(false,$user_id,'',true);
+	// формируем список эффектов
+	$effects = array();
+	foreach ($user_cfg['artifacts'] as $k=>$artifact) $user_cfg['artifacts'][$k]['object_class'] = OBJECT_CLASS_ARTIFACT;
+	skill_objects_list($user_cfg['artifacts']);
+	foreach ($user_cfg['artifacts'] as $artifact) {
+		$effect = array(
+			'artikul_id' => $artifact['artikul_id'],
+			'id' => $artifact['id'],
+			'cnt' => $artifact['cnt'],
+			'title' => utf8($artifact['title']),
+			'picture' => $artifact['picture'],
+			'slot_num' => $artifact['slot_num'],
+			'skills' => _skills($artifact['artifact_skills'],'value2'),
+			'time_expire' => $artifact['time_expire'],
+		);
+		if ($artifact['slot_id'] != 'EFFECT') $effect['e_flags'] |= FS_PEF_ACTIVE;
+		$effects[] = $effect;
+	}
+	foreach ($combo_list as $combo) {
+		$effects[] = array(
+			'artikul_id' => $combo['artikul_id'],
+			'cnt' => 0,
+			'e_flags' => FS_PEF_AUX,
+		);
+	}
+	foreach (spell_user_list(array('user_id' => $user_id)) as $spell) {
+		if (!$spell['slot']) continue;
+		$effects[] = array(
+			'artikul_id' => $spell['artikul_id'],
+			'cnt' => 0,
+			'slot_num' => $spell['slot'],
+			'e_flags' => FS_PEF_SPELL,
+		);
+	}
+
+	// creating personage
+	$akey = rand(1000000,1000000000);
+	$flags = 0;
+	if ($skill_info['art']) $flags |= FS_PF_ART;
+	$fscl->sendCommand(FS_SCCT_CREATE_PERS,
+		$user_id,
+		$akey,
+		$flags,
+		($param['fight_flags'] & FIGHT_FLAG_BLIND) ? 'Невидимка' : $user['nick'],
+		implode(',',$nick_data),
+		intval($user['level']),
+		intval($user['gender']),
+		$user['raid_id'] ? intval($user['raid_id']) : intval($user['kind']),
+		intval($user['class']),
+		intval($user_cfg['skeleton']),
+		_sk_time($user_cfg['skeleton'],$user['gender']),
+		0,
+		0,
+		0.0,
+		''
+	);
+	if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+		error_log(sprintf("[fight_bind]: FS STATUS=%d: Can't create personage! (user_id=%d)",$status,$user_id));
+		return false;
+	}
+	// loading skills
+	$fscl->sendCommand(FS_SCCT_SET_SKILLS,$user_id,_skills($skill_hash,'value',true));
+	if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+		error_log(sprintf("[fight_bind]: FS STATUS=%d: Can't set personage skills! (user_id=%d)",$status,$user_id));
+		return false;
+	}
+	// loading parts
+	foreach ($user_cfg['layers'] as $layer=>$data) {
+		$parts = array();
+		foreach ($data as $k=>$v) $parts[] = array('type' => PT_INT, 'id' => $k, 'val' => $v);
+		$fscl->sendCommand(FS_SCCT_SET_PARTS,$user_id,$layer,$parts);
+		if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+			error_log(sprintf("[fight_bind]: FS STATUS=%d: Can't set personage parts! (user_id=%d)",$status,$user_id));
+			return false;
+		}
+	}
+	// loading effects
+	if (!fight_bind_effects($user_id,$effects)) return false;
+	// loading combos
+	foreach ($combo_list as $combo) {
+		$fscl->sendCommand(FS_SCCT_ADD_COMBO,
+			$user_id,
+			intval($combo['id']),
+			intval($combo['level']),
+			intval($combo['artikul_id']),
+			_combo_seq($combo['seq'])
+		);
+		if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+			error_log(sprintf("[fight_bind]: FS STATUS=%d: Can't load personage combo! (user_id=%d, combo_id=%d)",$status,$user_id,$combo['id']));
+			return false;
+		}
+	}
+	// binding to the fight
+	$fscl->sendCommand(FS_SCCT_BIND_PERS,$user_id,$fight_id,$team);
+	if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+		if ($status == FS_SS_WRONG_DATA) return false;
+		error_log(sprintf("[fight_bind]: FS STATUS=%d: Can't bind personage! (user_id=%d, fight_id=%d, team=%d)",$status,$user_id,$fight_id,$team));
+		return false;
+	}
+
+	$auth = auth_get($user_id);
+	fight_user_save(array(
+		'fight_id' => $fight_id,
+		'user_id' => $user_id,
+		'user_level' => $user['level'],
+		'user_kind' => $user['kind'],
+		'user_rank' => $user['rank'],
+		'user_ipaddr' => common_pack_ip($auth['last_ip']),
+		'user_compid' => $auth['last_cid'],
+		'team' => $team,
+		'party_id' => $user['party_id'],
+		'flags' => (($user['flags'] & USER_FLAG_PUNISH) && user_get_punishment_state($user['id'], CRIME_EXPERIENCE)) ? FIGHT_USER_FLAG_NOEXP : 0,
+	));
+	foreach ($skill_hash as $skill) {
+		fight_user_skill_save(array(
+			'fight_id' => $fight_id,
+			'user_id' => $user_id,
+			'skill_id' => $skill['skill_id'],
+			'value' => $skill['value'],
+		));
+	}
+	user_save(array(
+		'id' => $user_id,
+		'fight_akey' => $akey,
+	));
+	return true;
+}
+
+// Подключение бота к бою
+function fight_bind_bot($fight_id, $bot_id, $team, $param=false) {
+	global $fscl;
+
+	$fight_id = intval($fight_id);
+	$bot_id = intval($bot_id);
+	$team = intval($team);
+	if (!$fight_id || !$bot_id || ($team < 1) || ($team > 2)) return false;
+	$bot = bot_get($bot_id);
+	if (!$bot) return false;
+	$skill_list = skill_object_list(OBJECT_CLASS_BOT,$bot_id);
+	// Подготовка эффектов
+	$effects = array();
+	$bot_artukul_effects = bot_artikul_effect_list(array('bot_artikul_id' => $bot['artikul_id']));
+	foreach ($bot_artukul_effects as $bot_artikul_effect) {
+		$effects[] = array(
+			'artikul_id' => $bot_artikul_effect['artifact_artikul_id'],
+			'cnt' => $bot_artikul_effect['cnt'],
+		);
+	}
+	// creating bot
+	$pers_id = _bot_pers_id($bot_id);
+	$flags = FS_PF_BOT;
+	if ($bot['flags'] & BOT_FLAG_ART) $flags |= FS_PF_ART;
+	if ($bot['flags'] & BOT_FLAG_SKGHOST) $flags |= FS_PF_SKGHOST;
+	$fscl->sendCommand(FS_SCCT_CREATE_PERS,
+		$pers_id,
+		0,
+		$flags,
+		utf8($bot['nick']),
+		'',
+		intval($bot['level']),
+		intval($bot['gender']),
+		intval($bot['kind']),
+		0,
+		intval($bot['f_sk']),
+		_sk_time($bot['f_sk'],$bot['gender']),
+		intval($bot['f_pmask']),
+		intval($bot['artikul_id']),
+		floatval($bot['exp_coef']/100),
+		($bot['f_ctrlfile'] ? (defined('SERVER_ROOT_TEST') ? SERVER_ROOT_TEST : SERVER_ROOT).PATH_SCRIPTS.$bot['f_ctrlfile'].':' : '').$bot['f_ctrlfunc']
+	);
+	if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+		error_log(sprintf("[fight_bind_bot]: FS STATUS=%d: Can't create bot! (pers_id=%d)",$status,$pers_id));
+		return false;
+	}
+	// loading skills
+	$skill_list[] = array('skill_id' => 'HP', 'value' => 1000000);
+	$fscl->sendCommand(FS_SCCT_SET_SKILLS,$pers_id,_skills($skill_list,'value',true));
+	if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+		error_log(sprintf("[fight_bind]: FS STATUS=%d: Can't set bot skills! (pers_id=%d)",$status,$pers_id));
+		return false;
+	}
+	// loading effects
+	if (!fight_bind_effects($pers_id,$effects)) return false;
+	// binding to the fight
+	$fscl->sendCommand(FS_SCCT_BIND_PERS,$pers_id,$fight_id,$team);
+	if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+		if ($status == FS_SS_WRONG_DATA) return false;
+		error_log(sprintf("[fight_bind_bot]: FS STATUS=%d: Can't bind bot! (pers_id=%d, fight_id=%d, team=%d)",$status,$pers_id,$fight_id,$team));
+		return false;
+	}
+	fight_user_save(array(
+		'fight_id' => $fight_id,
+		'user_level' => $bot['level'],
+		'user_kind' => $bot['kind'],
+		'bot_id' => $bot['id'],
+		'bot_artikul_id' => $bot['artikul_id'],
+		'team' => $team,
+	));
+	foreach ($skill_list as $skill) {
+		fight_user_skill_save(array(
+			'fight_id' => $fight_id,
+			'bot_id' => $bot_id,
+			'skill_id' => $skill['skill_id'],
+			'value' => $skill['value'],
+		));
+	}
+	return true;
+}
+
+// Загрузка эффектов персонажа
+function fight_bind_effects($pers_id, &$effects) {
+	global $fscl;
+	$artikul_ids = get_hash($effects,'artikul_id','artikul_id');
+	$artikuls = $artikul_ids ? make_hash(artifact_artikul_list(array('id' => $artikul_ids))) : array();
+	foreach ($artikuls as $k=>$artikul) $artikuls[$k]['object_class'] = OBJECT_CLASS_ARTIFACT_ARTIKUL;
+	skill_objects_list($artikuls);
+	foreach ($effects as $effect) {
+		if (!$artikuls[$effect['artikul_id']]['e_code']) continue;
+		if (!isset($effect['skills'])) $effect['skills'] = _skills($artikuls[$effect['artikul_id']]['artifact_skills'],'value2');
+		$effect['e_flags'] |= $artikuls[$effect['artikul_id']]['e_flags'];
+		$effect = array_merge($artikuls[$effect['artikul_id']],$effect);
+		$fscl->sendCommand(FS_SCCT_ADD_EFFECT,
+			$pers_id,
+			intval($effect['id']),
+			intval($effect['cnt']),
+			intval($effect['e_code']),
+			floatval($effect['e_f1']),
+			floatval($effect['e_f2']),
+			floatval($effect['e_f3']),
+			intval($effect['e_i1']),
+			intval($effect['e_i2']),
+			intval($effect['e_i3']),
+			intval($effect['e_flags']),
+			intval($effect['artikul_id']),
+			intval($effect['group_id']),
+			intval($effect['e_dmg']),
+			intval($effect['e_dmgtype']),
+			($effect['time_expire'] > 0 ? min($effect['time_expire'] - time_current(), intval($effect['e_acttime'])) : intval($effect['e_acttime'])),
+			intval($effect['e_actmovecnt']),
+			intval($effect['e_actperiod']),
+			intval($effect['e_cdtime']),
+			intval($effect['e_cdgrpid']),
+			intval($effect['e_mp']),
+			intval($effect['e_aoecnt']),
+			floatval($effect['e_prob']/100),
+			$effect['title'],
+			$effect['picture'],
+			intval($effect['slot_num']),
+			$effect['e_animdata'],
+			$effect['skills']
+		);
+		if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+			error_log(sprintf("[fight_bind]: FS STATUS=%d: Can't load personage effect! (pers_id=%d, effect_id=%d)",$status,$pers_id,$effect['id']));
+			return false;
+		}
+	}
+	return true;
+}
+
+// Завершение боя
+function fight_finish($fight_id) {
+	global $fscl;
+	global $artikul_hash, $party_hash;
+	$level_rank_honor_limits = array(
+		 1 =>  4,
+		 2 =>  4,
+		 3 =>  4,
+		 4 =>  4,
+		 5 =>  4,
+		 6 =>  5,
+		 7 =>  6,
+		 8 =>  7,
+		 9 =>  8,
+		10 =>  8,
+		11 => 10,
+		12 => 11,
+		13 => 12,
+		14 => 13,
+		15 => 14,
+	);
+
+	set_time_limit(0);
+	$fight_id = intval($fight_id);
+	if (!$fight_id) return false;
+	$fight = fight_get($fight_id);
+	if (!$fight || ($fight['status'] != FIGHT_STATUS_RUNNING)) return false;
+	$area = $instance = $instance_root = false;
+	$turn_into_ghost = true;
+	$give_honor = true;
+	if ($fight['instance_id']) {
+		$instance = instance_get($fight['instance_id']);
+		$instance_root = $instance['root_id'] ? instance_get($instance['root_id']) : $instance;
+		$give_honor = true;
+	} else {
+		$area = area_get($fight['area_id']);
+		if ($area['flags'] & AREA_FLAG_DIE_NO_GHOST) $turn_into_ghost = false;
+		if ($area['flags'] & AREA_FLAG_GIVEHONOR) $give_honor = true;
+	}
+
+	$fs_fights = fight_fs_get_fights($fight_id);
+	if ($fs_fights === false) {
+		error_log(sprintf("[fight_finish]: Can't get fight status! (fight_id=%d)",$fight_id));
+		return false;
+	}
+	if ($fs_fights[$fight_id] && !in_array($fs_fights[$fight_id]['status'],array(FS_FS_OVER,FS_FS_FINISHED))) return false; // fight is still running
+
+	// getting fight info and log
+	$fight_info = fight_fs_get_fightinfo($fight_id);
+	if (!$fight_info) {
+		fight_abort($fight_id);
+		return false;
+	}
+	$fightlog_stat = fight_fs_get_fightlog_stat($fight_id);
+	$fscl->sendCommand(FS_SCCT_DELETE_FIGHTINFO,$fight_id);
+	if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+		error_log(sprintf("[fight_finish]: FS STATUS=%d: Can't delete fight info! (fight_id=%d)",$status,$fight_id));
+	}
+
+	// saving results
+	$settings = common_get_settings();
+	$best_kind = intval($settings['BEST_KIND']);
+
+	$fight_user_list = fight_user_list($fight_id);
+	$user_ids = array();
+	$bot_ids = array();
+	$kind_cnts = array();
+	$team_cnts = array();
+	$t = array();
+	$winner_kind_uids = array();
+	foreach ($fight_user_list as $fight_user) {
+		if ($fight_user['user_id']) {
+			$user_ids[] = $fight_user['user_id'];
+			$kind_cnts[$fight_user['user_kind']][$fight_user['team']]++;
+			$team_cnts[$fight_user['team']]++;
+			if ($fight_user['team'] == $fight_info['winnerTeam']) {
+				$t[$fight_user['user_kind']]++;
+				$winner_kind_uids[] = $fight_user['user_id'];
+			}
+		} elseif ($fight_user['bot_id']) $bot_ids[] = $fight_user['bot_id'];
+	}
+	arsort($t);
+	$winner_kind = reset(array_keys($t));	// победившая раса (актуально для PVP-боев)
+
+	$fight_f_bot = !empty($bot_ids);	// бой с участием ботов
+	$fight_f_pvp = $kind_cnts && $kind_cnts[1] && $kind_cnts[2] && (($kind_cnts[1][1] && $kind_cnts[2][2]) || ($kind_cnts[1][2] && $kind_cnts[2][1]));	// PVP-бой
+	$exp_coef =	// коэффициент опыта
+		($fight_f_pvp ? 2.0:
+		(($fight['type'] == FIGHT_TYPE_DUEL) && !$fight_f_bot ? 0.5:
+		1));
+	$massive_coef = (count($team_cnts) > 1) &&  (min($team_cnts) >= 100) ? min(count($user_ids)/1000, 1) : 0;	// коеффициент опыта за массовый бой
+
+	$msg_text = sprintf('Окончен бой "<a href="#" onClick="showFightInfo(%d);return false;"><b>%s</b></a>".',$fight_id,htmlspecialchars($fight['title']));
+	if ($massive_coef) $msg_text .= ' '.'В связи с большим количеством бойцов полученный опыт был увеличен.';
+	chat_msg_send_system($msg_text,CHAT_CHF_USER,$user_ids);
+	session_save(array(
+		'_add' => sql_pholder(" AND uid IN (?@)",$user_ids),
+		'_set' => sql_pholder('fight_time=?',time_current()),
+	));
+
+	$user_skills = $bot_skills = array();
+	$user_levels = $bot_levels = array();
+	$bonus_ids = $inst_bonus_ids = array();
+	$dmg_user = array();
+	$dmg_party = array();
+	$party_leader_info = array();
+	$bot_money = array();
+	$fight_flags = array();
+	$fight_users_with_broken_artifacts = array();
+	foreach ($fight_user_list as $fight_user) {
+		if ($fight_user['bot_id']) {	// окончание боя для бота
+			$bot_id = $fight_user['bot_id'];
+			$pers_id = _bot_pers_id($bot_id);
+			$pers_info = $fight_info['persData'][$pers_id];
+			if (!$pers_info) continue;
+			$bot_skills[$bot_id] = get_hash(fight_user_skill_list(array('fight_id' => $fight_id, 'bot_id' => $bot_id)),'skill_id','value');
+			$bot_levels[$bot_id] = $fight_user['user_level'];
+			$data = array(0,$pers_info['dmg'],$pers_info['heal'],$pers_info['killCnt']);
+			fight_user_save(array(
+				'id' => $fight_user['id'],
+				'team' => $pers_info['teamNum'],
+				'data' => implode(':',$data),
+			));
+			$bot = bot_get($bot_id);
+			if (!$bot) continue;
+			if ($pers_info['persStatus'] == FS_PS_DEAD) {	// бот умер
+				if (!($bot['flags'] & BOT_FLAG_TEMP)) bot_save(array(
+					'id' => $bot['id'],
+					'rtime' => time_current() + $bot['respawn_time'],
+				));
+				if ($pers_info['teamNum'] != $fight_info['winnerTeam']) { // бот не победил
+					if ($bot['bonus_id']) $bonus_ids[] = $bot['bonus_id'];
+					if ($bot['inst_bonus_id']) $inst_bonus_ids[] = $bot['inst_bonus_id'];
+					$money = rand($bot['money_min']*100,$bot['money_max']*100)/100;
+					if ($money > 0) $bot_money[$bot['level']] += $money;
+				}
+			}
+			if ($bot['flags'] & BOT_FLAG_TEMP) bot_delete($bot);
+			continue;
+		}
+
+		// окончание боя для пользователя
+		$user_id = $fight_user['user_id'];
+		$pers_info = $fight_info['persData'][$user_id];
+		if (!$pers_info) continue;
+		$user_skills[$user_id] = get_hash(fight_user_skill_list(array('fight_id' => $fight_id, 'user_id' => $user_id)),'skill_id','value');
+		$user_level = $fight_user['user_level'];
+		$user_levels[$user_id] = $user_level;
+
+		$exp = $honor = 0;
+		if ($pers_info['teamNum'] == $fight_info['winnerTeam']) {	// победитель
+			$exp = $pers_info['exp'];
+			// Умножаем доблесть в 3 раза в замках
+			$honor = $pers_info['honor']*3 ;
+			if (($pers_info['dmg'] + $pers_info['heal']) > 0) {
+				skill_object_set_value(OBJECT_CLASS_USER,$user_id,'FIGHT_WIN',1,array('relative' => true));
+				if ($fight['type'] == FIGHT_TYPE_CHAOTIC) $exp += user_get_baseexp($user_level);
+			}
+			if ($massive_coef) $exp *= $massive_coef + 1;
+
+			$leader_near_fight = false;
+			if ($fight_user['party_id']) {	// проверка на наличие лидера группы рядом в одной локации с боем
+				if (!isset($party_leader_info[$fight_user['party_id']])) {
+					$party = cache_fetch($party_hash,$fight_user['party_id'],'party_get');
+					if ($party) {
+						$leader_user = cache_fetch($user_hash,$party['leader_id'],'user_get');
+						$leader_near_fight = ($fight['area_id'] && ($leader_user['area_id'] == $fight['area_id'])) || ($fight['instance_id'] && ($leader_user['instance_id'] == $fight['instance_id']));
+					}
+					$party_leader_info[$fight_user['party_id']] = $leader_near_fight;
+				}
+				$leader_near_fight = $party_leader_info[$fight_user['party_id']];
+			}
+			// таблицы нанесенного урона
+			$dmg_user[$fight_user['user_id']] = $pers_info['dmg'];	// урон пользователя
+			if ($fight_user['party_id'] && $leader_near_fight) @$dmg_party[$fight_user['party_id']] += $pers_info['dmg'];	// суммарный урон группы
+		} else {	// проигравший
+			skill_object_set_value(OBJECT_CLASS_USER,$user_id,'FIGHT_LOSS',1,array('relative' => true));
+			if ($massive_coef) $exp += $pers_info['exp'] * $massive_coef;
+		}
+
+		// опыт и доблесть
+		$exp *= $exp_coef;
+		if (($fight['flags'] & FIGHT_FLAG_CHAOSFIGHT) && ($fight_user['user_kind'] == $best_kind)) $exp *= 10;	// коэффициент опыта за бой с хаосом
+		if ($user_skills[$user_id]['EXPMOD']) $exp += intval($exp * $user_skills[$user_id]['EXPMOD'] * 0.01); // коэффициент пересчёта опыта из характеристики EXPMOD
+		if ($fight_user['flags'] & FIGHT_USER_FLAG_NOEXP) $exp = $honor = 0; // если наложено проклятие, то не давать
+		if (!$give_honor) $honor = 0;
+		if (isset($level_rank_honor_limits[$user_level]) && ($fight_user['user_rank'] > $level_rank_honor_limits[$user_level])) $honor = 0;	// ограничение выдачи доблести по званию
+
+		$exp = intval($exp);
+		$honor = intval($honor);
+		if ($exp > 0) skill_object_set_value(OBJECT_CLASS_USER,$user_id,'EXP',$exp,array('relative' => true));
+		if ($honor > 0) skill_object_set_value(OBJECT_CLASS_USER,$user_id,'HONOR',$honor,array('relative' => true));
+
+		// уровень жизни
+		if ($user_skills[$user_id]['HPMAX'] > 0) {
+			$r = $user_level*30;
+			$d = ($user_skills[$user_id]['HPMAX'] ? $pers_info['hp']*$r/$user_skills[$user_id]['HPMAX'] : 0);
+			if (($pers_info['persStatus'] == FS_PS_DEAD) && $turn_into_ghost) $d -= 60*60*24*365;
+			skill_object_set_value(OBJECT_CLASS_USER,$user_id,'HP_T0',(time_current() - $d));
+			skill_object_set_value(OBJECT_CLASS_USER,$user_id,'HP_T1',(time_current() - $d + $r));
+		}
+
+		// уровень манны
+		if ($user_skills[$user_id]['MPMAX'] > 0) {
+			$r = $user_level*10;
+			$d = ($user_skills[$user_id]['MPMAX'] ? $pers_info['mp']*$r/$user_skills[$user_id]['MPMAX'] : 0);
+			if (($pers_info['persStatus'] == FS_PS_DEAD) && $turn_into_ghost) $d -= 60*60*24*365;
+			skill_object_set_value(OBJECT_CLASS_USER,$user_id,'MP_T0',(time_current() - $d));
+			skill_object_set_value(OBJECT_CLASS_USER,$user_id,'MP_T1',(time_current() - $d + $r));
+		}
+
+		if ($pers_info['enemyKillCnt'] > 0) {
+			$user = cache_fetch($user_hash,$user_id,'user_get');
+			if (!($user['flags'] & USER_FLAG_PUNISH) || !user_get_punishment_state($user_id, CRIME_EXPERIENCE)) skill_object_set_value(OBJECT_CLASS_USER,$user_id,'F_KILLCNT',$pers_info['enemyKillCnt'],array('relative' => true));
+		}
+		$data = array($exp,$pers_info['dmg'],$pers_info['heal'],$pers_info['killCnt'],$honor);
+		fight_user_save(array(
+			'id' => $fight_user['id'],
+			'team' => $pers_info['teamNum'],
+			'data' => implode(':',$data),
+		));
+
+		if ($pers_info['persStatus'] == FS_PS_DEAD) {
+			if ($turn_into_ghost) { // при гибели в этом местоположении игрок превращается в призрака
+				user_set_flag($user_id, USER_FLAG_GHOST, true);
+				// При гибели в замке игрок получает бонус умершего
+				if ($instance_root && $instance_root['castle_id']) {
+					$castle = castle_get($instance_root['castle_id']);
+					$user = cache_fetch($user_hash,$user_id,'user_get');
+					if ($user && $castle && $castle['dead_bonus_id']) bonus_apply($user,$castle['dead_bonus_id']);
+				}
+				// При гибели в бойне или замке игрок попадает в отстойник
+				if ($instance_root && ($instance_root['slaughter_id'] || $instance_root['castle_id'])) user_save(array(
+					'id' => $user_id,
+					'_set' => sql_pholder('instance_id = 0, raid_id = 0, flags = flags & ~?',USER_FLAG_DEAF),
+				));
+			}
+		}
+
+		// поломка вещей
+		$death_cnt = intval($fightlog_stat['death_cnts'][$user_id]);
+		if ($death_cnt > 0) {
+			$artifact_list = artifact_list(false,$user_id,null,true);
+			$artifacts = array();
+			foreach ($artifact_list as $artifact) {
+				if ($artifact['flags'] & ARTIFACT_FLAG_DELONDEATH) {
+					artifact_delete($artifact);
+					continue;
+				}
+				if (!$artifact['slot_id'] || !$artifact['durability_max']) continue;
+				$artifacts[$artifact['id']] = $artifact;
+			}
+			$dur = array();
+			$arts = $artifacts;
+			for ($i=0; $i<$death_cnt; $i++) {
+				$n = ceil(count($arts)*0.3); // какую часть вещей ломаем
+				shuffle($arts);
+				foreach (array_slice($arts,0,$n) as $art) {
+					$dur[$art['id']]++;
+				}
+			}
+			$t = array();
+			$t2 = array();
+			foreach ($dur as $artifact_id=>$d) {
+				$artifact = $artifacts[$artifact_id];
+				$durability = max($artifact['durability']-$d,0);
+				if (!$durability && ($artifact['durability_max'] <= 1)) { // полностью сломанная вещь
+					artifact_delete($artifact);
+					$t2[] = '<b>'.$artifact['title'].'</b>';
+					// лог-сервис -----------------------
+					logserv_log_operation(array(
+						'artifact' => $artifact,
+						'cnt' => -max($artifact['cnt'],1),
+						'comment' => 'Полная поломка',
+					),$user_id);
+					// ----------------------------------
+				} else {
+					$param = array(
+						'id' => $artifact['id'],
+						'durability' => $durability,
+					);
+					if (!$durability) $param['slot_id'] = '';
+					artifact_save($param);
+					$artifacts[$k]['durability'] = $durability;
+				}
+				$t[] = '<b>'.$artifact['title'].'</b> <b'.($durability/$artifact['durability_max'] < 0.05 ? ' class="red"' : '').'>('.($durability - $artifact['durability']).')</b>';
+			}
+			if ($t) chat_msg_send_system(sprintf('Вещи потеряли прочность: %s.',implode(', ',$t)),CHAT_CHF_USER,$user_id);
+			if ($t2) chat_msg_send_system(sprintf('Не подлежащие ремонту вещи удалены: %s.',implode(', ',$t2)),CHAT_CHF_USER,$user_id);
+			if ($t) $fight_users_with_broken_artifacts[] = $user_id;
+		}
+
+		// статистика для инстансов (БГ)
+		if ($instance_root) {
+			$death_times = intval($fightlog_stat['death_times'][$user_id]);
+			instance_user_save(array(
+				'_set' => sprintf('dmg=dmg+(%d), heal=heal+(%d), exp=exp+(%d), honor=honor+(%d), kill_cnt=kill_cnt+(%d), death_cnt=death_cnt+(%d), death_time=%d',$pers_info['dmg'],$pers_info['heal'],$exp,$honor,$pers_info['killCnt'],$death_cnt,$death_times),
+				'_add' => sprintf(' AND instance_id=%d AND user_id=%d',$instance_root['id'],$user_id),
+			));
+			// статистика кланов при осаде замка
+			if ($instance_root['castle_id']) {
+				$user = cache_fetch($user_hash,$user_id,'user_get');
+				if ($user && $user['clan_id']) {
+					$clan = clan_get($user['clan_id']);
+					if ($clan && ($instance_root['castle_id'] != $clan['castle_id'])) instance_clan_stat_save(array(
+						'_set' => sprintf('dmg=dmg+(%d)',$pers_info['dmg']),
+						'_add' => sprintf(' AND instance_id=%d AND clan_id=%d',$instance_root['id'],$user['clan_id']),
+					));
+				}
+			}
+			if ($instance_root['slaughter_id'] && $pers_info['persStatus'] <> FS_PS_DEAD) {
+				$slaughter = slaughter_get($instance_root['slaughter_id']);
+				$user = cache_fetch($user_hash,$user_id,'user_get');
+				bonus_apply($user,$slaughter['bonus_id_kill']);
+			}
+		}
+	}
+
+	// обработка эффектов
+	$artifact_ids = get_hash($fight_info['effData'],'effId','effId');
+	if ($artifact_ids) {
+		$artifact_hash = make_hash(artifact_list(false,null,null,false,false,sql_pholder(" AND id IN (?@)",$artifact_ids)),'id');
+		foreach ($fight_info['effData'] as $eff_info) {
+			$artifact_id = $eff_info['effId'];
+			$cnt = $eff_info['cnt'];
+			if (!$artifact_hash[$artifact_id]) continue;
+			if ($artifact_hash[$artifact_id]['cnt'] == $cnt) continue;
+			if ($cnt > 0) {
+				artifact_save(array(
+					'id' => $artifact_id,
+					'cnt' => $cnt,
+				));
+			} else {
+				artifact_delete($artifact_hash[$artifact_id]);
+			}
+		}
+	}
+
+	// обработка комбо
+	$combo_ids = get_hash($fight_info['cmbData'],'cmbId','cmbId');
+	if ($combo_ids) {
+		$combo_user_hash = make_hash(combo_user_list(false,false,sql_pholder(" AND id IN (?@)",$combo_ids)),'id');
+		foreach ($fight_info['cmbData'] as $cmb_info) {
+			$combo_id = $cmb_info['cmbId'];
+			$used = $cmb_info['useCnt'] > 0;
+			if (!$combo_user_hash[$combo_id]) continue;
+			if ($combo_user_hash[$combo_id]['used'] == $used) continue;
+			if ($used > 0) {
+				combo_user_save(array(
+					'id' => $combo_id,
+					'used' => 1,
+				));
+			}
+		}
+	}
+
+	// отключение от боя
+	user_bulk_update(false,'fight_id',0,$fight_id);
+	bot_bulk_update(false,'fight_id',0,$fight_id);
+
+	// проверка слотов с эффектами на случай поломанных поясов
+	foreach ($fight_users_with_broken_artifacts as $user_id) {
+		$slot_cnt_now = user_get_slot_num_max($user_id, 'EFFECT');
+		$effect_list = user_get_artifact_list($user_id, 'EFFECT');
+		foreach($effect_list as $effect) {
+			if ($effect['slot_num'] > $slot_cnt_now) {
+				$effect_in_backpack = artifact_get(array('artikul_id' => $effect['artikul_id'], 'user_id' => $user_id, 'slot_id' => ''));
+				if (!$effect_in_backpack) {
+					// перекладываем
+					artifact_save(array(
+						'id' => $effect['id'],
+						'slot_id' => '',
+					));
+				} else {
+					// изменяем количество
+					artifact_change_cnt($effect_in_backpack['id'], $effect['cnt'], '', array(
+						'time_expire' => $effect['time_expire'],
+					));
+					// удаляем старый
+					artifact_delete($effect);
+				}
+			}
+		}
+	}
+	
+	// выдача бонусов
+	$gotloot = false;
+	if ($bonus_ids || $bot_money) {
+		arsort($dmg_user);
+		arsort($dmg_party);
+		$dmgmax_user = reset($dmg_user);
+		$dmgmax_party = reset($dmg_party);
+		if (($dmgmax_party > 0) && ($dmgmax_party >= $dmgmax_user)) { // бонус группе
+			$party_id = reset(array_keys($dmg_party));
+			$party_user_ids = get_hash(party_member_list($party_id,PM_STATUS_ACTIVE),'user_id','user_id');
+			if (party_lock($party_id)) {
+				$party = cache_fetch($party_hash,$party_id,'party_get');
+				if ($bonus_ids) { // шмот
+					foreach ($bonus_ids as $bonus_id) {
+						$out_bonus = bonus_apply($party,$bonus_id,array('user_ids' => $user_ids));
+						if ($out_bonus['items']) $gotloot = true;
+					}
+				}
+				$money = 0;
+				$money_corr = false;
+				foreach ($bot_money as $l=>$s) {	// коррекция денег по уровню
+					$d = max($party['level_max']-$l,1);
+					if ($d > 1) $money_corr = true;
+					$money += $s/$d;
+				}
+				$money = round($money,2);
+				if ($money > 0) { // деньги
+					$gotloot = true;
+					party_save(array(
+						'id' => $party_id,
+						'_set' => "money=money+(".money_floatval($money).")",
+					));
+					$msg_text = sprintf('Вашей группой найдено: %s',html_money_str(MONEY_TYPE_GAME,$money));
+					if ($money_corr) $msg_text .= ' '.'(сумма уменьшена из-за разницы в уровне с монстром)';
+					chat_msg_send_system($msg_text,CHAT_CHF_USER,$party_user_ids);
+				}
+				party_save(array(
+					'id' => $party_id,
+					'_set' => 'flags=(flags | '.PARTY_FLAG_NEWLOOT.')',
+				));
+				party_unlock($party_id);
+			}
+			if ($gotloot) {
+				foreach ($party_user_ids as $user_id) $fight_flags[$user_id] |= FIGHT_USER_FLAG_GOTLOOT;
+			}
+			chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$party_user_ids,array('func' => 'updatePartyLoot()'));
+		} else { // бонус юзеру
+			$user_id = reset(array_keys($dmg_user));
+			$user = cache_fetch($user_hash,$user_id,'user_get');
+			if ($bonus_ids) { // шмот
+				foreach ($bonus_ids as $bonus_id) {
+					$out_bonus = bonus_apply($user,$bonus_id,array('user_ids' => $user_ids));
+					if ($out_bonus['items']) $gotloot = true;
+				}
+			}
+			$money = 0;
+			$money_corr = false;
+			foreach ($bot_money as $l=>$s) {	// коррекция денег по уровню
+				$d = max($user['level']-$l,1);
+				if ($d > 1) $money_corr = true;
+				$money += $s/$d;
+			}
+			$money = round($money,2);
+			if ($money > 0) { // деньги
+				$gotloot = true;
+				user_make_payment(MONEY_TYPE_GAME,$user_id,$money);
+				$msg_text = sprintf('Вы получили: %s',html_money_str(MONEY_TYPE_GAME,$money));
+				if ($money_corr) $msg_text .= ' '.'(сумма уменьшена из-за разницы в уровне с монстром)';
+				chat_msg_send_system($msg_text,CHAT_CHF_USER,$user_id);
+			}
+			if ($gotloot) $fight_flags[$user_id] |= FIGHT_USER_FLAG_GOTLOOT;
+		}
+	}
+	if ($instance) {
+		if ($instance_root['bg_id'] && ($instance['flags'] & INST_FLAG_BGCOUNTPVP) && $fight_f_pvp && $winner_kind) {
+			$bg = bg_get($instance_root['bg_id']);
+			$skill_id = $bg['t'.$winner_kind.'_skill_id'];
+			skill_object_set_value(OBJECT_CLASS_INSTANCE,$instance_root['id'],$skill_id,1,array('relative' => true));
+			chat_msg_send_system('Счет вашей команды увеличился на 1.',CHAT_CHF_USER,$winner_kind_uids);
+		}
+		foreach ($inst_bonus_ids as $bonus_id) {
+			bonus_apply($instance,$bonus_id);
+		}
+	}
+
+	// выдача травм
+	if (!($fight['flags'] & FIGHT_FLAG_NOINJURY) && (!$instance_root || !$instance_root['castle_id'])) {
+		$pers_data = array();
+		foreach ($fightlog_stat['death_kicks'] as $item) {
+			$bot_pers_id = _get_bot_id($item['persId']);
+			$bot_opp_id = _get_bot_id($item['oppId']);
+			if ($bot_opp_id) continue;	// не травмируем ботов
+			$t = array(
+				'target_id' => $item['oppId'],
+				'target_level' => $user_levels[$item['oppId']],
+			);
+			if ($bot_pers_id) {
+				$t['bot_id'] = $bot_pers_id;
+				$t['pers_level'] = $bot_levels[$bot_pers_id];
+			} else {
+				// не травмируем вне инстансов пользователей с характеристикой ANTIINJ ударенных своей расой
+				if (!$instance && $user_skills[$item['oppId']]['ANTIINJ']) {
+					$kinds = user_list(array('id' => array($item['oppId'],$item['persId'])),'',false,'distinct kind');
+					if (count($kinds) == 1) continue;
+				}
+				$t['user_id'] = $item['persId'];
+				$t['pers_level'] = $user_levels[$item['persId']];
+			}
+			if ($item['kick'] == 2) $t['crit'] = true;	// критический удар
+			$pers_data[] = $t;
+		}
+		$out_injury = injury_calc($pers_data,$user_skills,$bot_skills);
+		if ($out_injury) {
+			foreach (array_keys($out_injury) as $user_id) $fight_flags[$user_id] |= FIGHT_USER_FLAG_GOTINJURY;
+		}
+	}
+
+	// сохранение флагов
+	$t = array();
+	foreach ($fight_flags as $user_id=>$flags) {
+		if (!in_array($user_id,$user_ids)) continue;
+		$t[$flags][] = $user_id;
+	}
+	foreach ($t as $flags=>$uids) {
+		fight_user_save(array(
+			'fight_id' => $fight_id,
+			'_set' => 'flags = flags | '.intval($flags),
+			'_add' => sql_pholder(' AND fight_id=? AND user_id IN (?@)',$fight_id,$uids),
+		));
+	}
+
+	fight_save(array(
+		'id' => $fight_id,
+		'status' => FIGHT_STATUS_FINISHED,
+		'ctime' => $fight_info['ctime'],
+		'rtime' => $fight_info['rtime'],
+		'winner_team' => $fight_info['winnerTeam'],
+	));
+	fight_user_skill_delete(array('fight_id' => $fight_id));
+
+	return true;
+}
+
+// Неудачное завершение боя
+function fight_abort($fight_id) {
+	global $fscl;
+
+	$fight_id = intval($fight_id);
+	if (!$fight_id) return false;
+	$fight = fight_get($fight_id);
+	if (!$fight || ($fight['status'] != FIGHT_STATUS_RUNNING)) return false;
+	$fscl->sendCommand(FS_SCCT_DELETE_FIGHT,$fight_id);
+	$fscl->getAnswer($answer);
+	$fight_user_list = fight_user_list($fight_id);
+	$user_ids = array();
+	$bot_ids = array();
+	foreach ($fight_user_list as $fight_user) {
+		if ($fight_user['user_id']) $user_ids[] = $fight_user['user_id'];
+		if ($fight_user['bot_id']) $bot_ids[] = $fight_user['bot_id'];
+	}
+	chat_msg_send_system(sprintf('Прерван бой "<b>%s</b>".',htmlspecialchars($fight['title'])),CHAT_CHF_USER,$user_ids);
+	user_bulk_update(false,'fight_id',0,$fight_id);
+	bot_bulk_update(false,'fight_id',0,$fight_id);
+	fight_delete($fight_id);
+}
+
+// Возвращает массив текущих боев на сервере
+function fight_fs_get_fights($fight_id=0) {
+	global $fscl;
+
+	$fight_id = intval($fight_id);
+	$startIdx = 0;
+	$data = array();
+	do {
+		$fscl->sendCommand(FS_SCCT_GET_FIGHTS,$fight_id,$startIdx);
+		if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+			error_log(sprintf("[fight_fs_get_fights]: FS STATUS=%d: Can't get fights! (fight_id=%d, startIdx=%d)",$status,$fight_id,$startIdx));
+			return false;
+		}
+		$i = 2;
+		$listSize = $answer[$i++]['val'];
+		while ($i < count($answer)) {
+			$fightId = $answer[$i]['val'];
+			$data[$fightId] = array(
+				'fightId' => $answer[$i++]['val'],
+				'ctime' => $answer[$i++]['val'],
+				'mtime' => $answer[$i++]['val'],
+				'status' => $answer[$i++]['val'],
+				'flags' => $answer[$i++]['val'],
+				'persCnt' => $answer[$i++]['val'],
+			);
+			$startIdx++;
+		}
+	} while ($startIdx < $listSize);
+	return $data;
+}
+
+// Возвращает состояние боя
+function fight_fs_get_fightstate($fight_id, $pers_id=0) {
+	global $fscl;
+
+	$fight_id = intval($fight_id);
+	if (!$fight_id) return false;
+	$startIdx = 0;
+	$data = array();
+	do {
+		$fscl->sendCommand(FS_SCCT_GET_FIGHTSTATE,$fight_id,$startIdx);
+		if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+			error_log(sprintf("[fight_fs_get_fights]: FS STATUS=%d: Can't get fights! (fight_id=%d, startIdx=%d)",$status,$fight_id,$startIdx));
+			return false;
+		}
+		$i = 2;
+		$listSize = $answer[$i++]['val'];
+		while ($i < count($answer)) {
+			$persId = $answer[$i]['val'];
+			$data[$persId] = array(
+				'persId' => $answer[$i++]['val'],
+				'persStatus' => $answer[$i++]['val'],
+				'persFlags' => $answer[$i++]['val'],
+				'teamNum' => $answer[$i++]['val'],
+				'hp' => $answer[$i++]['val'],
+				'hpMax' => $answer[$i++]['val'],
+				'mp' => $answer[$i++]['val'],
+				'mpMax' => $answer[$i++]['val'],
+			);
+			$startIdx++;
+		}
+	} while ($startIdx < $listSize);
+	return $data;
+}
+
+// Возвращает лог боя
+// mode: 0 - текущий, 1 - законченный (fightinfo)
+function fight_fs_get_fightlog($fight_id, $mode=0, $startIdx=0) {
+	global $fscl;
+
+	$fight_id = intval($fight_id);
+	$mode = intval($mode);
+	$startIdx = intval($startIdx);
+	if (!$fight_id) return false;
+	$data = array();
+	do {
+		$fscl->sendCommand(FS_SCCT_GET_FIGHTLOG,$fight_id,$mode,$startIdx);
+		if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+			error_log(sprintf("[fight_fs_get_fightlog]: FS STATUS=%d: Can't get fight log! (fight_id=%d, mode=%d, startIdx=%d)",$status,$fight_id,$mode,$startIdx));
+			return false;
+		}
+		$i = 2;
+		$listSize = $answer[$i++]['val'];
+		while ($i < count($answer)) {
+			$data[] = array(
+				'ctime' => $answer[$i++]['val'],
+				'persId' => $answer[$i++]['val'],
+				'persHp' => $answer[$i++]['val'],
+				'persHpMax' => $answer[$i++]['val'],
+				'oppId' => $answer[$i++]['val'],
+				'oppHp' => $answer[$i++]['val'],
+				'oppHpMax' => $answer[$i++]['val'],
+				'code' => $answer[$i++]['val'],
+				'i1' => $answer[$i++]['val'],
+				'i2' => $answer[$i++]['val'],
+				'i3' => $answer[$i++]['val'],
+				's1' => $answer[$i++]['val'],
+			);
+			$startIdx++;
+		}
+	} while ($startIdx < $listSize);
+	return $data;
+}
+
+// Возвращает сводный лог
+function fight_fs_get_fightlog_stat($fight_id) {
+	global $fscl;
+
+	$fight_id = intval($fight_id);
+	if (!$fight_id) return false;
+	$startIdx = 0;
+	$death_kicks = array();
+	$death_cnts = array();
+	$death_times = array();
+	do {
+		$fscl->sendCommand(FS_SCCT_GET_FIGHTLOG,$fight_id,1,$startIdx);
+		if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+			error_log(sprintf("[fight_fs_get_deathlog]: FS STATUS=%d: Can't get fight log! (fight_id=%d)",$status,$fight_id));
+			return false;
+		}
+		$i = 2;
+		$listSize = $answer[$i++]['val'];
+		while ($i < count($answer)) {
+			$ctime = $answer[$i++]['val'];	// ctime
+			$persId = $answer[$i++]['val'];	// persId
+			$i++;	// persHp
+			$i++;	// persHpMax
+			$oppId = $answer[$i++]['val'];	// oppId
+			$oppHp = $answer[$i++]['val'];	// oppHp
+			$i++;	// oppHpMax
+			$code = $answer[$i++]['val'];	// code
+			$i1 = $answer[$i++]['val'];	// i1
+			$i2 = $answer[$i++]['val'];	// i2
+			$i++;	// i3
+			$i++;	// s1
+			$startIdx++;
+			if (($code == FS_FLC_KICK) && $oppId && ($oppHp == 0)) {
+				$death_kicks[] = array(
+					'ctime' => $ctime,
+					'persId' => $persId,
+					'oppId' => $oppId,
+					'kick' => $i1,
+				);
+				$death_times[$oppId] = $ctime;
+			} elseif ($code == FS_FLC_DEATH) {
+				if (($i2 > 0) && ($death_times[$persId] < $ctime)) {
+					$death_kicks[] = array(
+						'ctime' => $ctime,
+						'persId' => $i2,
+						'oppId' => $persId,
+						'kick' => 0,
+					);
+					$death_times[$persId] = $ctime;
+				}
+				$death_cnts[$persId]++;
+			}
+		}
+	} while ($startIdx < $listSize);
+	return array(
+		'death_kicks' => $death_kicks,
+		'death_cnts' => $death_cnts,
+		'death_times' => $death_times,
+	);
+}
+
+// Возвращает инфо боя
+function fight_fs_get_fightinfo($fight_id) {
+	global $fscl;
+
+	$fight_id = intval($fight_id);
+	if (!$fight_id) return false;
+	// overall
+	$fscl->sendCommand(FS_SCCT_GET_FIGHTINFO,$fight_id,0,0);
+	if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+		error_log(sprintf("[fight_fs_get_fightinfo]: FS STATUS=%d: Can't get fight info! (fight_id=%d, mode=%d, startIdx=%d)",$status,$fight_id,0,0));
+		return false;
+	}
+	$i = 2;
+	$data = array(
+		'ctime' => $answer[$i++]['val'],
+		'rtime' => $answer[$i++]['val'],
+		'winnerTeam' => $answer[$i++]['val'],
+	);
+	// persData
+	$startIdx = 0;
+	$persData = array();
+	do {
+		$fscl->sendCommand(FS_SCCT_GET_FIGHTINFO,$fight_id,1,$startIdx);
+		if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+			error_log(sprintf("[fight_fs_get_fightinfo]: FS STATUS=%d: Can't get fight info! (fight_id=%d, mode=%d, startIdx=%d)",$status,$fight_id,1,$startIdx));
+			return false;
+		}
+		$i = 2;
+		$listSize = $answer[$i++]['val'];
+		while ($i < count($answer)) {
+			$persId = $answer[$i]['val'];
+			$persData[$persId] = array(
+				'persId' => $answer[$i++]['val'],
+				'persStatus' => $answer[$i++]['val'],
+				'persFlags' => $answer[$i++]['val'],
+				'teamNum' => $answer[$i++]['val'],
+				'dmg' => $answer[$i++]['val'],
+				'heal' => $answer[$i++]['val'],
+				'exp' => $answer[$i++]['val'],
+				'honor' => $answer[$i++]['val'],
+				'hp' => $answer[$i++]['val'],
+				'mp' => $answer[$i++]['val'],
+				'killCnt' => $answer[$i++]['val'],
+				'enemyKillCnt' => $answer[$i++]['val'],
+			);
+			$startIdx++;
+		}
+	} while ($startIdx < $listSize);
+	// effData
+	$startIdx = 0;
+	$effData = array();
+	do {
+		$fscl->sendCommand(FS_SCCT_GET_FIGHTINFO,$fight_id,2,$startIdx);
+		if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+			error_log(sprintf("[fight_fs_get_fightinfo]: FS STATUS=%d: Can't get fight info! (fight_id=%d, mode=%d, startIdx=%d)",$status,$fight_id,2,$startIdx));
+			return false;
+		}
+		$i = 2;
+		$listSize = $answer[$i++]['val'];
+		while ($i < count($answer)) {
+			$effId = $answer[$i]['val'];
+			$effData[$effId] = array(
+				'effId' => $answer[$i++]['val'],
+				'persId' => $answer[$i++]['val'],
+				'cnt' => $answer[$i++]['val'],
+			);
+			$startIdx++;
+		}
+	} while ($startIdx < $listSize);
+	// cmbData
+	$startIdx = 0;
+	$cmbData = array();
+	do {
+		$fscl->sendCommand(FS_SCCT_GET_FIGHTINFO,$fight_id,3,$startIdx);
+		if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+			error_log(sprintf("[fight_fs_get_fightinfo]: FS STATUS=%d: Can't get fight info! (fight_id=%d, mode=%d, startIdx=%d)",$status,$fight_id,3,$startIdx));
+			return false;
+		}
+		$i = 2;
+		$listSize = $answer[$i++]['val'];
+		while ($i < count($answer)) {
+			$cmbId = $answer[$i]['val'];
+			$cmbData[$cmbId] = array(
+				'cmbId' => $answer[$i++]['val'],
+				'persId' => $answer[$i++]['val'],
+				'useCnt' => $answer[$i++]['val'],
+			);
+			$startIdx++;
+		}
+	} while ($startIdx < $listSize);
+	$data['persData'] = $persData;
+	$data['effData'] = $effData;
+	$data['cmbData'] = $cmbData;
+	return $data;
+}
+function fight_conf() {
+	global $session_user;
+	$cnt = 0;
+	$cnt += intval(fight_count($session_user['area_id'],null,FIGHT_STATUS_RUNNING,' AND level > 0'));
+	return sprintf('<fight in_process="%d"/>',$cnt);
+}
+
+?>

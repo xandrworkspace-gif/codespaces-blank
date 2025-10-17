@@ -1,0 +1,63 @@
+<?
+
+define('TABLE_RF_ENCHANT_UPGRADE_LIST', 'rf_enchant_upgrade');
+define('TABLE_RF_ENCHANT_BUY', 'rf_enchant_buy');
+
+
+////////////////////////////////////////////////////////////////////////////
+
+function rf_enchant_upgrade_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_RF_ENCHANT_UPGRADE_LIST,$ref,$add);
+}
+
+function rf_enchant_upgrade_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_RF_ENCHANT_UPGRADE_LIST,$ref,$add);
+}
+
+function rf_enchant_upgrade_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_RF_ENCHANT_UPGRADE_LIST, $ref, $add);
+}
+
+function rf_enchant_upgrade_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_RF_ENCHANT_UPGRADE_LIST,$param);
+}
+
+function rf_enchant_upgrade_delete($ref, $add='') {
+    global $db_2;
+    if(!$ref)return false;
+    common_delete($db_2,TABLE_RF_ENCHANT_UPGRADE_LIST,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////
+
+function rf_enchant_buy_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_RF_ENCHANT_BUY,$ref,$add);
+}
+
+function rf_enchant_buy_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_RF_ENCHANT_BUY,$ref,$add);
+}
+
+function rf_enchant_buy_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_RF_ENCHANT_BUY, $ref, $add);
+}
+
+function rf_enchant_buy_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_RF_ENCHANT_BUY,$param);
+}
+
+function rf_enchant_buy_delete($ref, $add='') {
+    global $db_2;
+    if(!$ref)return false;
+    common_delete($db_2,TABLE_RF_ENCHANT_BUY,$ref,$add);
+    return true;
+}

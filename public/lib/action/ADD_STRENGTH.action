@@ -1,0 +1,54 @@
+<?
+
+// действие "наложить прочность"
+// Параметры:
+//	$in['artifact_id'] - артефакт
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+
+if (!$artifact || $artifact['slot_id']) { // неверный или одетый предмет
+    $out['error'] = translate('Нужно выбрать предмет с прочностью!');
+    return;
+}
+
+if ($artifact['flags'] & ARTIFACT_FLAG_ARMOR_STYLE) {
+    $out['error'] = translate('Нельзя добавить прочность!');
+    return;
+}
+
+
+$artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+if (!$artifact_artikul['durability'] || !$artifact['durability']) {
+    $out['error'] = translate('Нельзя добавить прочность на этот предмет!');
+    return;
+}
+
+if (!$artifact_artikul['slot_id']) {
+    $out['error'] = translate('Нельзя добавить прочность на этот предмет!');
+    return;
+}
+artifact_save(array(
+    'id' => $artifact['id'],
+    'enchant_id' => $enchant['id'],
+    'flags' => intval($artifact['flags']) | (intval($enchant['flags'] & (ARTIFACT_FLAG_NOGIVE | ARTIFACT_FLAG_BOE))),
+    'param2' => 0,	//обнулим улучшение руны
+));
+$out['status'] = ACTION_STATUS_OK;
+
+artifact_artikul_get_title($artifact, array($artifact_artikul['id'] => $artifact_artikul));
+// лог-сервис -----------------------
+logserv_log_action(array(
+    'action' => $action,
+    'comment' => sprintf(translate('Наложена руна на "%s"'),$artifact['title']),
+),$action_user);
+// ----------------------------------
+
+artifact_bag_send_diff($subject['id'], $artifact['id']);
+?>

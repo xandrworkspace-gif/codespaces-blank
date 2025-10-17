@@ -1,0 +1,85 @@
+<? # $Id: GIFT.action,v 1.8 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "подарить"
+// Параметры:
+//	$in['nick'] - ник
+//	$in['note'] - поздравление
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+
+artifact_artikul_get_title($object);
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if (!($object['flags'] & ARTIFACT_FLAG_GIFT)) {
+	$out['error'] = translate('Эту вещь нельзя подарить!');
+	return;
+}
+$user = user_get(false,$in['nick']);
+if (!$user) {
+	$out['error'] = translate('Пользователь не найден!');
+	return;
+}
+if ($object['user_id'] == $user['id']) {
+	$out['error'] = translate('Нельзя подарить самому себе!');
+	return;
+}
+
+if (($subject['flags'] & USER_FLAG_JAIL)) {
+    $out['error'] = translate('Вы не можете выполнить это действие, так как вы сидите в тюрьме!');
+    return;
+}
+
+$user_gag = ($subject['gag_time'] > time_current() ?  true : false); //TODO: Нельзя отправлять сообщение если есть мут на персе
+
+
+
+$kind_restriction = intval($action['param1']);
+if ($kind_restriction && ($subject['kind'] != $user['kind'])) {
+	if(!($subject['flags2'] & USER_FLAG2_POST_KIND)) {
+        $out['error'] = translate('Эту вещь можно дарить только игрокам своей расы!');
+        return;
+    }
+}
+artifact_save(array(
+	'id' => $object['id'],
+	'slot_id' => '',
+	'type_id' => ARTIFACT_TYPE_ID_GIFT,
+	'kind_id' => ARTIFACT_KIND_ID_GIFT,
+    'backgroup_id' => ARTIFACT_BACKGROUPID_GIFT,
+	'ctime' => time_current(),
+	'flags' => ($object['flags'] & ~(ARTIFACT_FLAG_GIFT | ARTIFACT_FLAG_USE)) | ARTIFACT_FLAG_NOGIVE | ARTIFACT_FLAG_NOWEIGHT,
+));
+if($user_gag){
+    $in['note'] = '';
+}
+
+$note = mb_substr(sprintf(translate('От %s.'),$subject['nick']).' '.$in['note'],0,1024);
+artifact_note_save(array(
+	'artifact_id' => $object['id'],
+	'note' => $note,
+));
+artifact_transfer($object['id'],$user['id']);
+$out['status'] = ACTION_STATUS_OK;
+chat_msg_send_system(sprintf(translate('Вы подарили подарок "%s" игроку %s.'),$object['title'],html_user_info($user)),CHAT_CHF_USER,$object['user_id']);
+chat_msg_send_system(sprintf(translate('Игрок %s подарил Вам подарок "%s".'),html_user_info($subject),$object['title']),CHAT_CHF_USER,$user['id']);
+artifact_bag_send_diff($object['user_id'], $object['id']);
+artifact_bag_send_diff($user['id'], $object['id']);
+// лог-сервис -----------------------
+logserv_log_action(array(
+	'action' => $action,
+	'comment' => $note,
+),$action_user,$user);
+logserv_log_operation(array(
+	'artifact' => $object,
+	'cnt' => -max($artifact['cnt'],1),
+),$action_user,$user);
+// ----------------------------------
+
+// Логирование
+$log['user_id2'] = $user['id'];
+
+?>

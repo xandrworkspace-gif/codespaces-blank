@@ -1,0 +1,77 @@
+<?
+
+// Имена и поля таблиц
+define('TABLE_GLOBAL_SKILL', 'global_skills');
+define('FIELD_GLOBAL_SKILL', '');
+define('TABLE_GLOBAL_SKILL_VALUE', 'global_skill_values');
+define('FIELD_GLOBAL_SKILL_VALUE', '');
+
+// флаги
+define('GLOBAL_SKILL_FLAG_XXXX', 0x01);	// TODO
+
+function global_skill_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2, TABLE_GLOBAL_SKILL, $ref, $add);
+}
+
+function global_skill_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2, TABLE_GLOBAL_SKILL, $ref, $add);
+}
+
+function global_skill_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_GLOBAL_SKILL, $ref, $add);
+}
+
+function global_skill_save($param) {
+	global $db_2;
+	return common_save($db_2, TABLE_GLOBAL_SKILL, $param, FIELD_GLOBAL_SKILL);
+}
+
+function global_skill_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2, TABLE_GLOBAL_SKILL, $ref, $add);
+}
+
+
+
+function global_skill_value_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2, TABLE_GLOBAL_SKILL_VALUE, $ref, $add);
+}
+
+function global_skill_value_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2, TABLE_GLOBAL_SKILL_VALUE, $ref, $add);
+}
+
+function global_skill_value_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_GLOBAL_SKILL_VALUE, $ref, $add);
+}
+
+function global_skill_value_save($param) {
+	global $db_2;
+	return common_save($db_2, TABLE_GLOBAL_SKILL_VALUE, $param, FIELD_GLOBAL_SKILL_VALUE);
+}
+
+function global_skill_value_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2, TABLE_GLOBAL_SKILL_VALUE, $ref, $add);
+}
+
+function global_skill_value_save_smart($skill_id, $value, $relative=false) {
+	$_on_duplicate = ' `value` = '.intval($value);
+	if ($relative) {
+		$_on_duplicate = ' `value` = `value` + ('.intval($value).')';
+	}
+	$new_param = array(
+		'_mode' => CSMODE_INSERT,
+		'skill_id' => $skill_id,
+		'value' => $value,
+		'stime' => 0,
+		'_on_duplicate' => $_on_duplicate,
+	);
+	return global_skill_value_save($new_param);
+}

@@ -1,0 +1,1209 @@
+<?$debug_script = true;
+define('TABLE_ARENA_USERS','arena_users');
+define('FIELD_ARENA_USERS','');
+define('TABLE_ARENA_USERS_COMBO', 'arena_users_combo');
+define('FIELD_ARENA_USERS_COMBO','');
+define('TABLE_ARENA_EXT','arena_ext');
+define('FIELD_ARENA_EXT','');
+define('TABLE_ARENA_SCHEDULE','arena_schedule');
+define('FIELD_ARENA_SCHEDULE','');
+
+define('TABLE_ARENA_RATING','arena_rating');
+define('FIELD_ARENA_RATING','');
+
+define('ARENA_STATUS_WAITING',   0); //Заявка создана и ждет недождется боя
+define('ARENA_STATUS_PENDING',   1); //Заявка обрабатывается
+define('ARENA_STATUS_INFIGHT',   2); //Заявка в бою
+define('ARENA_STATUS_FINISHING', 3); //Заявка завершена
+
+define('ARENA_TYPE_FREE_ONE',  1); //1x1
+define('ARENA_TYPE_FREE_THREE',  2); //3x3
+define('ARENA_TYPE_FREE_FIVE',  3); //5x5
+
+define('ARENA_HISTORY_TIME', 172800); //2 дня
+
+define('ARENA_PROPUSK_ID', 8108); //ID пропуска на арену
+
+$area_arena_equal = array(587); //Локации проведения арены равных! Обязательная переменная!
+
+$level_for_arena = 5; //Уровень для арены.. дефолтный в дальнейшем изменим
+
+
+//Настройка битвы эликсирами
+$el_fights = array(
+    // 1 => 'Битва с использованием личных эликсиров',
+    2 => 'Битва без эликсиров',
+    //3 => 'Битва с одинаковыми эликсирами',
+);
+
+$arena_types = array(
+    ARENA_TYPE_FREE_ONE => 1,
+    ARENA_TYPE_FREE_THREE => 3,
+    //ARENA_TYPE_FREE_FIVE => 5,
+);
+
+$arena_types_info = array(
+    ARENA_TYPE_FREE_ONE => 'Один на один',
+    ARENA_TYPE_FREE_THREE => 'Три на три',
+    //ARENA_TYPE_FREE_FIVE => 'Пять на пять',
+);
+
+//Настройка битвы комплектами
+$type_fights = array(
+    1 => 'Зеленые комплекты',
+    2 => 'Синие комплекты',
+);
+
+//ID артикулов предметов нужно указать.
+$trend_types_complects = array(
+    2 => array( // Первый тип битвы (Зеленый шмот)
+        1 => array(65,66,67,68,69,70,71,72,73), //Ловкач
+        2 => array(100,101,103,102,106,107,108,109), //Крит
+        3 => array(84,85,86,87,88,89,90,91,92), //Танк
+    ),
+    1 => array( // Второй тип битвы (Синий шмот)
+        1 => array(133,134,136,137,138,139,140,141), //Ловкач шлем 142)
+        2 => array(111,112,113,114,115,116,117), //Крит шлем 118
+        3 => array(122,123,124,125,126,127,128,129), //Танк шлем 130
+    ),
+    3 => array( // Третий тип битвы (Синий шмот 10 уровень)
+        1 => array(193,194,195,196,198,199,201,202,203), //Ловкач
+        2 => array(213,214,215,216,217,218,219,220), //Крит
+        3 => array(204,205,206,207,208,209,210,211,212), //Танк
+    ),
+    4 => array( // Третий тип битвы (Зеленый шмот 15 уровень)
+        1 => array(1678,1679,1680,1681,1682,1683,1684,1685,1686), //Ловкач
+        2 => array(1689,1690,1691,1692,1693,1694,1695,1696), //Крит
+        3 => array(1667,1668,1669,1670,1671,1672,1673,1674,1675), //Танк
+    ),
+    67 => array( // Третий тип битвы (Зеленый шмот 15 уровень)
+        1 => array(2894,2895,2896,2897,2898,2899,2900,5101), //Ловкач
+        2 => array(2894,2895,2896,2897,2898,2899,2900,5101), //Ловкач
+        3 => array(2894,2895,2896,2897,2898,2899,2900,5101), //Ловкач
+    ),
+    68 => array( // Третий тип битвы (Зеленый шмот 15 уровень)
+        1 => array(4288,6060,6762,6768,6775,6781,6787,6794,6797), //Ловкач
+        2 => array(4289,6061,6763,6769,6776,6782,6788,6791), //Крит
+        3 => array(4287,6059,6764,6770,6777,6783,6789,6795,6798), //Танк
+    ),
+);
+
+$combo_types = array(
+    1 => array( // Первый тип битвы (Зеленый шмот)
+        1 => true,
+        2 => true,
+        3 => true,
+        4 => true,
+    ),
+    2 => array( // Второй тип битвы (Синий шмот)
+        1 => true,
+        2 => true,
+        3 => true,
+        4 => true,
+        5 => true,
+    ),
+);
+
+$buy_propusk = array(
+    MONEY_TYPE_GOLD => 2.5,
+    MONEY_TYPE_GAME => 500,
+);
+
+$effects_types = array(
+    1 => array( // Первый тип битвы (Зеленые эликсиры)
+        1 => array( //Ловкач
+            array('id'=> 7200, 'cnt' => 1),  // Эликсир гиганта
+            array('id'=> 7201, 'cnt' => 5),  // Эликсир жизни) 3 шт.
+            array('id'=> 7202,'cnt' => 20), // мощи
+            array('id'=> 1261, 'cnt' => 10), // Вампирик
+            array('id'=> 1262, 'cnt' => 5), // Крови
+        ),
+        2 => array( //Крит
+            array('id'=> 7200, 'cnt' => 1),  // Эликсир гиганта
+            array('id'=> 7201, 'cnt' => 5),  // Эликсир жизни) 3 шт.
+            array('id'=> 7202,'cnt' => 20), // мощи
+            array('id'=> 1261, 'cnt' => 10), // Вампирик
+            array('id'=> 7592, 'cnt' => 5), // Крови
+        ),
+        3 => array( //Танк
+            array('id'=> 7200, 'cnt' => 1),  // Эликсир гиганта
+            array('id'=> 7201, 'cnt' => 5),  // Эликсир жизни) 3 шт.
+            array('id'=> 7202,'cnt' => 20), // мощи
+            array('id'=> 1262, 'cnt' => 10), // Вампирик
+            array('id'=> 1262, 'cnt' => 5), // Крови
+        ),
+    ),
+);
+
+//Планировщик арены равных
+$arena_week_flags_hash = array(
+    1 => translate('Понедельник'),
+    2 => translate('Вторник'),
+    4 => translate('Среда'),
+    8 => translate('Четверг'),
+    16 => translate('Пятница'),
+    32 => translate('Суббота'),
+    64 => translate('Воскресенье'),
+);
+
+define('ARENA_SCHEDULE_FLAG_ACTIVE', 0x000001);
+define('ARENA_SCHEDULE_FLAG_DELETE', 0x000002);
+
+$arena_schedule_flags_hash = array(
+    ARENA_SCHEDULE_FLAG_ACTIVE => 'Расписание активно',
+    ARENA_SCHEDULE_FLAG_DELETE => 'Расписание завершится после окончания времени',
+);
+
+
+#Работа с базой данных заявок
+function arena_user_get($ref=false, $add='') {
+    global $db_path;
+    $arena_user = common_get($db_path,TABLE_ARENA_USERS,$ref,$add);
+    return $arena_user;
+}
+
+function arena_user_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_ARENA_USERS,$ref,$add,$field_list);
+}
+
+function arena_user_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ARENA_USERS, $ref, $add);
+}
+
+function arena_user_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ARENA_USERS,$param,FIELD_ARENA_USERS);
+}
+
+function arena_user_delete($ref, $add = '') {
+    global $db_path;
+    if (!$ref && !$add) return false;
+    common_delete($db_path,TABLE_ARENA_USERS,$ref,$add);
+    return true;
+}
+
+
+function arena_user_combo_get($ref=false, $add='') {
+    global $db_path;
+    $arena_user = common_get($db_path,TABLE_ARENA_USERS_COMBO,$ref,$add);
+    return $arena_user;
+}
+
+function arena_user_combo_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_ARENA_USERS_COMBO,$ref,$add,$field_list);
+}
+
+function arena_user_combo_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ARENA_USERS_COMBO, $ref, $add);
+}
+
+function arena_user_combo_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ARENA_USERS_COMBO,$param,FIELD_ARENA_USERS_COMBO);
+}
+
+function arena_user_combo_delete($ref, $add = '') {
+    global $db_path;
+    common_delete($db_path,TABLE_ARENA_USERS,$ref,$add);
+    return true;
+}
+#Работа с базой данных заявок завершена
+
+#Работа с базой данных
+function arena_user_ext_get($ref=false, $add='') {
+    global $db_path;
+    $arena_user = common_get($db_path,TABLE_ARENA_EXT,$ref,$add);
+    return $arena_user;
+}
+
+function arena_user_ext_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_ARENA_EXT,$ref,$add,$field_list);
+}
+
+function arena_user_ext_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ARENA_EXT, $ref, $add);
+}
+
+function arena_user_ext_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ARENA_EXT,$param,FIELD_ARENA_EXT);
+}
+
+function arena_user_ext_delete($ref, $add = '') {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_ARENA_EXT,$ref,$add);
+    return true;
+}
+
+//////////////////
+
+function arena_schedule_get($ref=false, $add='') {
+    global $db_path;
+    $arena_user = common_get($db_path,TABLE_ARENA_SCHEDULE,$ref,$add);
+    return $arena_user;
+}
+
+function arena_schedule_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_ARENA_SCHEDULE,$ref,$add,$field_list);
+}
+
+function arena_schedule_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ARENA_SCHEDULE, $ref, $add);
+}
+
+function arena_schedule_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ARENA_SCHEDULE,$param,FIELD_ARENA_SCHEDULE);
+}
+
+function arena_schedule_delete($ref, $add = '') {
+    global $db_path;
+    if (!$ref && !$add) return false;
+    common_delete($db_path,TABLE_ARENA_SCHEDULE,$ref,$add);
+    return true;
+}
+#Работа с базой данных
+
+////////////////////////////////////////////////////////////
+
+function arena_rating_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ARENA_RATING,$ref,$add);
+}
+
+function arena_rating_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_ARENA_RATING,$ref,$add,$field_list);
+}
+
+function arena_rating_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ARENA_RATING, $ref, $add);
+}
+
+function arena_rating_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ARENA_RATING,$param,FIELD_ARENA_RATING);
+}
+
+function arena_rating_delete($ref, $add = '') {
+    global $db_path;
+    if (!$ref && !$add) return false;
+    common_delete($db_path,TABLE_ARENA_RATING,$ref,$add);
+    return true;
+}
+
+#Боевая система !НЕ ТРОГАТЬ САМ ИЗМЕНЮ!
+
+//Вызываем админскую функцию для проверки функционала.
+function fight_launch_arena_admin() {
+    global $fight_type_info;
+    db_debug_switch(false); //Отключаем или включаем дебаг запросов к базе данных.
+
+    $fight_arena_users = array(array('user_id' => 22),array('user_id' => 5233));
+    if (!fight_start_arena(array(),$fight_arena_users)) {
+        $user_ids = get_hash($request_user_list,'user_id','user_id');
+        return false;
+    }
+    return true;
+}
+
+//Функция очистки истории заявок на аренку
+function fights_clean_history_arena(){
+    arena_user_delete(false, " AND pending != 0 AND time < ".(time()));
+}
+
+//Функция отсеявания игроков не онлайн и в других локациях... Очистка заявок
+function fights_prepare_launch(){
+    global $area_arena_equal;
+
+    if(defined('NO_FIGHT_SETTINGS') && NO_FIGHT_SETTINGS) {
+        return false;
+    }
+
+    if(!(defined('ARENA_EQUAL_START') && ARENA_EQUAL_START)){
+        $arena_user_count = arena_user_count(false, ' AND fight_id = 0 AND pending = '.ARENA_STATUS_WAITING);
+        if($arena_user_count){
+            arena_user_delete(false, ' AND fight_id = 0 AND pending = '.ARENA_STATUS_WAITING);
+        }
+        return false;
+    }
+
+    $arena_user_list = array(); //Глобальный массив всех данных по арене равных
+    $user_lists = arena_user_list(false, " AND fight_id = 0");
+    foreach($user_lists as $arena_user){
+        $arena_user_list[$arena_user['user_id']][] = $arena_user;
+    }
+
+    $user_ids = array_keys($arena_user_list);
+    if($user_ids) $user_list = user_list(array('id' => $user_ids));
+    //$user_list_online = user_is_online_global($user_ids);
+    foreach($user_list as $user){
+        //if(!in_array($user['area_id'],$area_arena_equal)){ /*|| !$user_list_online[$user['id']]*/ //Если находится в другой локации или оффлайн
+            //arena_user_delete(false, " AND user_id = ".$user['id']); //То удаляем
+        //}
+    }
+}
+
+function fights_prepare_start(){
+    global $arena_types;
+
+    if(defined('NO_FIGHT_SETTINGS') && NO_FIGHT_SETTINGS) {
+        return false;
+    }
+
+    #Получить заявки где установленное время, тип битвы, сет, и статус ожидается битва и битвы нет по сути
+    $user_lists = arena_user_list(false," AND time > 0 AND el > 0 AND trend > 0 AND type > 0 AND fight_id = 0 AND pending = ".ARENA_STATUS_WAITING);
+    debug_r($user_lists);
+
+
+    shuffle($user_lists); //Перемешать массив
+
+    $user_ids_for = array_keys(make_hash($user_lists, 'user_id'));
+
+    if(!$user_ids_for) return;
+
+    $user_exts = make_hash(arena_user_ext_list(array('user_id' => $user_ids_for)),'user_id');
+
+    $artifacts_user = make_hash(common_list($db, TABLE_ARTIFACTS, array('artikul_id' => ARENA_PROPUSK_ID, 'user_id' => $user_ids_for)),'user_id');
+
+    foreach ($user_lists as $k=>$arena_user){
+        if($user_exts[$arena_user['user_id']]['cnt'] <= 0 && !$artifacts_user[$arena_user['user_id']]['cnt']){
+            unset($arena_user[$k]); // Исключаем тех у кого нет пропусков на сегодня.
+            //TODO: Добавить возможность использовать доп значки для этих дел. Но не в кроне!
+        }
+    }
+
+    #Новый код старта
+    foreach($arena_types as $type=>$user_cnt){
+        $user_cnt_for_start = $user_cnt * 2;
+        while(count($user_lists) >= $user_cnt_for_start){ //1x1 Бой, цикл будет действовать до тех пор, пока количество заявок больше или равно двум(2).
+            $users_for_battle = array(); // В массиве будет содержаться информация об игроках которых нужно запустить в бой 1x1;
+
+            foreach($user_lists as $k=>$arena_user){ //Перебераем все заявки
+                if($arena_user['type'] != $type) continue; #Убираем тех кто не соответствует значению тип битвы
+                #Условие если текущая заявка не равна первой добавленной или нету первой добавленной
+                if($arena_user['el'] == $users_for_battle[0]['el'] || !$users_for_battle[0]){ //То добавляем к текущему бою
+                    if(count($users_for_battle) < $user_cnt_for_start){ //Добавляем до тех пор пока количество игроков в бою не станет двум(2).
+                        $users_for_battle[] = $arena_user; // Добавляем в массив информации об игроках которых нужно запустить в бой 1x1.
+                        unset($user_lists[$k]); //Обязательное условие данного цикла, чтобы он проверял после итерации сколько у нас активных заявок. В данном случае -1 ;)
+                    }else{
+                        break; // Достигли предела, теперь не нужно переберать заявки, займемся боем!
+                    }
+                }
+            }
+
+            if(count($users_for_battle) < $user_cnt_for_start){
+                break; //Не набирается если, че поделаешь епт
+            }
+
+            debug_r($users_for_battle);
+            if(count($users_for_battle) == $user_cnt_for_start){ //Бессмысленная проверка, но все же (Если количество заявок 2)
+                $user_ids = array(); //Инфомрация передающаяся в бой, Игроки.
+                foreach($users_for_battle as $user_for_btl){ //Перебераем заявки для запуска боя 1x1.
+                    $user_for_btl['pending'] = ARENA_STATUS_PENDING; //Укажем что статус заявки исполняется, чтобы отсечь дальнейшие действия по заявке.
+
+                    if($user_exts[$user_for_btl['user_id']]['cnt'] <= 0){
+                        artifact_change_cnt(array('user_id' => $user_ids_for['user_id'], 'artikul_id' => ARENA_PROPUSK_ID), -1); //Убираем -1 пропуск;
+                    }
+
+                    arena_user_save($user_for_btl); // Сохраняем заявку игрока
+                    $user_ids[]['user_id'] = $user_for_btl['user_id']; // Укажем USER_ID для начала боя.
+                }
+                if($user_ids){
+                    fight_start_arena(array(),$user_ids,array(),$users_for_battle); // Запускаем бой и передаем методу текущие заявки которые были переняты.
+                }
+            }
+        }
+    }
+    #Новый код старта
+
+    return;
+    #Разделение заявок по типу производим в самом коде
+    $user_list_type1 = array(); #Битва один на один
+    $user_list_type2 = array(); #Битва три на три
+    $user_list_type3 = array(); #Битва пять на пять
+    foreach($user_lists as $arena_user){
+        if($arena_user['type'] == ARENA_TYPE_FREE_ONE){ #Битва один на один
+            $user_list_type1[] = $arena_user;
+        }
+        if($arena_user['type'] == ARENA_TYPE_FREE_THREE){ #Битва три на три
+            $user_list_type2[] = $arena_user;
+        }
+        if($arena_user['type'] == ARENA_TYPE_FREE_FIVE){ #Битва пять на пять
+            $user_list_type2[] = $arena_user;
+        }
+    }
+
+    if($user_list_type1){ //Если такие заявки существуют, то вперед бодаться...
+        while(count($user_list_type1) >= 2){ //1x1 Бой, цикл будет действовать до тех пор, пока количество заявок больше или равно двум(2).
+            $users_for_battle = array(); // В массиве будет содержаться информация об игроках которых нужно запустить в бой 1x1;
+
+            foreach($user_list_type1 as $k=>$arena_user){ //Перебераем все заявки
+                #Условие если текущая заявка не равна первой добавленной или нету первой добавленной
+                if($arena_user['el'] == $users_for_battle[0]['el'] || !$users_for_battle[0]){ //То добавляем к текущему бою
+                    if(count($users_for_battle) < 2){ //Добавляем до тех пор пока количество игроков в бою не станет двум(2).
+                        $users_for_battle[] = $arena_user; // Добавляем в массив информации об игроках которых нужно запустить в бой 1x1.
+                        unset($user_list_type1[$k]); //Обязательное условие данного цикла, чтобы он проверял после итерации сколько у нас активных заявок. В данном случае -1 ;)
+                    }else{
+                        break; // Достигли предела, теперь не нужно переберать заявки, займемся боем!
+                    }
+                }
+            }
+            debug_r($users_for_battle);
+            if(count($users_for_battle) == 2){ //Бессмысленная проверка, но все же (Если количество заявок 2)
+                $user_ids = array(); //Инфомрация передающаяся в бой, Игроки.
+                foreach($users_for_battle as $user_for_btl){ //Перебераем заявки для запуска боя 1x1.
+                    $user_for_btl['pending'] = ARENA_STATUS_PENDING; //Укажем что статус заявки исполняется, чтобы отсечь дальнейшие действия по заявке.
+                    arena_user_save($user_for_btl); // Сохраняем заявку игрока
+                    $user_ids[]['user_id'] = $user_for_btl['user_id']; // Укажем USER_ID для начала боя.
+                }
+                if($user_ids){
+                    fight_start_arena(array(),$user_ids,array(),$users_for_battle); // Запускаем бой и передаем методу текущие заявки которые были переняты.
+                }
+            }
+        }
+    }
+}
+
+function fight_start_arena($fight, $pers_data, $param=false, $arena_users = array()) {
+    global $fscl,$level_for_arena;
+
+    if (!$pers_data) return false;
+
+    if (!$arena_users) return false;
+
+
+    NODE_SWITCH(false,$arena_users[0]['user_id']);
+
+    // creating fight
+    $fight['title'] = 'Арена равных';
+
+    $fight_id = fight_generate_fight_id();
+
+    $fight_id = intval($fight_id);
+    if (!$fight_id) return false;
+
+    $flags = FIGHT_FLAG_PRIVATE | FIGHT_FLAG_NO_BREAK | FIGHT_FLAG_BLIND;
+
+    fight_save(array(
+        '_mode' => CSMODE_INSERT,
+        'id' => $fight_id,
+        'area_id' => 547,
+        'instance_id' => 0,
+        'title' => $fight['title'],
+        'type' => FIGHT_TYPE_ARENA,
+        'status' => FIGHT_STATUS_PENDING,
+        'timeout' => 13, //TODO: FIX сказали сделать 10 секунд таймаут
+        'level_min' => $level_for_arena,
+        'level_max' => $level_for_arena,
+        'team_max' => 0,
+        'flags' => $flags,
+        'ctime' => time_current(),
+    ));
+
+    if (!$fight_id) {
+        debug_r("[fight_start]: Can't create a new fight in DB!");
+        return false;
+    }
+    $fight_id = intval($fight_id);
+
+
+
+    $fscl->sendCommand(FS_SCCT_CREATE_FIGHT,$fight_id);
+    if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+        debug_r(sprintf("[fight_start]: FS STATUS=%d: Can't create fight! (fight_id=%d)",$status,$fight_id));
+        return false;
+    }
+    $fscl->sendCommand(FS_SCCT_SET_FIGHT_PARAMS,$fight_id,intval(13), 0);
+    if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+        debug_r(sprintf("[fight_start]: FS STATUS=%d: Can't set fight params! (fight_id=%d)",$status,$fight_id));
+        return false;
+    }
+    // loading personages
+    $user_ids = array();
+    $bot_ids = array();
+    $team_b = false;
+    foreach ($pers_data as $k=>$item) {
+        if ($item['user_id']) {
+            $team = $team_b ? 1 : 2;
+            $team_b = $team_b ? false : true;
+            if (!fight_bind_arena($fight_id,$item['user_id'],$team,$param,$arena_users[$k])) {
+                //chat_msg_send_system('atefd', CHAT_CHF_AREA);
+                debug_r("[fight_start]: fight_bind() failed!");
+                return false;
+            }
+            $user_ids[] = $item['user_id'];
+        }
+    }
+    // starting fight
+    $fscl->sendCommand(FS_SCCT_START_FIGHT,$fight_id);
+    if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+        debug_r(sprintf("[fight_start]: FS STATUS=%d: Can't start fight! (fight_id=%d)",$status,$fight_id));
+        return false;
+    }
+    fight_save(array(
+        'id' => $fight_id,
+        'status' => FIGHT_STATUS_RUNNING,
+        'user_cnt' => count($user_ids),
+    ));
+    user_bulk_update($user_ids,'fight_id',$fight_id);
+    // Сбрасывание длительного действия
+    session_save(array(
+        '_add' => sql_pholder(' AND uid IN (?@)',$user_ids),
+        '_set' => 'action_id=0,ltime=0'
+    ));
+
+    chat_msg_send_system(sprintf('Начался бой <a href="#" onClick="showFightInfo(%d);return false;"><img src="images/fight.png"> "<b>%s</b></a>".',$fight_id,htmlspecialchars($fight['title'])),CHAT_CHF_USER,$user_ids);
+    chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$user_ids,array(
+        'func' => 'fightRedirect('.$fight_id.')',
+    ));
+
+    foreach($arena_users as $arena_user){
+        $arena_user['fight_id'] = $fight_id;
+        $arena_user['pending'] = ARENA_STATUS_INFIGHT;
+        arena_user_save($arena_user);
+    }
+
+    return $fight_id;
+}
+
+define('COMBO_PLUS', 999999);
+
+function fight_bind_arena($fight_id, $user_id, $team, $param=false,$arena_user = array()) {
+    global $fscl;
+    global $artikul_hash, $clan_hash, $level_for_arena, $effects_types,$combo_types,$combo_info;
+    $fight_id = intval($fight_id);
+    $user_id = intval($user_id);
+    $team = intval($team);
+    if (!$fight_id || !$user_id || ($team < 1) || ($team > 2)) return false;
+    $user = user_get($user_id);
+
+    if (!$user) return false;
+
+    //Формируем комбо игроку
+
+    $arena_user_combo = array(); // Будущее комбо игрока
+
+    $arena_user_combo = arena_user_combo_get(array(
+        'user_id' => $user_id,
+    ));
+
+    $combo_list = array();
+    if(!$arena_user_combo){
+        foreach ($combo_types[$arena_user['type']] as $combo_id=>$true){
+            $size = $combo_info[$combo_id]['size'];
+            $seq_hash = get_hash($combo_list,'id','seq');;
+            $seq = combo_generate_seq($size,$seq_hash);
+            $combo_list[$combo_id + COMBO_PLUS] = $combo_info[$combo_id];
+            $combo_list[$combo_id + COMBO_PLUS]['combo_id'] = $combo_id;
+            $combo_list[$combo_id + COMBO_PLUS]['seq'] = $seq;
+            $combo_list[$combo_id + COMBO_PLUS]['used'] = 1;
+        }
+    }else{
+        $combo_vi = json_decode($arena_user_combo['combo'],true);
+
+        foreach ($combo_vi as $combo_id=>$seq){
+            $combo_list[$combo_id] = $combo_info[$combo_id];
+            $combo_list[$combo_id]['seq'] = $seq['seq'];
+            $combo_list[$combo_id]['user_id'] = $user_id;
+            $combo_list[$combo_id]['used'] = 1;
+        }
+    }
+
+    $user['level'] = $level_for_arena;
+
+// Снятие флага фарминга, если таковой стоит
+    if ($user['flags'] & (USER_FLAG_NOACTION | USER_FLAG_FARMING)) user_set_flag($user_id,(USER_FLAG_NOACTION | USER_FLAG_FARMING),false);
+
+// Восстановление способностей для вещей с флагом "Использовать 1 раз за бой"
+    artifact_save(array(
+        '_set' => "flags = flags & ~".ARTIFACT_FLAG_FIGHTONCE,
+        '_add' => sql_pholder(" AND user_id=?", $user_id),
+    ));
+
+    if (user_undress($user_id, 'MOUNT')) { // нет жывотным в бою
+        chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$user_id,array('func' => "updateSwf({'items_right':''})",));
+    }
+    $skill_info = user_get_skill_info_arena($user_id,$arena_user);
+    $skill_hash = &$skill_info['skills'];
+    if (is_array($param['user_skills'][$user_id])) {
+        foreach ($param['user_skills'][$user_id] as $skill_id=>$value) {
+            $skill_hash[$skill_id]['skill_id'] = $skill_id;
+            $skill_hash[$skill_id]['value'] += $value;
+        }
+    }
+    $user_cfg = user_get_cfg_arena($user_id,$arena_user,false,true);
+    //$combo_list = combo_user_list(false,$user_id,'',true);
+    // формируем список эффектов
+    $effects = array();
+    foreach ($user_cfg['artifacts'] as $k=>$artifact) $user_cfg['artifacts'][$k]['object_class'] = OBJECT_CLASS_ARTIFACT;
+    skill_objects_list($user_cfg['artifacts']);
+    foreach ($user_cfg['artifacts'] as $artifact) {
+        if(!$artifact['slot_num']) continue;
+        $effect = array(
+            'artikul_id' => $artifact['artikul_id'],
+            'id' => $artifact['id'],
+            'cnt' => $artifact['cnt'],
+            'title' => utf8($artifact['title']),
+            'picture' => $artifact['picture'],
+            'slot_num' => $artifact['slot_num'],
+            'skills' => _skills($artifact['artifact_skills'],'value2'),
+            'time_expire' => $artifact['time_expire'],
+        );
+        if ($artifact['slot_id'] != 'EFFECT') $effect['e_flags'] |= FS_PEF_ACTIVE;
+        $effects[] = $effect;
+    }
+
+    #Если бой без эликсиров
+    if($arena_user['el'] == 2){
+        $effects = array();
+    }
+
+    #Если бой с заранее установленными эликами
+    if($arena_user['el'] == 3){
+        $effects_in_types = $effects_types[$arena_user['type_fights']][$arena_user['trend']];
+        if($effects_in_types){ //При глубоком наличии
+            $effects = array();
+            $artifact_artikul_ids = array();
+            foreach($effects_in_types as $effects_in){
+                $artifact_artikul_ids[] = $effects_in['id'];
+            }
+
+            $effects_in_types_hash = get_hash($effects_in_types,'id','cnt');
+
+            $artifact_list = artifact_artikul_list(array('id' => $artifact_artikul_ids));
+            foreach($artifact_list as $k=>$artifact){
+                $artifact_list[$k]['object_class'] = OBJECT_CLASS_ARTIFACT_ARTIKUL;
+            }
+            skill_objects_list($artifact_list);
+            foreach ($artifact_list as $k=>$artifact) {
+                $effect = array(
+                    'artikul_id' => $artifact['id'],
+                    'id' => $k,
+                    'cnt' => $effects_in_types_hash[$artifact['id']],
+                    'title' => utf8($artifact['title']),
+                    'picture' => $artifact['picture'],
+                    'slot_num' => $k+1,
+                    'skills' => _skills($artifact['artifact_skills'],'value2'),
+                    'time_expire' => $artifact['time_expire'],
+                );
+                if ($artifact['slot_id'] != 'EFFECT') $effect['e_flags'] |= FS_PEF_ACTIVE;
+                $effects[] = $effect;
+            }
+        }
+    }
+
+
+    foreach ($combo_list as $combo) {
+        $effects[] = array(
+            'artikul_id' => $combo['artikul_id'],
+            'cnt' => 0,
+            'e_flags' => FS_PEF_AUX,
+        );
+    }
+    foreach (spell_user_list(array('user_id' => $user_id)) as $spell) {
+        if (!$spell['slot']) continue;
+        $effects[] = array(
+            'artikul_id' => $spell['artikul_id'],
+            'cnt' => 0,
+            'slot_num' => $spell['slot'],
+            'e_flags' => FS_PEF_SPELL,
+        );
+    }
+
+    // creating personage
+    $akey = rand(1000000,1000000000);
+    $flags = 0;
+
+    $pet = array();
+    $pet_sk_time = 0;
+    $pet_lvl = 0;
+    $pet_exp = 0;
+    $pet_ready = 0;
+
+    //if ($skill_info['art']) $flags |= FS_PF_ART;
+
+    // неведимко отмечается определенным флагом
+    $nick_data = array();
+    $nick = $user['nick'];
+    $invizible = false;
+
+    $command = array(
+        FS_SCCT_CREATE_PERS,
+        $user_id,
+        $akey,
+        $flags,
+        $nick,
+        implode(',',$nick_data),
+        intval($user['level']),
+        intval($user['gender']),
+		0, //clan
+		0, //party
+        intval($team),
+        intval($user['class']),
+        intval($user_cfg['skeleton']),
+        _sk_time($user_cfg['skeleton'],$user['gender']),
+        0,
+        0,
+        0.0,
+        '',
+        0,
+        0,
+        0,
+        0,
+        100,
+		'', //Петы не учавствуюти нахуй
+        100
+    );
+
+    $fscl->sendCommand($command);
+    if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+        debug_r(sprintf("[fight_bind]: FS STATUS=%d: Can't create personage! (user_id=%d)",$status,$user_id));
+        return false;
+    }
+    // loading skills
+    $fscl->sendCommand(FS_SCCT_SET_SKILLS,$user_id,_skills($skill_hash,'value',true));
+    if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+        debug_r(sprintf("[fight_bind]: FS STATUS=%d: Can't set personage skills! (user_id=%d)",$status,$user_id));
+        return false;
+    }
+    // loading parts
+    if(!fight_bind_layers($user_id,$user_cfg['layers'])) return false;
+    // loading effects
+    if (!fight_bind_effects($user_id,$effects)) return false;
+    // loading combos
+    foreach ($combo_list as $combo) {
+        $fscl->sendCommand(FS_SCCT_ADD_COMBO,
+            $user_id,
+            intval($combo['id']),
+            intval($combo['level']),
+            intval($combo['artikul_id']),
+            _combo_seq($combo['seq'])
+        );
+        if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+            debug_r(sprintf("[fight_bind]: FS STATUS=%d: Can't load personage combo! (user_id=%d, combo_id=%d)",$status,$user_id,$combo['id']));
+            return false;
+        }
+    }
+    // binding to the fight
+    $fscl->sendCommand(FS_SCCT_BIND_PERS,$user_id,$fight_id,$team);
+    if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+        if ($status == FS_SS_WRONG_DATA) return false;
+        debug_r(sprintf("[fight_bind]: FS STATUS=%d: Can't bind personage! (user_id=%d, fight_id=%d, team=%d)",$status,$user_id,$fight_id,$team));
+        return false;
+    }
+
+    $auth = auth_get($user_id);
+
+    $fight_flags_add = (($user['flags'] & USER_FLAG_PUNISH) && user_get_punishment_state($user['id'], CRIME_EXPERIENCE)) ? FIGHT_USER_FLAG_NOEXP : 0;
+
+    $arr_save = array(
+        'fight_id' => $fight_id,
+        'user_id' => $user_id,
+        'user_level' => $user['level'],
+        'user_kind' => $user['kind'],
+        'user_rank' => $user['rank'],
+        'user_ipaddr' => common_pack_ip($auth['last_ip']),
+        'user_compid' => $auth['last_cid'],
+        'team' => $team,
+        'party_id' => $user['party_id'],
+        'flags' => $fight_flags_add,
+    );
+
+    fight_user_save($arr_save);
+
+    foreach ($skill_hash as $skill) {
+        fight_user_skill_save(array(
+            'fight_id' => $fight_id,
+            'user_id' => $user_id,
+            'skill_id' => $skill['skill_id'],
+            'value' => $skill['value'],
+        ));
+    }
+    user_save(array(
+        'id' => $user_id,
+        'fight_akey' => $akey,
+    ));
+
+    $combo_save = array();
+
+    foreach ($combo_list as $combo){
+        $combo_save[$combo['combo_id']] = array('seq' => $combo['seq']);
+    }
+
+    if(!$arena_user_combo){
+        arena_user_combo_save(array(
+            'user_id' => $user_id,
+            'combo' => json_encode($combo_save),
+        ));
+    }
+
+    //logfile(NODE_FILE_LOG, print_r($arena_user,true));
+    //logfile(NODE_FILE_LOG, json_encode($combo_save));
+
+    global $combo_item_info;
+    $text_combo = 'Ваше комбо на арене равных:';
+    foreach ($combo_list as $combo){
+        $text_combo .= '<br>';
+        $text_combo .= $combo['title'].'&nbsp;';
+        $seq = _combo_seq($combo['seq']);
+        for ($k=0; $k<COMBO_SIZE_MAX; $k++) {
+            $pic = ($seq[$k] ? $combo_item_info[$seq[$k]]['picture'] : '');
+            if($pic){
+                $text_combo .= ' <img src="images/'.$pic.'" width="24" height="26">';
+            }
+        }
+    }
+
+    //chat_msg_send_system($text_combo, CHAT_CHF_USER, $arena_user['user_id']);
+
+    debug_r($arr_save);
+    return true;
+}
+
+#Скиллы для арены равных
+function user_get_skill_info_arena($user_id, $arena_user = array(), $skill_id=false, $with_artifacts=true, $with_injuries=true, $extended=false) {
+    global $user_body_slots,$level_for_arena,$trend_types_complects;
+
+    if (!$user_id) return false;
+    $user = user_get(array('id' => $user_id));
+    if (!$user) return false;
+    $query_add = '';
+
+    $user['level'] = $level_for_arena; // Под 3 уровень хаха
+
+    // Применяем нативные скиллы
+
+    #Указать обязательно уровень, а то пуф и нет боевки ;)
+    $skill_hash["LEVEL"] = array(
+        'skill_id' => "LEVEL",
+        'value' => $level_for_arena,
+        'user_id' => $user_id,
+    );
+
+    $native_skills = user_get_native_skill_info($user['level'], 1);
+    foreach ($native_skills as $id => $value) {
+        if (!isset($skill_hash[$id])) {
+            $skill_hash[$id] = array(
+                'skill_id' => $id,
+                'value' => $value,
+                'user_id' => $user_id,
+            );
+        } else {
+            $skill_hash[$id]['value'] = $value;
+        }
+    }
+
+    $skill_self_hash = $skill_hash;
+    $skill_art_hash = array();
+    $skill_inj_hash = array();
+
+    if ($with_artifacts || $with_injuries) {    // учитываем надетые предметы и травмы
+        $artifact_artikul_ids = $trend_types_complects[$arena_user['type_fights']][$arena_user['trend']];
+        if(!$artifact_artikul_ids){
+            return false;
+        }
+        $artifact_skill_list = skill_object_list(OBJECT_CLASS_ARTIFACT_ARTIKUL,array('id' => $artifact_artikul_ids));
+        foreach ($artifact_skill_list as $artifact_skill) {
+            $skill_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+            $skill_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+
+            $skill_art_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+            $skill_art_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+        }
+    }
+    // Вычисляем расчетные характеристики
+    if (!$skill_id || in_array('HPMAX',$skill_id)) { // HPMAX
+        $_level = floor($user['level'] * (100 + $skill_hash['LEVEL']['value']) / 100);
+        $skill_hash['HPMAX']['value'] = max(user_get_hpmax($_level,$skill_hash['VIT']['value'],$art) + intval($skill_hash['XHPMAX']['value']), 1);
+        $skill_hash['HPMAX']['skill_id'] = 'HPMAX';
+    }
+    if (!$skill_id || in_array('HP',$skill_id)) { // HP
+        $hp_t0 = intval($skill_hash['HP_T0']['value']);
+        $hp_t1 = intval($skill_hash['HP_T1']['value']);
+        $d = ($hp_t0 >= $hp_t1 ? 1: (time_current() - $hp_t0) / ($hp_t1 - $hp_t0));
+        $d = min(max($d,0),1);
+        $skill_hash['HP']['value'] = intval($skill_hash['HPMAX']['value'] * $d);
+        $skill_hash['HP']['skill_id'] = 'HP';
+    }
+    if (!$skill_id || in_array('MPMAX',$skill_id)) { // MPMAX
+        $skill_hash['MPMAX']['value'] = user_get_mpmax($skill_hash['INTELL']['value'], $user['level']) + user_get_xmpmax($skill_hash['XMPMAX']['value'], $user['level']);
+        $skill_hash['MPMAX']['skill_id'] = 'MPMAX';
+    }
+    if (!$skill_id || in_array('MP',$skill_id)) { // MP
+        $mp_t0 = intval($skill_hash['MP_T0']['value']);
+        $mp_t1 = intval($skill_hash['MP_T1']['value']);
+        $d = ($mp_t0 >= $mp_t1 ? 1: (time_current() - $mp_t0) / ($mp_t1 - $mp_t0));
+        $d = min(max($d,0),1);
+        $skill_hash['MP']['value'] = intval($skill_hash['MPMAX']['value'] * $d);
+        $skill_hash['MP']['skill_id'] = 'MP';
+    }
+    return array(
+        'skills' => &$skill_hash,
+        'skills_self' => &$skill_self_hash,
+        'skills_art' => &$skill_art_hash,
+        'skills_inj' => &$skill_inj_hash,
+        'artifacts' => &$artifacts,
+        'set_info' => $set_info,
+        'art' => $art,
+    );
+}
+
+#Конфигурация образа под арену равных
+// Вовращает конфигурацию образа
+function user_get_cfg_arena($user_id, $arena_user = array()) {
+    global $_part_match,$armor_style_slots_info,$level_for_arena,$trend_types_complects;
+
+    if (!$user_id) return false;
+    $layers = array();
+    $user = user_get($user_id);
+
+    $user['level'] = $level_for_arena;
+
+    foreach ($_part_match as $k=>$v) $layers[0][$v] = ($v != FS_PPT_HD2) && ($v <= FS_PPT_LL3) ? $user['cfg_pbody'] : 0;
+    $layers[0][FS_PPT_HD1] = $user['cfg_phead'];
+    $layers[1][FS_PPT_HD1] = $user['cfg_phair'];
+    $artifact_artikul_ids = $trend_types_complects[$arena_user['type_fights']][$arena_user['trend']];
+    if(!$artifact_artikul_ids){
+        return false;
+    }
+
+    $artifact_list = artifact_artikul_list(array('id' => $artifact_artikul_ids));
+
+    $slots_filled = array();
+
+    $weapon_mask = 0;
+    foreach ($artifact_list as $artifact) {
+        if (!$artifact['f_pack'] || ($artifact['slot_id'] == 'MOUNT')) continue;
+
+        if ($artifact['flags'] & ARTIFACT_FLAG_WEAPON) $weapon_mask |= $artifact['f_cfg'] & (ARTIFACT_PPT_RW | ARTIFACT_PPT_LW | ARTIFACT_PPT_MW);
+
+        foreach ($_part_match as $k=>$v) {
+            if (!($artifact['f_cfg'] & $k)) continue;
+            if ($layers[$artifact['f_layer']][$v] && !($artifact['flags'] & ARTIFACT_FLAG_LAYERPRIO)) continue;
+
+            $layers[$artifact['f_layer']][$v] = $artifact['f_pack'];
+        }
+    }
+
+    if ($layers[2][FS_PPT_HD1] || $layers[2][FS_PPT_HD2]) $layers[1][FS_PPT_HD1] = 0;
+
+    $artifact_list_effects = artifact_list(false,$user_id,'*',true);
+
+    artifact_artikul_get_title($artifact_list_effects);
+    $slot_artifacts = make_hash($artifact_list_effects,'slot_id',true);
+    $parts = array();
+    foreach ($_part_match as $k=>$v) {
+        if(!$no_cfg_sk && $k == ARTIFACT_PPT_BN){ continue; }
+        if(!$no_cfg_sk && $k == ARTIFACT_PPT_BOW){ continue; }
+        $parts[] = (int)$layers[0][$v];
+        $parts[] = (int)$layers[1][$v];
+        $parts[] = (int)$layers[2][$v];
+    }
+    $skeleton = 0;
+    $skeleton =
+        ($slot_artifacts['MOUNT'] ? 9 :
+            (($weapon_mask & ARTIFACT_PPT_RW) && ($weapon_mask & ARTIFACT_PPT_LW) ? 4:	// две руки с оружием
+                ($weapon_mask & ARTIFACT_PPT_MW ? 3:	// двуручное оружие
+                    ($weapon_mask & ARTIFACT_PPT_RW ? 1:	// правое оружие
+                        ($weapon_mask & ARTIFACT_PPT_LW ? 5:	// левое оружие
+                            2)))));	// нет оружия
+    return array(
+        'mount' => $slot_artifacts['MOUNT'][0] ? $slot_artifacts['MOUNT'][0]['f_pack'] : 0,
+        'skeleton' => $skeleton,
+        'layers' => &$layers,
+        'parts' => &$parts,
+        'artifacts' => &$artifact_list_effects,
+        'slot_artifacts' => &$slot_artifacts,
+        'ss' => $slots_filled,
+    );
+}
+
+
+#ЗАВЕРШИНИЕ БОЙ========================================================================
+
+// Неудачное завершение боя
+function fight_abort_arena($fight_id) {
+    global $fscl;
+
+    $fight_id = intval($fight_id);
+    if (!$fight_id) return false;
+    $fight = fight_get($fight_id);
+    if (!$fight || ($fight['status'] != FIGHT_STATUS_RUNNING)) return false;
+
+    $fscl->sendCommand(FS_SCCT_DELETE_FIGHT,$fight_id);
+    $fscl->getAnswer($answer);
+    $fight_user_list = fight_user_list($fight_id);
+    $user_ids = array();
+    $bot_ids = array();
+    foreach ($fight_user_list as $fight_user) {
+        if ($fight_user['user_id']) $user_ids[] = $fight_user['user_id'];
+        if ($fight_user['bot_id']) $bot_ids[] = $fight_user['bot_id'];
+    }
+    chat_msg_send_system(sprintf('Прерван бой <img src="images/fight.png"> "<b>%s</b>".',htmlspecialchars($fight['title'])),CHAT_CHF_USER,$user_ids);
+    user_bulk_update(false,'fight_id',0,$fight_id);
+    bot_bulk_update(false,'fight_id',0,$fight_id);
+    fight_delete($fight_id);
+    fight_delete_path($fight_id);
+
+    #Сохраняем данные арены.
+    $arena_user_list = arena_user_list(false," AND fight_id = ".$fight_id." AND pending <= ".ARENA_STATUS_INFIGHT); //Загрузим всех игроков подавших заявки
+    foreach($arena_user_list as $arena_user){
+        $arena_user['pending'] = ARENA_STATUS_FINISHING;
+        arena_user_save($arena_user);
+    }
+}
+
+
+#Дебаг функции
+function debug_r($s){
+    global $debug_script;
+    if($debug_script){echo "<pre>";print_r($s);echo "</pre>";}
+	echo $s;
+}
+
+function db_debug_switch($bool = true){
+    global $db,$db_2,$db_3,$db_auth,$db_diff,$db_path;
+    $db->my_script_debugger = $bool;
+    $db_2->my_script_debugger = $bool;
+    $db_3->my_script_debugger = $bool;
+    $db_auth->my_script_debugger = $bool;
+    $db_diff->my_script_debugger = $bool;
+    $db_path->my_script_debugger = $bool;
+}
+
+function arena_equal_cron(){
+    $arena_user_ext = make_hash(arena_user_ext_list(false, ' AND dtime <= '.time_current().''));
+    if($arena_user_ext){
+        arena_user_ext_save(
+            array(
+                '_mode' => CSMODE_UPDATE,
+                '_add' => sql_pholder(' AND id IN (?@)', array_keys($arena_user_ext)),
+                '_set' => ' cnt = 10, dtime = '.(strtotime("00:00") + 3600*24),
+            )
+        );
+    }
+}
+
+//Управление расписанием
+function a_s_c_log($t, $log = true){
+    if(!$log){
+        echo $t;
+        return false;
+    }
+    echo $t;
+    logfile(ARENA_FILE_LOG, $t);
+}
+
+function arena_scheduler_cron(){
+    //Если дуэли открыты, то будем стараться закрыть по расписанию
+
+    if(!(defined('ARENA_SCHEDULER_ACTIVE') && ARENA_SCHEDULER_ACTIVE)){ //Если дуэль работает не по расписанию то выход!
+        a_s_c_log('Расписание отключено', false);
+        return false;
+    }
+
+    $duel_active = false;
+    if(defined('ARENA_EQUAL_START') && ARENA_EQUAL_START){
+        $duel_active = true;
+    }elseif(!(defined('ARENA_EQUAL_START') && ARENA_EQUAL_START)){
+        $duel_active = false;
+    }
+
+    $active_arena = (defined('ARENA_EQUAL_ACTIVE') && ARENA_EQUAL_ACTIVE) ? ARENA_EQUAL_ACTIVE : false;
+
+    $save_glob = false;
+    if($duel_active){
+        a_s_c_log('Арена равных включены значит надо их отключить, поищем расписание для отключения', false);
+
+        if($active_arena){
+            $arena_scheduler_active = arena_schedule_get($active_arena, sql_pholder(' ? AND flags & ?#ARENA_SCHEDULE_FLAG_ACTIVE', time_current()));
+        }
+
+        $arena_scheduler_list = arena_schedule_list(false, sql_pholder(' AND stime <= ? AND flags & ?#ARENA_SCHEDULE_FLAG_ACTIVE', time_current()));
+        foreach ($arena_scheduler_list as $arena_scheduler){
+
+            a_s_c_log('Расписание #'.$arena_scheduler['id']);
+
+            if(($arena_scheduler['stime'] + $arena_scheduler['prod_time']) > time_current()){
+                a_s_c_log('Арена еще идет #'.$arena_scheduler['id'].' !'.html_date_str($arena_scheduler['stime'] + $arena_scheduler['prod_time']).' '.html_date_str(time_current()));
+                continue;
+                //Арена еще идет
+            }
+
+            if(($arena_scheduler['stime'] + $arena_scheduler['prod_time']) < time_current()){
+                //Перенесем stime
+                a_s_c_log('Расписание #'.$arena_scheduler['id'].' переносим время на неделю вперед!');
+
+                $add_days = 7;
+                if($arena_scheduler['start_time'] + $arena_scheduler['prod_time'] >= 86400){
+                    $add_days--; //TODO: Переносит не на тот день что нужно!
+                }
+
+                arena_schedule_save(array(
+                    'id' => $arena_scheduler['id'],
+                    '_set' => sql_pholder(" stime = ? + start_time ", strtotime("+7 day 00:00")),
+                ));
+
+                if($arena_scheduler['flags'] & ARENA_SCHEDULE_FLAG_DELETE){
+                    a_s_c_log('Расписание #'.$arena_scheduler['id'].' удаляем активность, оно же единоразовое!');
+                    arena_schedule_save(array(
+                        'id' => $arena_scheduler['id'],
+                        '_set' => sql_pholder(" flags = flags &~ ?#ARENA_SCHEDULE_FLAG_ACTIVE"),
+                    ));
+                }
+
+                if(!$save_glob){ //Сохранялка один раз достаточно
+                    common_save_settings(array('ARENA_EQUAL_START' => '')); //Закрваем арену равных
+                    $save_glob = true;
+                }
+            }
+
+        }
+
+        //Условие если нет активных, то какого хуЯ? отключаяем! тут прямо вырубить при условии нет арена расписания лист
+    } else {//В ином случае стараемся открыть
+        a_s_c_log('Арена равных отключены, проверим возможность для запуска..!', false);
+        $arena_scheduler_list = arena_schedule_list(false, sql_pholder(' AND stime <= ? AND flags & ?#ARENA_SCHEDULE_FLAG_ACTIVE', time_current()));
+        foreach ($arena_scheduler_list as $arena_scheduler){
+            if(!(defined('ARENA_EQUAL_START') && ARENA_EQUAL_START)){
+                //a_s_c_log('Расписание #'.$arena_scheduler['id'].' Тут просто запустить!');
+                if(!$save_glob){ //Сохранялка один раз достаточно
+                    chat_msg_send_system('<img src="images/7.png"> <img src="images/43.png"> <b class="redd"> Арена Стартовала! <a href="#" style="color:#3f3fd0!important;" onclick="_top().show_need_frame(\'area_equal\'); return false;">Нажмите сюда для того, чтобы принять участие.</a> Продолжительность битвы: '.html_period_str($arena_scheduler['prod_time'], true).'.</b>&nbsp; <img src="images/43.png"> <img src="images/7.png">', CHAT_CHF_AREA);
+                    common_save_settings(array('ARENA_EQUAL_START' => 1)); //Открываем арену равных
+                    common_save_settings(array('ARENA_EQUAL_ACTIVE' => $arena_scheduler['id'])); //Зпишем текущую арену равных
+
+                    $save_glob = true;
+                }
+            }
+        }
+    }
+
+}
+
+//Информация по следующим играм
+function arena_scheduler_info(){
+    $data = array();
+    $arena_scheduler_list = arena_schedule_list(false, sql_pholder(' AND flags & ?#ARENA_SCHEDULE_FLAG_ACTIVE'));
+    foreach ($arena_scheduler_list as $arena_scheduler){
+        if($arena_scheduler['stime'] > time_current()){
+            //Неактивная уже
+            $data['inactive'][] = $arena_scheduler;
+        }elseif(($arena_scheduler['stime']) < time_current()){
+            //Активная
+            $data['active'][] = $arena_scheduler;
+        }
+    }
+    return $data;
+}
+?>

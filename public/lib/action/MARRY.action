@@ -1,0 +1,70 @@
+<? # $Id: MARRY.action,v 1.10 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "поженить"
+// Параметры:
+//	$in['groom_nick'] - ник жениха
+//	$in['bride_nick'] - ник невесты
+//	$in['note'] - пожелание
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+$groom = user_get(false,$in['groom_nick']);
+$bride = user_get(false,$in['bride_nick']);
+if (!$groom || !$bride) {
+	$out['error'] = translate('Один из персонажей не найден!');
+	return;
+}
+
+$tpl = translate('Согласно законам мира Фэо, c %s, %s и %s являются законными супругами.');
+$note = mb_substr(sprintf(translate('От %s.').' '.$tpl,user_is_invisible($subject) ? translate('Невидимка') : $subject['nick'],date('d.m.Y',time_current()),user_is_invisible($groom) ? translate('Невидимка') : $groom['nick'],user_is_invisible($bride) ? translate('Невидимка') : $bride['nick']),0,1024);
+if ($in['note']) $note .= ' '.$in['note'];
+$force_param = array(
+	'cnt' => 0,
+	'type_id' => ARTIFACT_TYPE_ID_MARRIAGE,
+	'flags' => ARTIFACT_FLAG_NOWEIGHT | ARTIFACT_FLAG_NOGIVE | ARTIFACT_FLAG_NOSELL | ARTIFACT_FLAG_NODROP,
+);
+$t = array(
+	array($object['param1'],$groom['id'],$bride['id']),
+	array($object['param2'],$bride['id'],$groom['id']),
+);
+$rings_ids = array();
+foreach ($t as $i) {
+	$force_param['param1'] = $i[2];	// UID супруга(и)
+	NODE_PUSH(null, $i[1]);
+	$artifact_id = artifact_create($i[0],1,$i[1],false,false,false,$force_param);
+	NODE_POP();
+	$rings_ids[$i[1]] = $artifact_id;
+	if (!$artifact_id) return;
+	NODE_PUSH(null, $i[1]);
+	artifact_note_save(array(
+		'artifact_id' => $artifact_id,
+		'note' => $note,
+	));
+	NODE_POP();
+}
+
+if($groom && $bride){
+    user_clan_stat_archive($groom, CLAN_STAT_TYPE_USER_DISMARRY, $bride['id']);
+}
+
+$msg_text = sprintf($tpl,date('d.m.Y',time_current()),html_user_info($groom),html_user_info($bride));
+chat_msg_send_system($msg_text,CHAT_CHF_AREA,$subject['area_id'], true);
+$out['status'] = ACTION_STATUS_OK;
+
+// лог-сервис -----------------------
+foreach (array($action_user, $groom, $bride) as $person){
+	logserv_log_action(array(
+		'action' => $action,
+		'comment' => sprintf(translate('%s берет в жены %s. Обрядник: %s. Выданы кольца: %s (мужу), %s (жене).'),
+				user_is_invisible($groom) ? translate('Невидимка') : $groom['nick'], user_is_invisible($bride) ? translate('Невидимка') : $bride['nick'], user_is_invisible($subject) ? translate('Невидимка') : $subject['nick'],
+				 $rings_ids[$groom['id']],$rings_ids[$bride['id']] 
+			),
+	),$person);
+}
+// ----------------------------------
+
+?>

@@ -1,0 +1,839 @@
+<? # $Id: instance.lib,v 1.62 2010-01-15 09:50:10 p.knoblokh Exp $
+
+require_once("lib/skill.lib");
+require_once("lib/action.lib");
+require_once("lib/bot.lib");
+require_once("lib/dungeons.lib");
+
+define('INSTANCE_WARNING_TIME',   600);	// Время предупреждения удаления истанса
+define('INSTANCE_LEAVE_TIME',   14*86400);	// Время храниения инста
+
+
+// Имена и поля таблиц
+define('TABLE_INSTANCE_LINKS','instance_links');
+define('FIELD_INSTANCE_LINKS','');
+define('TABLE_INSTANCE_USERS','instance_users');
+define('FIELD_INSTANCE_USERS','');
+define('TABLE_INSTANCE_ARTIKUL_LINKS','instance_artikul_links');
+define('FIELD_INSTANCE_ARTIKUL_LINKS','');
+define('TABLE_INSTANCE_ARTIKUL_BOTS','instance_artikul_bots');
+define('FIELD_INSTANCE_ARTIKUL_BOTS','');
+
+define('TABLE_INSTANCE_USER_KICK', 'instance_user_kick');
+define('TABLE_INSTANCE_USER_KICK_LOG', 'instance_user_kick_log');
+
+define('INSTANCE_KICK_TYPE_DUNGEON', 1);
+
+define('TABLE_USER_INSTANCE_FAV', 'user_instance_fav');
+
+define('INSTANCE_CREATE_FIELDS','title, level_min, level_max, life_time, fight_timeout, code, swf, picture_bg, freeze_time, h_map, h_sizex, h_sizey, flags, sky_type');
+
+define('INSTANCE_TYPE_DEFAULT', 0); //Стандартный инстанс
+define('INSTANCE_TYPE_DUNGEON', 1); //Подземелье
+define('INSTANCE_TYPE_RAID', 2); //Рейд
+define('INSTANCE_TYPE_HUNT', 3); //Поиск охоты
+
+$instance_type_hash = array(
+    INSTANCE_TYPE_DEFAULT => 'Стандартный инстанс',
+    INSTANCE_TYPE_DUNGEON => 'Подземелье',
+    INSTANCE_TYPE_RAID => 'Рейд',
+);
+
+// Флаги инстанса
+define('INST_FLAG_BGCLOSED',				0x0001); // БГ закрыт для входа
+define('INST_FLAG_BGCOUNTPVP',				0x0002); // Зачислять PVP-победы в БГ
+define('INST_FLAG_HIDE_FINISHED_FIGHTS',	0x0008); // Не показывать закладку завершённых боёв этого инстанса
+define('INST_FLAG_SHOW_IN_LIST',			0x0010); // Показывать в списке инстансов (таб рядом с `персонаж`, `супер удар`)
+define('INST_FLAG_CROSSSERVER',				0x0020); // Межсерверный инст
+define('INST_FLAG_PREPARED',				0x0040); // Предварительно созданный инст
+define('INST_FLAG_CLAN',			        0x0080); // клановый инст
+define('INST_FLAG_NO_CHATUSERS',			0x0100); // Не отображать список пользователей в чате
+define('INST_FLAG_NO_MOROC_FIGHT',			0x0200);    // Запрет призыва мороков в бою
+define('INST_FLAG_NO_MOUNT_FIGHT',			0x0400);    // Запрет призыва ездовых животных в бою
+define('INST_FLAG_NO_MOROC_SET_ON',			0x0800);    // Запретить натравливать морока
+define('INST_FLAG_NO_ARTIFACT_BREAK',		0x1000); // Артефакты не ломаются #106273
+define('INST_FLAG_NO_INJURY',				0x2000); // Травмы не ставятся #106273
+define('INST_FLAG_10MAX',				    0x4000); // Инстанс на 10 человек
+define('INST_FLAG_2XPREMFIGHT',				0x8000); // Сдваивать бонус при премиуме у мобов
+
+define('INST_FLAG_NO_OBCAST',               0x10000); //Не учитывать каст
+define('INST_FLAG_NO_TALENTS',              0x20000); //Не учитывать таланты
+define('INST_FLAG_NO_CLAN_TALENTS',         0x40000); //Не учитывать клановые таланты
+define('INST_FLAG_NO_CLAN_BONUS',           0x80000); //Не учитывать клановые бонусы
+
+
+// Флаги связей
+define('INST_LF_EXIT',       0x0001); // Выход
+define('INST_LF_NOGHOST',    0x0002); // Запрещено для призраков
+define('INST_LF_PARTYBONUS', 0x0004); // "Бонус" - выдать группе
+define('INST_LF_CONFIRM',    0x0008); // Спрашивать подтверждение
+define('INST_LF_HIDENIED',	 0x0010); // Скрывать недоступное
+define('INST_LF_HIDDEN',     0x0020); // Скрытая функциональная область
+define('INST_LF_SIMPLE_MOVE',0x0040); // Облегчённый переход без перегрузки флэшки
+define('INST_LF_NPC',        0x0080); // Привязка NPC
+define('INST_LF_HOUSE',      0x0100); // Вход в здание
+
+// Флаги пользователей в инстансе
+define('INST_USER_FLAG_NO_FINISH_BONUS',   0x0001); // Не давать завершающий бонус
+
+function instance_get($ref=false, $add='') {
+	global $db_4;
+	$instance = common_get($db_4,TABLE_INSTANCES,$ref,$add);
+	if ($instance) $instance['object_class'] = OBJECT_CLASS_INSTANCE;
+	return $instance;
+}
+
+function instance_get_safe($instance_id) {
+	return instance_get($instance_id);
+}
+
+function instance_list($ref=false, $add='', $field_list='*') {
+	global $db_4;
+	return common_list($db_4,TABLE_INSTANCES,$ref,$add,$field_list);
+}
+
+function instance_count($ref=false, $add='') {
+	global $db_4;
+	return common_count($db_4,TABLE_INSTANCES,$ref,$add);
+}
+
+function instance_save($param) {
+	global $db_4;
+	return common_save($db_4,TABLE_INSTANCES,$param,FIELD_INSTANCES);
+}
+
+function instance_delete($object) {
+	global $db_4;
+	if (!$object) return false;
+	if($object['party_id'] && $object['dun_active']) {
+	    party_delete($object['party_id']);
+    }
+	common_delete($db_4,TABLE_INSTANCES,$object['id']);
+	instance_link_delete(false," AND (from_id=".(int)$object['id']." OR to_id=".(int)$object['id'].")");
+	instance_user_delete(array('instance_id' => $object['id'])," AND dtime<=".time_current());
+	skill_object_delete(OBJECT_CLASS_INSTANCE,$object);
+	action_object_delete(OBJECT_CLASS_INSTANCE,$object);
+	foreach (bot_list(null,null,null,$object['id']) as $bot) bot_delete($bot['id']);
+	global $db_3;
+	common_save($db_3,TABLE_USERS,array(
+		'_set' => 'instance_id=0, raid_id=0',
+		'_add' => ' AND instance_id='.intval($object['id']),
+	));
+	foreach (instance_list(array('parent_id' => $object['id'])) as $instance) instance_delete($instance);
+	return true;
+}
+
+/*
+ * Функция частичного удаления данных об инстансе, оставляем лишь то, 
+ * что необходимо для вывода статистики, чтобы при длительном хранении не замусоривать базу
+ * пока актуально для БГ (bg) и Бойнь (slaughter)
+ */
+function instance_pre_delete($object) {
+	global $db_4;
+	if (!$object) return false;
+	instance_link_delete(false," AND (from_id=".(int)$object['id']." OR to_id=".(int)$object['id'].")");
+	action_object_delete(OBJECT_CLASS_INSTANCE,$object);
+	foreach (bot_list(null,null,null,$object['id']) as $bot) bot_delete($bot['id']);
+	foreach (instance_list(array('parent_id' => $object['id'])) as $instance) instance_delete($instance);
+	return true;
+}
+
+function instance_link_get($ref=false, $add='') {
+	global $db_4;
+	return common_get($db_4,TABLE_INSTANCE_LINKS,$ref,$add);
+}
+
+function instance_link_list($ref=false, $add='') {
+	global $db_4;
+	return common_list($db_4,TABLE_INSTANCE_LINKS,$ref,$add);
+}
+
+function instance_link_save($param) {
+	global $db_4;
+	return common_save($db_4,TABLE_INSTANCE_LINKS,$param,FIELD_INSTANCE_LINKS);
+}
+
+function instance_link_delete($ref, $add='') {
+	global $db_4;
+	return common_delete($db_4,TABLE_INSTANCE_LINKS,$ref,$add);
+}
+
+function instance_user_get($ref=false, $add='') {
+	global $db_4;
+	return common_get($db_4,TABLE_INSTANCE_USERS,$ref,$add);
+}
+
+function instance_user_list($ref=false, $add='', $field_list='*') {
+	global $db_4;
+	return common_list($db_4,TABLE_INSTANCE_USERS,$ref,$add,$field_list);
+}
+
+function instance_user_count($ref=false, $add='') {
+	global $db_4;
+	return common_count($db_4,TABLE_INSTANCE_USERS,$ref,$add);
+}
+
+function instance_user_save($param) {
+	global $db_4;
+	return common_save($db_4,TABLE_INSTANCE_USERS,$param,FIELD_INSTANCE_USERS);
+}
+
+function instance_user_delete($ref, $add='') {
+	global $db_4;
+	return common_delete($db_4,TABLE_INSTANCE_USERS,$ref,$add);
+}
+
+function instance_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('INSTANCE_'.intval($ref),$timewait,$timelock);
+}
+
+function instance_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('INSTANCE_'.intval($ref));
+}
+
+function instance_link_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('INSTANCE_LINK_'.intval($ref),$timewait,$timelock);
+}
+
+function instance_link_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('INSTANCE_LINK_'.intval($ref));
+}
+
+// ========== работа с артикулами ================
+
+function instance_artikul_get($ref=false, $add='') {
+	global $db;
+	$artikul = common_get($db,TABLE_INSTANCE_ARTIKULS,$ref,$add);
+	if ($artikul) $artikul['object_class'] = OBJECT_CLASS_INSTANCE_ARTIKUL;
+	return $artikul;
+}
+
+function instance_artikul_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_INSTANCE_ARTIKULS,$ref,$add);
+}
+
+function instance_artikul_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_INSTANCE_ARTIKULS, $ref, $add);
+}
+
+function instance_artikul_save($param) {
+	global $db;
+	return common_save($db,TABLE_INSTANCE_ARTIKULS,$param,FIELD_INSTANCE_ARTIKULS);
+}
+
+function instance_artikul_delete($ref) {
+	global $db;
+	common_delete($db,TABLE_INSTANCE_ARTIKULS,$ref);
+	instance_artikul_link_delete(false," AND (from_id=".(int)$ref." OR to_id=".(int)$ref.")");
+	skill_object_delete(OBJECT_CLASS_INSTANCE_ARTIKUL,$ref);
+	action_object_delete(OBJECT_CLASS_INSTANCE_ARTIKUL,$ref);
+	if ($ref) foreach (instance_artikul_list(array('parent_id' => $ref)) as $artikul) instance_artikul_delete($artikul['id']);
+	return true;
+}
+
+function instance_artikul_link_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_INSTANCE_ARTIKUL_LINKS,$ref,$add);
+}
+
+function instance_artikul_link_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_INSTANCE_ARTIKUL_LINKS,$ref,$add);
+}
+
+function instance_artikul_link_save($param) {
+	global $db;
+	return common_save($db,TABLE_INSTANCE_ARTIKUL_LINKS,$param,FIELD_INSTANCE_ARTIKUL_LINKS);
+}
+
+function instance_artikul_link_delete($ref, $add='') {
+	global $db;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if (!$ref && !$add) return false;
+	$data = common_list($db,TABLE_INSTANCE_ARTIKUL_LINKS,$ref,$add);
+	foreach ($data as $k=>$item) $data[$k]['object_class'] = OBJECT_CLASS_INSTANCE_LINK;
+	restriction_objects_list($data);
+	foreach ($data as $item) {
+		foreach ($item['object_restrictions'] as $restriction) restriction_delete($restriction['id']);
+	}
+	return common_delete($db,TABLE_INSTANCE_ARTIKUL_LINKS,$ref,$add);
+}
+
+function instance_artikul_bot_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_INSTANCE_ARTIKUL_BOTS,$ref,$add);
+}
+
+function instance_artikul_bot_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_INSTANCE_ARTIKUL_BOTS,$ref,$add);
+}
+
+function instance_artikul_bot_save($param) {
+	global $db;
+	return common_save($db,TABLE_INSTANCE_ARTIKUL_BOTS,$param,FIELD_INSTANCE_ARTIKUL_BOTS);
+}
+
+function instance_artikul_bot_delete($ref, $add='') {
+	global $db;
+	return common_delete($db,TABLE_INSTANCE_ARTIKUL_BOTS,$ref,$add);
+}
+
+// =================================================================================================================
+
+function instance_create($artikul_id, $force_param=array()) {
+	no_translate_push(1);
+	$artikul = instance_artikul_get($artikul_id);
+	if (!$artikul) {
+		no_translate_pop();
+		return false;
+	}
+	$artikul_list = instance_artikul_list(array('root_id' => $artikul_id));
+	array_unshift($artikul_list,$artikul);
+
+	// создаем дерево инста
+	$id_hash = array();
+	$all_parent_ids = get_hash($artikul_list,'parent_id','parent_id');
+	$cur_parent_ids = array(0);
+	$link_list = array();
+	$bot_list = array();
+	do {
+		$new_parent_ids = array();
+		while (($parent_id = array_shift($cur_parent_ids)) !== null) {
+			foreach ($artikul_list as $artikul) {
+				if ($artikul['parent_id'] != $parent_id) continue;
+				$id = $artikul['id'];
+				if (array_key_exists($id,$all_parent_ids)) $new_parent_ids[] = $id;
+				$instance = get_params($artikul,INSTANCE_CREATE_FIELDS);
+				$instance['artikul_id'] = $artikul['id'];
+				$instance['root_id'] = intval($id_hash[$artikul['root_id']]);
+				$instance['parent_id'] = intval($id_hash[$artikul['parent_id']]);
+				$instance['artikul_actions'] = 1;
+				if (!$instance['parent_id']) {
+					$instance['dtime'] = $artikul['life_time'] + time_current();
+					if ($force_param) {
+						$force_param['flags'] = intval($force_param['flags']) | intval($instance['flags']);
+						foreach ($force_param as $k=>$v) $instance[$k] = $v;
+					}
+				}
+				$instance_id = instance_save($instance);
+				if (!$instance_id) {
+					no_translate_pop();
+					return false;
+				}
+				skill_object_copy_artikul_skills(OBJECT_CLASS_INSTANCE,$instance_id);
+				$id_hash[$id] = $instance_id;
+				$link_list = array_merge($link_list,instance_artikul_link_list(array('from_id' => $id)));
+				$bot_list = array_merge($bot_list,instance_artikul_bot_list(array('artikul_id' => $id)));
+			}
+		}
+		$cur_parent_ids = $new_parent_ids;
+	} while ($cur_parent_ids);
+
+	// создаем связи
+	foreach ($link_list as $link) {
+		$link['a_id'] = $link['id'];
+		unset($link['id']);
+		$link['from_id'] = intval($id_hash[$link['from_id']]);
+		$link['to_id'] = intval($id_hash[$link['to_id']]);
+		instance_link_save($link);
+	}
+
+	// создаем ботов
+	foreach ($bot_list as $item) {
+		$instance_id = intval($id_hash[$item['artikul_id']]);
+		bot_create($item['bot_artikul_id'],$item['bot_cnt'],false,$instance_id);
+	}
+	no_translate_pop();
+	return reset($id_hash);
+}
+
+function instance_get_location_info($instance_id) {
+	if (!$instance_id) return false;
+	$instance = instance_get($instance_id);
+	if (!$instance) return false;
+	$location = $instance;
+	while ($location && !$location['swf']) $location = instance_get($location['parent_id']);
+	if (!$location['swf']) return false;
+	$t = explode('.',$location['swf']);
+	$location['pic'] = $t[0].'.jpg';
+	
+	$res = array(
+		'area' => $instance,
+		'location' => $location,
+		'location_p' => instance_get($location['root_id']),
+	);
+	$res['location']['title'] = translate($res['location']['title']);
+	$res['location_p']['title'] = translate($res['location_p']['title']);
+	return $res;
+}
+
+function &instance_get_root($instance_id) {
+	do {
+		$instance = instance_get($instance_id);
+	} while ($instance_id = $instance['root_id']);
+	return $instance;
+}
+
+function instance_restriction_check(&$link, &$user, &$error, $object_class=null) {
+	$check_object_list = array();
+	restriction_get_dependent($user,$check_object_list,array(OBJECT_CLASS_AREA));
+	$artikul_link = instance_artikul_link_get($link['a_id']);
+	$artikul_link['object_class'] = $object_class ? $object_class : OBJECT_CLASS_INSTANCE_LINK;
+	$out_restriction = restriction_check(0,array($artikul_link),$check_object_list);
+	if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) {
+		$error = $out_restriction['title'] ? $out_restriction['title'] : sprintf(translate('Для выполнения действия требуется %s'),$out_restriction['error']);
+		return false;
+	}
+
+	return true;
+}
+
+function instance_conf() {
+	global $session_user, $session;
+	$instance_id = $session_user['instance_id'];
+	if (!$instance_id) return;
+	$key = $session_user['area_id'].'-'.$session['sid'];
+	
+	$area_info = instance_get_location_info($instance_id);
+	$area = &$area_info['area'];
+	$location = &$area_info['location'];
+	$area_ftime = ($session_user['flags'] & USER_FLAG_GHOST) ? 0 : max($session_user['area_ftime']-time_current(),0);
+	
+	$items = array();
+	
+	$link_list = instance_link_list(array('from_id' => $instance_id));
+	foreach ($link_list as $lk => $l) $link_list[$lk]['title'] = translate($link_list[$lk]['title']);
+	common_fldsort($link_list,false,'f_id');
+
+	$instance_root = instance_get_root($instance_id);
+	$instance_user = instance_user_get(array('user_id' => $session_user['id'], 'instance_id' => $instance_root['id']));
+	
+	foreach ($link_list as $link) {
+		$error = false;
+		// Ограничение в инстансах делается на команду, а не на расу, как это сделано для мира
+		if (($link['kind'] && ($link['kind'] != $instance_user['team'])) || (($link['flags'] & INST_LF_HIDENIED) && !instance_restriction_check($link,$session_user,$error))) continue;
+		if ($link['flags'] & INST_LF_NPC) {
+			$item = array(
+				'id' => $link['f_id'],
+				'href' => '/'.secure_url($key,'npc.php?action=enter&ref='.$link['id']),
+			);
+		} else {
+			$item = array(
+				'id' => $link['f_id'],
+				'href' => secure_url($key,'/instance.php?action=link&ref='.$link['id']),
+			);
+		}
+		if ($link['title']) $item['name'] = $link['title'];
+		if ($link['flags'] & INST_LF_CONFIRM) $item['confirm'] = 1;
+		if ($link['flags'] & INST_LF_HIDDEN) unset($item['name']);
+		if ($link['flags'] & INST_LF_SIMPLE_MOVE) $item['hidden'] = 1;
+
+        if ($link['flags'] & INST_LF_NPC) $item['mode'] = 'npc';
+        elseif ($link['flags'] & INST_LF_HOUSE) $item['mode'] = 'house';
+
+		if($link['action_id']) {
+			$item['type'] = 'action';
+			$action = action_object_get(OBJECT_CLASS_INSTANCE, $instance_id, $link['action_id'],'',true);
+			if ($action['ltime']) {
+				$item['ltime'] = $action['ltime'];
+				if ($session['action_id'] == $action['id']) $item['dtime'] = $session['ltime'];
+			}
+		}
+		$items[] = $item;
+	}
+
+	return '<town title="'.translate($location['title']).'" sky_type="'.($location['sky_type'] ? PATH_SWF_AREA_SKY.$location['sky_type'] : '').'" bg="'.file_url(PATH_SWF_AREAS.$location['swf']).
+		'" ftime="'.$area_ftime.'" ftime_max="'.$area['freeze_time'].'" curtime="'.time_current().'">'.construct_xml($items).'</town>';
+}
+
+function instance_conf_json(){
+    global $session_user, $session;
+    $instance_id = $session_user['instance_id'];
+    if (!$instance_id) return;
+    $key = $session_user['area_id'].'-'.$session['sid'];
+
+    $area_info = instance_get_location_info($instance_id);
+    $area = &$area_info['area'];
+    $location = &$area_info['location'];
+    $area_ftime = ($session_user['flags'] & USER_FLAG_GHOST) ? 0 : max($session_user['area_ftime']-time_current(),0);
+
+    $items = array();
+
+    $link_list = instance_link_list(array('from_id' => $instance_id));
+    foreach ($link_list as $lk => $l) $link_list[$lk]['title'] = translate($link_list[$lk]['title']);
+    common_fldsort($link_list,false,'f_id');
+
+    $instance_root = instance_get_root($instance_id);
+    $instance_user = instance_user_get(array('user_id' => $session_user['id'], 'instance_id' => $instance_root['id']));
+
+    foreach ($link_list as $link) {
+        $error = false;
+        // Ограничение в инстансах делается на команду, а не на расу, как это сделано для мира
+        if (($link['kind'] && ($link['kind'] != $instance_user['team'])) || (($link['flags'] & INST_LF_HIDENIED) && !instance_restriction_check($link,$session_user,$error))) continue;
+        if ($link['flags'] & INST_LF_NPC) {
+            $item = array(
+                'id' => $link['f_id'],
+                'href' => '/'.secure_url($key,'npc.php?action=enter&ref='.$link['id']),
+            );
+        } else {
+            $item = array(
+                'id' => $link['f_id'],
+                'href' => secure_url($key,'/instance.php?action=link&ref='.$link['id']),
+            );
+        }
+        if ($link['title']) $item['name'] = $link['title'];
+        if ($link['flags'] & INST_LF_CONFIRM) $item['confirm'] = 1;
+        if ($link['flags'] & INST_LF_HIDDEN) unset($item['name']);
+        if ($link['flags'] & INST_LF_SIMPLE_MOVE) $item['hidden'] = 1;
+
+        if ($link['flags'] & INST_LF_NPC) $item['mode'] = 'npc';
+        elseif ($link['flags'] & INST_LF_HOUSE) $item['mode'] = 'house';
+
+        if($link['action_id']) {
+            $item['type'] = 'action';
+            $action = action_object_get(OBJECT_CLASS_INSTANCE, $instance_id, $link['action_id'],'',true);
+            if ($action['ltime']) {
+                $item['ltime'] = $action['ltime'];
+                if ($session['action_id'] == $action['id']) $item['dtime'] = $session['ltime'];
+            }
+        }
+        $items[] = $item;
+    }
+
+    $json_area = array(
+        'location' => array(
+            'area_id' => $area['id'],
+            'title' => $area['title'],
+            'sky_type' => ($area['sky_type'] ? PATH_SWF_AREA_SKY.$area['sky_type'] : ''),
+            'bg' => file_url(PATH_SWF_AREAS.$location['swf']),
+            'bg_mid' => '',
+            'swf' => file_url(PATH_SWF_AREAS.$location['swf']),
+            'swf_mid' => '',
+        ),
+        'area' => array(
+            'ftime' => intval($area_ftime),
+            'ftime_max' => intval($area['freeze_time']),
+            'weather' => $area['weather'],
+            'code' => $area['code'],
+            'show_minimap' => ($area['flags'] & AREA_FLAG_NO_MINIMAP ? '' : 1)
+        ),
+        'items' => $items,
+    );
+
+    return $json_area;
+}
+
+function user_instance_fav_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path,TABLE_USER_INSTANCE_FAV,$ref,$add);
+}
+
+function user_instance_fav_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_USER_INSTANCE_FAV,$ref,$add);
+}
+
+function user_instance_fav_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_USER_INSTANCE_FAV,$ref,$add);
+}
+
+function user_instance_fav_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_USER_INSTANCE_FAV,$param);
+}
+
+function user_instance_fav_delete($ref, $add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_USER_INSTANCE_FAV,$ref,$add);
+}
+
+
+// Возвращает 3 списка,
+//	1 - список слинкованных с юзером инстов (объединены 2 табл instance_users и instances)
+//  2 - список записей из instance_users, которые не слинкованы с instances
+//  3 - список инстов с party_id
+function user_instance_get_instance_lists($user_id, $party_id, $clan_id) {
+    global $NODE_NUMS;
+    $res_linked = array(); // inetances  user is linked with
+    $res_party = array(); // all instances were user's party is
+    $res_clan = array();
+    $res_notlinked = array();
+    foreach ($NODE_NUMS as $nn) {
+        NODE_PUSH($nn);
+        // All instances were user was, but in real instanse can be not exits, we must check it
+        $instance_user_list = instance_user_list(array('user_id' => $user_id), '', "id, instance_id, dtime, area_link_id");
+        $inst_ids = array();
+        foreach($instance_user_list as $row)
+            $inst_ids[] = $row["instance_id"];
+        //Get list of instancese with user is linked at
+        //Result count can be smaller then $inst_ids (user can be linked with not exists instance)
+
+        $add = array();
+        if (!empty($inst_ids)) $add[] = sql_pholder("id IN (?@)",$inst_ids);
+        if ($party_id > 0) $add[] = sql_pholder("party_id=?", $party_id);
+        $instance_list = count($add) ? instance_list(false, ' AND '.join(' OR ', $add)) : array();
+
+        // Заполняем интсты с $party_id
+        if ($party_id > 0) {
+            foreach($instance_list as $inst) {
+                if($party_id == $inst['party_id'])
+                    $res_party[] =$inst;
+            }
+        }
+        // Заполняем интсты с $clan_id
+        if ($clan_id > 0) {
+            foreach($instance_list as $inst) {
+                if($clan_id == $inst['clan_id'])
+                    $res_clan[] =$inst;
+            }
+        }
+        $instance_list = make_hash($instance_list, "id", false);
+        // Смотрим все линкованные и нелинкованные инстансы
+        foreach($instance_user_list as $i=>$row) {
+            $ref = &$instance_list[$row["instance_id"]];
+            if ($ref) {
+                $row["artikul_id"] = $ref["artikul_id"];
+                $row["party_id"] = $ref["party_id"];
+                $row["clan_id"] = $ref["clan_id"];
+                $row["inst_dtime"] = $ref["dtime"];
+                $res_linked[] = $row;
+            }
+            else
+                $res_notlinked[] = $row;
+        }
+
+        NODE_POP();
+    }
+    return array($res_linked, $res_notlinked, $res_party, $res_clan);
+}
+
+function instance_timer_print($inst, $time_1, $time_2 = false, $type = ''){
+    $perc = ($time_1 * 100)/$time_2;
+    return '<div class="instance_timer_container '.$type.'">
+			<div class="instance_timer_inner">'.html_period_str($time_1).($time_2 ? ' / '.html_period_str($time_2) : '').'</div>
+			<div class="instance_timer_center" style="width: '.intval($perc).'%;"></div>
+			<div class="instance_timer_right"></div>
+			<div class="instance_timer_left"></div>
+		</div>';
+}
+
+///////////////////////////////////////////////////////////////////////Кик машина
+
+
+
+function instance_user_kick_count($ref=false, $add='') {
+    global $db_4;
+    return common_count($db_4,TABLE_INSTANCE_USER_KICK,$ref,$add);
+}
+
+function instance_user_kick_get($ref=false, $add='') {
+    global $db_4;
+    return common_get($db_4,TABLE_INSTANCE_USER_KICK,$ref,$add);
+}
+
+function instance_user_kick_list($ref=false, $add='') {
+    global $db_4;
+    return common_list($db_4,TABLE_INSTANCE_USER_KICK,$ref,$add);
+}
+
+function instance_user_kick_save($param) {
+    global $db_4;
+    return common_save($db_4,TABLE_INSTANCE_USER_KICK,$param);
+}
+
+function instance_user_kick_delete($ref, $add='') {
+    global $db_4;
+    return common_delete($db_4,TABLE_INSTANCE_USER_KICK,$ref,$add);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+
+function instance_user_kick_log_count($ref=false, $add='') {
+    global $db_4;
+    return common_count($db_4,TABLE_INSTANCE_USER_KICK_LOG,$ref,$add);
+}
+
+function instance_user_kick_log_get($ref=false, $add='') {
+    global $db_4;
+    return common_get($db_4,TABLE_INSTANCE_USER_KICK_LOG,$ref,$add);
+}
+
+function instance_user_kick_log_list($ref=false, $add='') {
+    global $db_4;
+    return common_list($db_4,TABLE_INSTANCE_USER_KICK_LOG,$ref,$add);
+}
+
+function instance_user_kick_log_save($param) {
+    global $db_4;
+    return common_save($db_4,TABLE_INSTANCE_USER_KICK_LOG,$param);
+}
+
+function instance_user_kick_log_delete($ref, $add='') {
+    global $db_4;
+    return common_delete($db_4,TABLE_INSTANCE_USER_KICK_LOG,$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+function instance_user_kick_cron() {
+    instance_user_kick_delete(false, sql_pholder(' AND dtime < ?', time_current())); //Удаляем просроченные заявки на кик
+
+    $instance_user_kick_hash = make_hash(instance_user_kick_list(), 'kick_user_id', true);
+    foreach ($instance_user_kick_hash as $kick_user_id=>$instance_user_kick_list) {
+
+        $user_ids = array();
+        foreach ($instance_user_kick_list as $instance_user_kick) {
+            $user_ids[$instance_user_kick['user_id']] = $instance_user_kick['user_id'];
+        }
+
+        $kick_user = user_get($kick_user_id);
+        if(!$kick_user['instance_id']) {
+            instance_user_kick_delete(array('kick_user_id' => $kick_user_id));
+            continue;
+        }
+        if(!$kick_user) continue;
+        $instance_user_kick =  $instance_user_kick_list[0];
+        if($instance_user_kick['cnt_kick'] <= count($instance_user_kick_list)) {
+            //Необходимо кикнуть
+            switch ($instance_user_kick['type']) {
+                case INSTANCE_KICK_TYPE_DUNGEON:
+                    $user_params = array(
+                        'id' => $kick_user_id,
+                        'instance_id' => 0,
+                        'raid_id' => 0,
+                        'area_id' => $kick_user['area_id_transfer'] ? $kick_user['area_id_transfer'] : $kick_user['area_id'],
+                        'area_id_transfer' => 0,
+                        'area_ftime' => 0,
+                    );
+                    user_save($user_params);
+                    user_deaf_remove($kick_user);
+
+                    instance_user_delete(array('user_id' => $kick_user_id, 'instance_id' => $instance_user_kick['instance_id']));
+
+                    $instance_root = instance_get_root($instance_user_kick['instance_id']);
+                    if($instance_root) dungeon_user_exit($kick_user_id, $instance_root, true);
+
+                    instance_user_kick_delete(array('kick_user_id' => $kick_user_id));
+                    instance_user_kick_log_save(array(
+                        'kick_user_id' => $kick_user_id,
+                        'user_ids' => implode(',',$user_ids),
+                        'instance_id' => $instance_user_kick['instance_id'],
+                        'type' => $instance_user_kick['type'],
+                        'ctime' => time_current(),
+                    ));
+                    chat_msg_send_system('<b>Игрок '.html_user_info($kick_user).' был выгнан из Подземелья!'.'</b>', CHAT_CHF_USER, $user_ids);
+                    chat_msg_send_system('<b>Вы были выгнаны из Подземелья на основании '.$instance_user_kick['cnt_kick'].' '.format_by_count($instance_user_kick['cnt_kick'], 'голоса', 'голосов', 'голосов').'!'.'</b>', CHAT_CHF_USER, $kick_user_id);
+                    break;
+            }
+        }
+    }
+}
+
+//Копирование артикулов инстансов
+
+function instance_artikul_copy($instance_artikul) {
+    global $db;
+    $instance_new_ids = array(); //Массив old_id=>new_id
+    $instance_link_scope = array(); //Просто массив всех линков собранных с артикулов и вложенных артикулов инстансов.
+    if($instance_artikul['root_id']) {
+        //копируем вложенные
+        instance_artikul_copy_parents($instance_artikul, $instance_artikul['root_id'], $instance_artikul['root_id'], $instance_artikul['parent_id'], $instance_new_ids, $instance_link_scope);
+    }else{
+        //Копируем целиком
+        instance_artikul_copy_root($instance_artikul, $instance_new_ids, $instance_link_scope);
+    }
+    //Связываем вся хуйня
+    $old_instance_ids = array_keys($instance_new_ids);
+    $instance_artikul_bots  = common_list($db, 'instance_artikul_bots', array('artikul_id' => $old_instance_ids));
+    $instance_artikul_skills = common_list($db, 'instance_artikul_skills', array('artikul_id' => $old_instance_ids));
+    $instance_artikul_actions = common_list($db, 'instance_artikul_actions', array('artikul_id' => $old_instance_ids));
+    foreach ($instance_artikul_bots as $instance_artikul_bot) {
+        $new_instance_artikul_bot = $instance_artikul_bot;
+        unset($new_instance_artikul_bot['id']);
+        $new_instance_artikul_bot['artikul_id'] = $instance_new_ids[$new_instance_artikul_bot['artikul_id']];
+        instance_artikul_bot_save($new_instance_artikul_bot);
+    }
+    foreach ($instance_artikul_skills as $instance_artikul_skill) {
+        $new_instance_artikul_skill = $instance_artikul_skill;
+        unset($new_instance_artikul_skill['id']);
+        $new_instance_artikul_skill['artikul_id'] = $instance_new_ids[$new_instance_artikul_skill['artikul_id']];
+        common_save($db, 'instance_artikul_skills', $new_instance_artikul_skill);
+    }
+    foreach ($instance_artikul_actions as $instance_artikul_action) {
+        $new_instance_artikul_action = $instance_artikul_action;
+        unset($new_instance_artikul_action['id']);
+        $new_instance_artikul_action['artikul_id'] = $instance_new_ids[$new_instance_artikul_action['artikul_id']];
+        $n_action_id = common_save($db, 'instance_artikul_actions', $new_instance_artikul_action);
+        $restriction_list = restriction_list(OBJECT_CLASS_INSTANCE_ARTIKUL, $instance_artikul_action['artikul_id']);
+        foreach ($restriction_list as $restriction){
+            restriction_copy($restriction, $instance_new_ids[$instance_artikul_action['artikul_id']]);
+        }
+    }
+    //Самое сложное линки
+    foreach ($instance_link_scope as $instance_link) {
+        $new_instance_link = $instance_link;
+        unset($new_instance_link['id']);
+        $new_instance_link['from_id'] = intval(($new_instance_link['from_id'] ? $instance_new_ids[$new_instance_link['from_id']] : $new_instance_link['from_id']));
+        $new_instance_link['to_id'] = intval(($new_instance_link['to_id'] ? $instance_new_ids[$new_instance_link['to_id']] : $new_instance_link['to_id']));
+        $n_instance_link_id = instance_artikul_link_save($new_instance_link);
+        //vardump( $n_instance_link_id);
+        //vardump( $new_instance_link);
+        $restriction_list = restriction_list(OBJECT_CLASS_INSTANCE_LINK, $instance_link);
+        foreach ($restriction_list as $restriction) {
+            restriction_copy($restriction, $n_instance_link_id);
+        }
+        $restriction_list = restriction_list(OBJECT_CLASS_INSTANCE_LINK_BOTS, $instance_link);
+        foreach ($restriction_list as $restriction) {
+            restriction_copy($restriction, $n_instance_link_id);
+        }
+    }
+    return true;
+}
+
+function instance_artikul_copy_root($instance_artikul, &$instance_new_ids, &$instance_link_scope) {
+    $new_instance_artikul = $instance_artikul;
+    instance_link_copy_scope($instance_artikul, $instance_link_scope);
+    unset($new_instance_artikul['id'], $new_instance_artikul['object_class']);
+    $instance_artikul_id = instance_artikul_save($new_instance_artikul);
+    $instance_new_ids[$instance_artikul['id']] = $instance_artikul_id;
+    $instance_artikul_children = instance_artikul_list(array('root_id' => $instance_artikul['id'], 'parent_id' => $instance_artikul['id']));
+    foreach ($instance_artikul_children as $instance_artikul_child) {
+        instance_artikul_copy_parents($instance_artikul_child, $instance_artikul['id'], $instance_artikul_id, $instance_artikul_id, $instance_new_ids, $instance_link_scope);
+    }
+}
+
+function instance_artikul_copy_parents($instance_artikul, $root_copy_id, $root_id, $new_parent_id, &$instance_new_ids, &$instance_link_scope) {
+    if($root_id == 0 || $new_parent_id == 0) return false;
+    instance_link_copy_scope($instance_artikul, $instance_link_scope);
+    $new_instance_artikul = $instance_artikul;
+    unset($new_instance_artikul['id'], $new_instance_artikul['object_class']);
+    $new_instance_artikul['root_id'] = $root_id;
+    $new_instance_artikul['parent_id'] = $new_parent_id;
+    $instance_artikul_id = instance_artikul_save($new_instance_artikul);
+    $instance_new_ids[$instance_artikul['id']] = $instance_artikul_id;
+    $instance_artikul_children = instance_artikul_list(array('root_id' => $root_copy_id, 'parent_id' => $instance_artikul['id']));
+    foreach ($instance_artikul_children as $instance_artikul_child) {
+        instance_artikul_copy_parents($instance_artikul_child, $root_copy_id, $root_id, $instance_artikul_id, $instance_new_ids, $instance_link_scope);
+    }
+}
+
+function instance_link_copy_scope($instance_artikul, &$instance_link_scope = array()) {
+    $instance_artikul_link_list = instance_artikul_link_list(array('from_id' => $instance_artikul['id']));
+    foreach($instance_artikul_link_list as $instance_artikul_link){
+        $instance_link_scope[] = $instance_artikul_link;
+    }
+}
+
+?>

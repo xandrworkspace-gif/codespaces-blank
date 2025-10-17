@@ -1,0 +1,278 @@
+<? # $Id: chat.lib,v 1.26 2006/08/29 16:40:17 sen Exp $
+
+require_once("include/wbds.inc");
+//require_once("lib/user.lib"); //  TODO: Uncomment.
+
+define('CHAT_AREA_ID_BROADCAST', 99999990);
+
+// ‘лаги каналов чата
+define('CHAT_CHF_AREA',    0x01);
+define('CHAT_CHF_USER',    0x02);
+define('CHAT_CHF_CLAN',    0x04);
+define('CHAT_CHF_TRADE',   0x08);
+define('CHAT_CHF_PARTY',   0x10);
+define('CHAT_CHF_RAID',    0x20);
+
+// “ипы сообщени¤
+define('CHAT_MSG_TYPE_DEFAULT', 0);
+define('CHAT_MSG_TYPE_SYSTEM', 1);
+define('CHAT_MSG_TYPE_BROADCAST', 2);
+define('CHAT_MSG_TYPE_SPECIAL', 3);
+
+// коды дл¤ специальных сообщений
+define('CODE_RESET_CHAT', 1);
+define('CODE_REDIRECT', 101);
+define('CODE_CHANGE_TITLE', 102);
+define('CODE_UNALLOC', 103);
+define('CODE_CALL_JSFUNC', 104);
+
+global $WBDS;
+$WBDS = new WBDS(explode(",", WBDS_SERVERS));
+
+function time_current() { return time(); }  //  TODO: Remove.
+
+function chat_message_sorter_($a, $b)
+{
+  return $a['id'] - $b['id'];
+}
+
+function chat_getMsgList(&$obj, &$list, $startMsgId = 0) {
+  global $WBDS;
+
+  if (!$obj || !is_object($obj)) {
+    error_log(__FILE__.":".__LINE__." - Invalid arguments");
+    return false;
+  }
+  $list = array();
+  if (!$WBDS->checkObj($obj)) {
+    if (!$WBDS->uploadObj($obj)) {
+      error_log("chat_getMsgList(): Uploading new object failed");
+      return false;
+    }
+  }
+  if (!$WBDS->getObjLink($obj, array(array(OBJTYPE_MSG, $startMsgId)))) {
+    error_log(__FILE__.":".__LINE__." - Can't download links");
+    return false;
+  }
+  $msgLinks = $obj->getLink(OBJTYPE_MSG, -1);
+  $msgLinks = is_array($msgLinks) ? $msgLinks : array();
+  $msgIDs = array();
+  if (!$msgLinks || !sizeof($msgLinks)) return 0;
+  foreach ($msgLinks as $key => $link) {
+    list($objType, $objId) = $link;
+    if ($objId > $startMsgId) $msgIDs[] = $objId;
+  }
+  rsort($msgIDs);
+  $msgIDs = array_reverse(array_slice($msgIDs, 0, 20)); /* maximum 20 last messages, FIFO */
+  $links = array();
+  foreach ($msgIDs as $idx => $objId) {
+    $links[] = array( 0 => OBJTYPE_MSG, 1 => $objId);
+  }
+  $objList = $WBDS->getObjList($links);
+  if (($objList == false) || !is_array($objList) || (sizeof($objList) == 0)) {
+    return 0;
+  }
+  foreach ($objList as $key => $obj) {
+    $entry = unserialize($obj->get(OBJPROP_CONTENTS));
+    $entry["id"] = $obj->id();
+    $list[] = $entry;
+  }
+  return sizeof($objList);
+}
+
+function chat_saveMsg(&$obj_list, $edit) {
+  global $WBDS;
+
+  if (!$obj_list || !is_array($obj_list)) {
+    error_log(__FILE__.":".__LINE__." - Invalid arguments");
+    return false;
+  }
+  foreach ($obj_list as $obj) {
+    if (!$WBDS->checkObj($obj)) {
+      if (!$WBDS->uploadObj($obj)) {
+        error_log("chat_saveMsg(): Uploading new object failed");
+        return false;
+      }
+    }
+  }
+  if (isset($edit["id"]) && $edit["id"]) {  # update
+    $chatMsg = new ChatMsg($edit['id']);
+    $WBDS->downloadObj($chatMsg);
+  } else {  # insert
+    $chatMsg = new ChatMsg(0);
+  }
+  $contents = serialize($edit);
+  $chatMsg->set(OBJPROP_CONTENTS, $contents);
+  $WBDS->uploadObj($chatMsg);
+  if ($chatMsg->id() > 0) {
+    foreach ($obj_list as $obj) {
+      $WBDS->addObjLink($obj, array(array($chatMsg->type(), $chatMsg->id())));
+    }
+  }
+  return $chatMsg->id();
+}
+
+// ==================================================================================
+
+// $channel - channel bitmask
+// $channel_data: - or can be 'obj_id'
+// 'area_id'
+// 'user_id'
+// 'clan_id'
+function chat_msg_list($channel, $channel_data=false, $msg_id=0) {
+  if (!$channel || !$channel_data) return false;
+  $msg_list = array();
+  if ($channel & CHAT_CHF_AREA) {
+    $obj_id = is_array($channel_data) && $channel_data['area_id'] ? $channel_data['area_id']: $channel_data;
+    if ($obj_id) {
+      $list = array();
+      chat_getMsgList(new Area($obj_id), $list, $msg_id);
+      $msg_list = array_merge($msg_list,$list);
+    }
+    $list = array();
+    chat_getMsgList(new Area(CHAT_AREA_ID_BROADCAST), $list, $msg_id);
+    $msg_list = array_merge($msg_list,$list);
+  }
+  if ($channel & CHAT_CHF_USER) {
+    $obj_id = is_array($channel_data) && $channel_data['user_id'] ? $channel_data['user_id']: $channel_data;
+    if ($obj_id) {
+      $list = array();
+      chat_getMsgList(new User($obj_id), $list, $msg_id);
+      $msg_list = array_merge($msg_list,$list);
+    }
+  }
+  if ($channel & CHAT_CHF_CLAN) {
+    $obj_id = is_array($channel_data) && $channel_data['clan_id'] ? $channel_data['clan_id']: $channel_data;
+    if ($obj_id) {
+      $list = array();
+      chat_getMsgList(new Clan($obj_id), $list, $msg_id);
+      $msg_list = array_merge($msg_list,$list);
+    }
+  }
+  if ($channel & CHAT_CHF_TRADE) {
+    $obj_id = is_array($channel_data) && $channel_data['trade_id'] ? $channel_data['trade_id']: $channel_data;
+    if ($obj_id) {
+      $list = array();
+      chat_getMsgList(new Trade($obj_id), $list, $msg_id);
+      $msg_list = array_merge($msg_list,$list);
+    }
+  }
+  if ($channel & CHAT_CHF_PARTY) {
+    $obj_id = is_array($channel_data) && $channel_data['party_id'] ? $channel_data['party_id']: $channel_data;
+    if ($obj_id) {
+      $list = array();
+      chat_getMsgList(new Party($obj_id), $list, $msg_id);
+      $msg_list = array_merge($msg_list,$list);
+    }
+  }
+  if ($channel & CHAT_CHF_RAID) {
+    $obj_id = is_array($channel_data) && $channel_data['raid_id'] ? $channel_data['raid_id']: $channel_data;
+    if ($obj_id) {
+      $list = array();
+      chat_getMsgList(new Raid($obj_id), $list, $msg_id);
+      $msg_list = array_merge($msg_list,$list);
+    }
+  }
+  usort($msg_list, 'chat_message_sorter_');
+  return $msg_list;
+}
+
+// '$channel_data' must be an array or an assoc array
+function chat_msg_send($msg, $channel, $channel_data=false) {
+  if (!$msg || !$channel) return false;
+  $obj_list = array();
+
+  if ($channel & CHAT_CHF_AREA) { //  Note this is handled separately
+    $obj_ids = (is_array($channel_data) && $channel_data['area_id']) ? $channel_data['area_id']: $channel_data;
+    if (!$obj_ids) $obj_ids = array(CHAT_AREA_ID_BROADCAST);
+    if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+    foreach ($obj_ids as $obj_id) {
+      $obj_list[] = new Area($obj_id);
+    }
+  }
+  if ($channel & CHAT_CHF_USER) {
+    $obj_ids = (is_array($channel_data) && $channel_data['user_id']) ? $channel_data['user_id']: $channel_data;
+    if (!$obj_ids) return false;
+    if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+    foreach ($obj_ids as $obj_id) {
+      $obj_list[] = new User($obj_id);
+    }
+  }
+  if ($channel & CHAT_CHF_CLAN) {
+    $obj_ids = (is_array($channel_data) && $channel_data['clan_id']) ? $channel_data['clan_id']: $channel_data;
+    if (!$obj_ids) return false;
+    if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+    foreach ($obj_ids as $obj_id) {
+      $obj_list[] = new Clan($obj_id);
+    }
+  }
+  if ($channel & CHAT_CHF_TRADE) {
+    $obj_ids = (is_array($channel_data) && $channel_data['trade_id']) ? $channel_data['trade_id']: $channel_data;
+    if (!$obj_ids) return false;
+    if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+    foreach ($obj_ids as $obj_id) {
+      $obj_list[] = new Trade($obj_id);
+    }
+  }
+  if ($channel & CHAT_CHF_PARTY) {
+    $obj_ids = (is_array($channel_data) && $channel_data['party_id']) ? $channel_data['party_id']: $channel_data;
+    if (!$obj_ids) return false;
+    if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+    foreach ($obj_ids as $obj_id) {
+      $obj_list[] = new Party($obj_id);
+    }
+  }
+  if ($channel & CHAT_CHF_RAID) {
+    $obj_ids = (is_array($channel_data) && $channel_data['raid_id']) ? $channel_data['raid_id']: $channel_data;
+    if (!$obj_ids) return false;
+    if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+    foreach ($obj_ids as $obj_id) {
+      $obj_list[] = new Raid($obj_id);
+    }
+  }
+  $msg['stime'] = time_current();
+  $msg['channel'] = $channel;
+  $msg['channel_data'] = $channel_data;
+  return chat_saveMsg($obj_list,$msg);
+}
+
+function chat_msg_delete($msg_id) {
+  global $WBDS;
+  if (!$msg_id) return false;
+  $chatMsg = new ChatMsg($msg_id);
+  return $WBDS->delObj($chatMsg);
+}
+
+function chat_msg_send_system($msg_text, $channel, $channel_data=false) {
+  if (!strlen($msg_text)) return false;
+  $msg = array(
+    'type' => CHAT_MSG_TYPE_SYSTEM,
+    'msg_text' => $msg_text,
+  );
+  return chat_msg_send($msg,$channel,$channel_data);
+}
+
+function chat_msg_send_broadcast($msg_text, $user_id) {
+  if (!strlen($msg_text) || !$user_id) return false;
+  $user = user_get($user_id);
+  if (!$user) return false;
+  $msg = array(
+    'type' => CHAT_MSG_TYPE_BROADCAST,
+    'msg_text' => $msg_text,
+    'user_id' => $user_id,
+    'user_nick' => $user['nick'],
+    'msg_color' => $user['msg_color'] ? $user['msg_color']: 'black',
+  );
+  return chat_msg_send($msg,CHAT_CHF_AREA);
+}
+
+function chat_msg_send_special($code, $channel, $channel_data=false, $param=false) {
+  if (!$code) return false;
+  $msg = array(
+    'type' => CHAT_MSG_TYPE_SPECIAL,
+    'code' => $code,
+    'param' => $param,
+  );
+  return chat_msg_send($msg,$channel,$channel_data);
+}
+?>

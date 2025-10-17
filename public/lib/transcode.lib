@@ -1,0 +1,109 @@
+<? # $Id: transcode.lib,v 1.2 2009-12-23 12:15:27 v.krutov Exp $
+
+// Имена и поля таблиц
+define('TABLE_TRANSCODE_PHRASE','phrases');
+define('FIELD_TRANSCODE_PHRASE','');
+
+define('TRANS_STATUS_TRANSLATED', 1);
+
+// Флаги для переводов
+define('PHRASES_FLAG_USED_IN_CODE', 0x0001); // Флаг использования в коде
+
+function transcode_phrase_get($ref=false, $add='') {
+	global $db_trans;
+	return common_get($db_trans,TABLE_TRANSCODE_PHRASE,$ref,$add);
+}
+
+function transcode_phrase_list($ref=false, $add='', $field_list='*') {
+	global $db_trans;
+	return common_list($db_trans,TABLE_TRANSCODE_PHRASE,$ref,$add,$field_list);
+}
+
+function transcode_phrase_save($param) {
+	global $db_trans;
+	if (!$param['strid'] && $param['str']) $param['strid'] = md5($param['str']);
+	return common_save($db_trans,TABLE_TRANSCODE_PHRASE,$param,FIELD_TRANSCODE_PHRASE);
+}
+
+function transcode_phrase_delete($ref) {
+	global $db_trans;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_trans,TABLE_TRANSCODE_PHRASE,$ref);
+	return true;
+}
+
+function transcode_phrase_count($ref=false, $add='') {
+	global $db_trans;
+	return common_count($db_trans,TABLE_TRANSCODE_PHRASE,$ref,$add);
+}
+
+function trans_synhronize_code($dir = '', $exclude, $extension) {
+	if(!$dir) return;
+	$handle = opendir($dir);
+	while($file = readdir($handle)) {
+		if($file == '.' || $file == '..') continue;
+		if (in_array($file, $exclude)) continue;
+		
+		$path = $dir ? $dir.'/'.$file : $file;
+		if(is_file($path)) {
+			$info = pathinfo($path);
+			if (!in_array($info['extension'], $extension)) continue;
+			$phrases = trans_synhronize_file_phrases($path);
+			// Перекодируем $phrase взятый из исходника, который в CP1251, в кодировку локализации (обычно UTF-8)
+			$charset_code = charset_code();
+			$lang = 'ru';
+			if (defined('_TRANS_LANG') && _TRANS_LANG) $lang = _TRANS_LANG;
+			// для Англии подменяем charset_code для вычислений ключа strid
+			if ($lang == 'en') $charset_code = 'UTF-8';
+			foreach($phrases as $phrase) {
+				$phrase_for_key = $phrase;
+				if ($charset_code !== 'CP1251') {
+					$phrase_for_key = iconv('CP1251', $charset_code, $phrase);
+					// для всех кроме англии нужно передавать фразу в той кодировке
+					// в которой установлено соединение, т.е. перекодированную из CP1251
+					if ($lang != 'en') $phrase = $phrase_for_key;
+				}
+				transcode_phrase_save(array(
+					'_mode' => CSMODE_INSERT,
+					'strid' => md5($phrase_for_key),
+					'str'   => $phrase,
+					'flags' => PHRASES_FLAG_USED_IN_CODE,
+					'_add'  => sql_pholder(' ON DUPLICATE KEY UPDATE str = VALUES(str), flags = flags | ? ', PHRASES_FLAG_USED_IN_CODE),
+				));
+			}
+		}
+		else if (is_dir($path)) {
+			trans_synhronize_code($path, $exclude, $extension);
+		}
+	}
+	closedir($handle);
+}
+
+function trans_synhronize_file_phrases($path) {
+	$phrases = array();
+	$patterns = array(
+		'new_format' => 'translate\((["\'])(.*?[^\\\])\1\s*\)\s*',
+		'old_format' => '_trans\(\'\[B\]\', \'(\d+)\', \'(.*?)\',\'\[E\]\'\)',
+	);
+	foreach ($patterns as $format => $pattern) {
+		$matches = false;
+		if (!preg_match_all("/$pattern/s", file_get_contents($path), $matches,  PREG_PATTERN_ORDER)) {
+			continue;
+		}
+		for ($i=0;$i<count($matches[0]);$i++) {
+			if (($matches[1][$i] == '"') && (mb_strpos($matches[2][$i],'\n') !== false)) {
+		        $matches[2][$i] = str_replace('\n',"\n",$matches[2][$i]);
+		    }
+		    if (($matches[1][$i] == '"') && (mb_strpos($matches[2][$i],'\"') !== false)) {
+		        $matches[2][$i] = str_replace('\"','"',$matches[2][$i]);
+		    }
+			if (($matches[1][$i] == "'") && (mb_strpos($matches[2][$i],"\'") !== false)) {
+		        $matches[2][$i] = str_replace("\'","'",$matches[2][$i]);
+		    }
+		}
+		$phrases = array_merge($phrases, $matches[2]);
+	}
+	return $phrases;
+}
+
+?>

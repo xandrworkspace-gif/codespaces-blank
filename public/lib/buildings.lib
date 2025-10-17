@@ -1,0 +1,1107 @@
+<?
+require_once('/home/admin/web/dwar.fun/public_html/lib/user_stat.lib');
+// Имена и поля таблиц
+define('TABLE_BUILDINGS','buildings');
+define('FIELD_BUILDINGS','');
+define('TABLE_ESTATES','estates');
+define('FIELD_ESTATES','');
+define('TABLE_AREA_ESTATES','area_estates');
+define('FIELD_AREA_ESTATES','');
+define('TABLE_ESTATE_SELL_REQUESTS','estate_sell_requests');
+define('FIELD_ESTATE_SELL_REQUESTS','');
+define('TABLE_ESTATE_WORK_REQUESTS','estate_work_requests');
+define('FIELD_ESTATE_WORK_REQUESTS','');
+define('TABLE_ESTATE_CRAFT_REQUESTS','estate_craft_requests');
+define('FIELD_ESTATE_CRAFT_REQUESTS','');
+define('TABLE_BUILDING_ARTIKULS','building_artikuls');
+define('FIELD_BUILDING_ARTIKULS','');
+define('TABLE_BUILDING_SETTINGS', 'building_settings');
+define('FIELD_BUILDING_SETTINGS','');
+
+//Ресурсы для постройки поместий
+define('TABLE_BUILDING_RES_ARTIKUL', 'building_res_artikul');
+define('FIELD_BUILDING_RES_ARTIKUL','');
+define('TABLE_BUILDING_RES_CRAFT', 'building_res_craft');
+define('FIELD_BUILDING_RES_CRAFT','');
+define('TABLE_BUILDING_RES_CRAFT_USER', 'building_res_craft_user');
+define('FIELD_BUILDING_RES_CRAFT_USER','');
+define('TABLE_BUILDING_RES_USER', 'building_res_user');
+define('FIELD_BUILDING_RES_USER','');
+define('TABLE_BUILDING_RESOURCES', 'building_resources');
+define('FIELD_BUILDING_RESOURCES', '');
+
+define('BUILDING_RES_TYPE_ARTIKUL', 1); //Получение с помощью артикула
+define('BUILDING_RES_TYPE_SKILL', 2); //Получение с помощью характеристики
+define('BUILDING_RES_TYPE_TIME', 3); //Получение за время
+define('BUILDING_RES_TYPE_CR_ARTIKUL', 4); //Получение за ресурс
+define('BUILDING_RES_TYPE_STAT_SKILL', 5); //Получение за стат. характеристики
+
+$building_res_type_hash = array(
+    BUILDING_RES_TYPE_ARTIKUL => 'Получение с помощью артикула',
+    BUILDING_RES_TYPE_SKILL => 'Получение с помощью характеристики',
+    BUILDING_RES_TYPE_TIME => 'Получение за время',
+    BUILDING_RES_TYPE_CR_ARTIKUL => 'Получение за ресурс',
+    BUILDING_RES_TYPE_STAT_SKILL => 'Получение за стат. характеристики',
+);
+
+define('BUILDING_RES_SPIRIT_USER', 8); //Душа игрока
+define('BUILDING_RES_SPIRIT_BOT', 11); //Душа монстра
+
+
+define('TABLE_THRONE_ROOM_ITEMS_USER', 'throne_room_item_user');
+define('FIELD_THRONE_ROOM_ITEMS_USER','');
+define('TABLE_THRONE_ROOM_ITEMS', 'throne_room_items');
+define('FIELD_THRONE_ROOM_ITEMS','');
+define('TABLE_THRONE_ROOM_TYPES', 'throne_room_types');
+define('FIELD_THRONE_ROOM_TYPES','');
+
+//NEW BUILDINGS
+//PORTAL
+define('BUILD_PORTAL_REST_TIME', 86400); //24 часа
+define('BUILD_PORTAL_REST_ARTIKUL_ID', 8774); //Камень странствий
+define('BUILD_PORTAL_REST_ARTIKUL_CNT', 1); //Кол-во камней для сброса
+
+define('TABLE_BUILDING_PORTAL_USER', 'build_portal_user');
+define('FIELD_BUILDING_PORTAL_USER','');
+
+//KENNEL
+define('BUILD_KENNEL_FREE_CNT', 10); //Бесплатные попытки
+define('BUILD_KENNEL_DEFAULT_CNT', 500); //Все попытки в день
+
+define('BUILD_KENNEL_NEED_BOT_CNT', 50); //Минимальное кол-во ботов
+
+define('BUILD_KENNEL_KILL10_PRICE',  0.3); //0.3 брюля
+define('BUILD_KENNEL_KILL1_TIMER',  1); //1 сек
+define('BUILD_KENNEL_KILL10_TIMER', 4); //4 сек
+
+define('TABLE_BUILDING_KENNEL_USER', 'build_kennel_user');
+define('FIELD_BUILDING_KENNEL_USER','');
+
+//MINE
+
+define('TABLE_BUILDING_MINE_USER', 'build_mine_user');
+define('FIELD_BUILDING_MINE_USER','');
+
+define('BUILD_MINE_MAX_CNT', 5); //Максимум 5 заданий
+
+define('BUILDING_TYPE_MAIN', '1');
+define('BUILDING_TYPE_EXP', '2');
+define('BUILDING_TYPE_OBELISK', '3');
+define('BUILDING_TYPE_PETSHOP', '4');
+define('BUILDING_TYPE_STORAGE', '5');
+define('BUILDING_TYPE_WORKSHOP', '6');
+define('BUILDING_TYPE_POST', '7');
+define('BUILDING_TYPE_HOSPITAL', '8');
+define('BUILDING_TYPE_STORE', '9');
+define('BUILDING_TYPE_WALL', '10');
+define('BUILDING_TYPE_TREE', '11');
+define('BUILDING_TYPE_FORESTRY', '12');
+define('BUILDING_TYPE_STONE_QUARRY', '13');
+define('BUILDING_TYPE_IRON_MINE', '14');
+define('BUILDING_TYPE_SAWMILL', '15');
+define('BUILDING_TYPE_QUARRY', '16');
+define('BUILDING_TYPE_IRON_FOUNDRY', '17');
+define('BUILDING_TYPE_PORTAL', '18');
+define('BUILDING_TYPE_PUMPKIN', '19');
+define('BUILDING_TYPE_KENNEL', '20');
+
+define('ESTATE_PAGE_SIZE', 10);
+define('ESTATE_CELL_AMOUNT', 2);
+
+define('CEMENT_ARTIKUL_ID', 7179);
+define('ESTATE_MOVE_PRICE', 10); // цена переезда поместья с одной локации на другую в золоте
+
+define('ESTATE_FLAG_EXP_DECR',  0x00001); // Уменьшать опыт
+define('ESTATE_FLAG_EXP_USE',   0x00002); // Использовать опыт
+define('ESTATE_FLAG_HONOR_USE', 0x00004); // Использовать доблесть
+
+define('WORK_TO_MONEY_COURSE', 0.2);
+define('DEFAULT_CEMENT_STACK', 5);
+
+define('ADV_BUILDING_FLAG_NO_SWF',           0x0000001); //Не отображается в SWF
+define('ADV_BUILDING_FLAG_JS',               0x0000002); //Здание JavaScript
+define('ADV_BUILDING_FLAG_NEED_RES',         0x0000004); //Необходимы ресурсы
+define('ADV_BUILDING_FLAG_JS_ENTER',         0x0000008); //Можно войти через JS
+
+define('BUILDING_FLAG_DISABLED',        0x0000001); //Здание выключено
+define('BUILDING_FLAG_DESTROY',         0x0000004); //Здание нельзя разрушить
+
+$building_flags_hash = array(
+    BUILDING_FLAG_DISABLED => 'Здание выключено',
+    BUILDING_FLAG_DESTROY => 'Здание нельзя разрушить',
+);
+
+$adv_building_flags_hash = array(
+    ADV_BUILDING_FLAG_NO_SWF => 'Не отображается в SWF',
+    ADV_BUILDING_FLAG_JS => 'Здание JavaScript',
+    ADV_BUILDING_FLAG_NEED_RES => 'Необходимы ресурсы',
+    ADV_BUILDING_FLAG_JS_ENTER => 'Можно войти через JS',
+);
+
+global $building_types;
+$building_types = array(
+	BUILDING_TYPE_MAIN => array('id' => BUILDING_TYPE_MAIN, 'index' => 1, 'title' => translate('Ратуша'), 'file' => 'main'),
+	BUILDING_TYPE_EXP => array('id' => BUILDING_TYPE_EXP, 'index' => 2, 'title' => translate('Статуя опыта'), 'file' => 'exp'),
+	BUILDING_TYPE_OBELISK => array('id' => BUILDING_TYPE_OBELISK, 'index' => 3, 'title' => translate('Обелиск Доблести'), 'file' => 'obelisk'),
+	BUILDING_TYPE_PETSHOP => array('id' => BUILDING_TYPE_PETSHOP, 'index' => 4, 'title' => translate('Питомник'), 'file' => 'petshop'),
+	BUILDING_TYPE_STORAGE => array('id' => BUILDING_TYPE_STORAGE, 'index' => 5, 'title' => translate('Хранилище'), 'file' => 'storage'),
+	BUILDING_TYPE_WORKSHOP => array('id' => BUILDING_TYPE_WORKSHOP, 'index' => 6, 'title' => translate('Мастерская'), 'file' => 'workshop'),
+	BUILDING_TYPE_POST => array('id' => BUILDING_TYPE_POST, 'index' => 7, 'title' => translate('Почта'), 'file' => 'post'),
+	BUILDING_TYPE_HOSPITAL => array('id' => BUILDING_TYPE_HOSPITAL, 'index' => 8, 'title' => translate('Лазарет'), 'file' => 'hospital'),
+	BUILDING_TYPE_STORE => array('id' => BUILDING_TYPE_STORE, 'index' => 9, 'title' => translate('Магазин'), 'file' => 'store'),
+    BUILDING_TYPE_WALL => array('id' => BUILDING_TYPE_WALL, 'index' => 10,'title' => translate('Стена'), 'file' => false),
+    BUILDING_TYPE_TREE => array('id' => BUILDING_TYPE_TREE, 'index' => 11, 'title' => translate('Елка'), 'file' => false, 'disable' => true),
+    BUILDING_TYPE_FORESTRY => array('id' => BUILDING_TYPE_FORESTRY, 'index' => 12, 'title' => translate('Лесозаготовка'), 'file' => 'mine1'),
+    BUILDING_TYPE_STONE_QUARRY => array('id' => BUILDING_TYPE_STONE_QUARRY, 'index' => 12, 'title' => translate('Каменный карьер'), 'file' => 'mine1'),
+    BUILDING_TYPE_IRON_MINE => array('id' => BUILDING_TYPE_IRON_MINE, 'index' => 12, 'title' => translate('Железный рудник'), 'file' => 'mine1'),
+    BUILDING_TYPE_SAWMILL => array('id' => BUILDING_TYPE_SAWMILL, 'index' => 12, 'title' => translate('Лесопилка'), 'file' => 'mine1'),
+    BUILDING_TYPE_QUARRY => array('id' => BUILDING_TYPE_QUARRY, 'index' => 12, 'title' => translate('Каменоломня'), 'file' => 'mine1'),
+    BUILDING_TYPE_IRON_FOUNDRY => array('id' => BUILDING_TYPE_IRON_FOUNDRY, 'index' => 12, 'title' => translate('Плавильня железа'), 'file' => 'mine1'),
+    BUILDING_TYPE_PORTAL => array('id' => BUILDING_TYPE_PORTAL, 'index' => 18, 'title' => translate('Портал'), 'file' => false),
+    BUILDING_TYPE_PUMPKIN => array('id' => BUILDING_TYPE_PUMPKIN, 'index' => 19, 'title' => translate('Тыква'), 'file' => false, 'disable' => true),
+    BUILDING_TYPE_KENNEL => array('id' => BUILDING_TYPE_KENNEL, 'index' => 20, 'title' => translate('Псарня'), 'file' => 'kennel'),
+);
+
+$estate_areas = array(
+	KIND_HUMAN => 489,
+	KIND_MAGMAR => 490,
+);
+
+$post_areas = array(
+	KIND_HUMAN => 129,
+	KIND_MAGMAR => 130,
+);
+
+define('FAR_FAR_FUTURE', 1893445200);
+
+define('WORK_FROM_BOT', 2);
+define('WORK_FROM_PVP', 10);
+
+function building_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_BUILDINGS,$ref,$add);
+}
+
+function building_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_BUILDINGS,$ref,$add);
+}
+
+function building_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_BUILDINGS, $ref, $add);
+}
+
+function building_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_BUILDINGS,$param,FIELD_BUILDINGS);
+}
+
+function building_delete($ref=false) {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if (!$ref) return false;
+	return common_delete($db_2,TABLE_BUILDINGS,$ref);
+}
+
+function estate_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_ESTATES,$ref,$add);
+}
+
+function estate_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_ESTATES,$ref,$add);
+}
+
+function estate_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_ESTATES, $ref, $add);
+}
+
+function estate_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_ESTATES,$param,FIELD_ESTATES);
+}
+
+function estate_delete($ref=false) {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if (!$ref) return false;
+	return common_delete($db_2,TABLE_ESTATES,$ref);
+}
+// артикулы
+function building_artikul_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_BUILDING_ARTIKULS,$ref,$add);
+}
+
+function building_artikul_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_BUILDING_ARTIKULS,$ref,$add);
+}
+
+function building_artikul_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_BUILDING_ARTIKULS, $ref, $add);
+}
+
+function building_artikul_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_BUILDING_ARTIKULS,$param,FIELD_BUILDING_ARTIKULS);
+}
+
+function building_artikul_copy($param) {
+	global $db_2;
+	$old_id = $param['id'];	
+	unset($param['id']);	
+	$new_id = building_artikul_save($param);
+	$ref = array('id'=>$old_id);
+	$data = common_list($db_2,TABLE_BUILDING_ARTIKULS,$ref);
+	foreach ($data as $k=>$item) $data[$k]['object_class'] = OBJECT_CLASS_BUILDING;
+	restriction_objects_list($data);
+	foreach ($data as $item) {
+		foreach ($item['object_restrictions'] as $restriction)  {
+			restriction_copy($restriction, $new_id);
+		}
+	}
+
+	if (!$new_id) return false;
+	return $new_id;
+}
+
+function building_artikul_delete($ref=false) {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if (!$ref) return false;
+	$data = common_list($db_2,TABLE_BUILDING_ARTIKULS,$ref);
+	foreach ($data as $k=>$item) $data[$k]['object_class'] = OBJECT_CLASS_BUILDING;
+	restriction_objects_list($data);
+	foreach ($data as $item) {
+		foreach ($item['object_restrictions'] as $restriction) restriction_delete($restriction['id']);
+	}
+	return common_delete($db_2,TABLE_BUILDING_ARTIKULS,$ref);
+}
+
+function building_artikul_make_xml() {
+	global $SUPPORTED_LANGUAGE_LIST;
+	
+	$building_artikuls = building_artikul_list();
+
+    $str = '';
+
+	if (isset($SUPPORTED_LANGUAGE_LIST) && is_array($SUPPORTED_LANGUAGE_LIST) && !empty($SUPPORTED_LANGUAGE_LIST)) {
+		foreach ($SUPPORTED_LANGUAGE_LIST as $lang) {
+			//$fp = fopen(PATH_LOCALE.$lang.'/'.'buildings.xml','w');
+			$str = '<?xml version="1.0" encoding="UTF-8"?>';
+			$str .=  '<buildings>';
+			foreach($building_artikuls as $building_artikul) {
+				$str .= '<building>';
+                    $str .= '<index>'.$building_artikul['indx'].'</index>';
+					$str .= '<type_id>'.$building_artikul['type_id'].'</type_id>';
+					$str .= '<level>'.$building_artikul['level'].'</level>';
+					$str .= '<title>'.$building_artikul['title'].'</title>';
+					$str .= '<description><![CDATA['.$building_artikul['description'].']]></description>';
+					$str .= '<cost>'.$building_artikul['cost'].'</cost>';
+					$str .= '<building_swf1 dy="'.intval($building_artikul['b1_dy']).'" dx="'.intval($building_artikul['b1_dx']).'">'.PATH_IMAGE_BUILDINGS.$building_artikul['building_swf1'].'</building_swf1>';
+					$str .= '<building_swf2 dy="'.intval($building_artikul['b2_dy']).'" dx="'.intval($building_artikul['b2_dx']).'">'.PATH_IMAGE_BUILDINGS.$building_artikul['building_swf2'].'</building_swf2>';
+                    $str .= '<building_swf3 dy="'.intval($building_artikul['b3_dy']).'" dx="'.intval($building_artikul['b3_dx']).'">'.PATH_IMAGE_BUILDINGS.$building_artikul['building_swf3'].'</building_swf3>';
+                    $str .= '<building_swf4 dy="'.intval($building_artikul['b4_dy']).'" dx="'.intval($building_artikul['b4_dx']).'">'.PATH_IMAGE_BUILDINGS.$building_artikul['building_swf4'].'</building_swf4>';
+                    $str .= '<building_picture3>'.PATH_IMAGE_BUILDINGS.$building_artikul['building_picture3'].'</building_picture3>';
+                    $str .= '<building_picture4>'.PATH_IMAGE_BUILDINGS.$building_artikul['building_picture4'].'</building_picture4>';
+                    $str .= '<flags>'.$building_artikul['flags2'].'</flags>';
+                    $str .= '</building>';
+			}
+			$str .= '</buildings>';
+			//fwrite($fp, $str);
+			//fclose($fp);
+		}	
+	} else {
+		error_log('Cannot create buildings.xml! Supported languages list non-existent or empty!');
+	}
+
+	return $str;
+
+	// Тут же актуализируем инофрмацию о возможности покупки поместий
+	$areas = area_list();
+	$area_estates = make_hash(area_estate_list());
+	foreach($areas as $area) {
+		$kind = 0;
+		if (($area['flags'] & AREA_FLAG_NO_INVISIBLE_MAGMAR) && ($area['flags'] & AREA_FLAG_ENABLE_ESTATE)) {
+			$kind = KIND_HUMAN;
+		} elseif (($area['flags'] & AREA_FLAG_NO_INVISIBLE_HUMAN) && ($area['flags'] & AREA_FLAG_ENABLE_ESTATE)) {
+			$kind = KIND_MAGMAR;
+		}
+		if ($kind) {
+			// можно строить какой-то расе
+			if (!$area_estates[$area['id']]) {
+				area_estate_save(array('_mode' => CSMODE_INSERT, 'id' => $area['id'], 'kind_id' => $kind, 'active' => 1, 'cnt' => 0));
+			} elseif (($area_estates[$area['id']]['active'] != 1) || ($area_estates[$area['id']]['kind'] != $kind)) {
+				area_estate_save(array('id' => $area['id'], 'kind_id' => $kind, 'active' => 1));
+			}
+		} else {
+			if ($area_estates[$area['id']] && ($area_estates[$area['id']]['active'] == 1)) {
+				area_estate_save(array('id' => $area['id'], 'active' => 0));
+			}
+		}
+	}
+}
+
+function building_artikul_make_xml2() {
+    global $SUPPORTED_LANGUAGE_LIST;
+
+    $building_artikuls = building_artikul_list();
+
+    $str = '';
+
+    if (isset($SUPPORTED_LANGUAGE_LIST) && is_array($SUPPORTED_LANGUAGE_LIST) && !empty($SUPPORTED_LANGUAGE_LIST)) {
+        foreach ($SUPPORTED_LANGUAGE_LIST as $lang) {
+            //$fp = fopen(PATH_LOCALE.$lang.'/'.'buildings.xml','w');
+            $str = '<?xml version="1.0" encoding="UTF-8"?>';
+            $str .=  '<buildings>';
+            foreach($building_artikuls as $building_artikul) {
+                $str .= '<building>';
+                $str .= '<index>'.$building_artikul['indx'].'</index>';
+                $str .= '<type_id>'.$building_artikul['type_id'].'</type_id>';
+                $str .= '<level>'.$building_artikul['level'].'</level>';
+                $str .= '<title>'.$building_artikul['title'].'</title>';
+                $str .= '<description><![CDATA['.$building_artikul['description'].']]></description>';
+                $str .= '<cost>'.$building_artikul['cost'].'</cost>';
+                $str .= '<building_swf1 dy="'.intval($building_artikul['b1_dy']).'" dx="'.intval($building_artikul['b1_dx']).'">'.PATH_IMAGE_BUILDINGS.$building_artikul['building_swf1'].'</building_swf1>';
+                $str .= '<building_swf2 dy="'.intval($building_artikul['b2_dy']).'" dx="'.intval($building_artikul['b2_dx']).'">'.PATH_IMAGE_BUILDINGS.$building_artikul['building_swf2'].'</building_swf2>';
+                $str .= '<building_swf3 dy="'.intval($building_artikul['b3_dy']).'" dx="'.intval($building_artikul['b3_dx']).'">'.PATH_IMAGE_BUILDINGS.$building_artikul['building_swf3'].'</building_swf3>';
+                $str .= '<building_swf4 dy="'.intval($building_artikul['b4_dy']).'" dx="'.intval($building_artikul['b4_dx']).'">'.PATH_IMAGE_BUILDINGS.$building_artikul['building_swf4'].'</building_swf4>';
+                $str .= '<building_picture3>'.PATH_IMAGE_BUILDINGS.$building_artikul['building_picture3'].'</building_picture3>';
+                $str .= '<building_picture4>'.PATH_IMAGE_BUILDINGS.$building_artikul['building_picture4'].'</building_picture4>';
+                $str .= '<flags>'.$building_artikul['flags2'].'</flags>';
+                $str .= '</building>';
+            }
+            $str .= '<length>'.count($building_artikuls).'</length>';
+            $str .= '</buildings>';
+            /*
+            fwrite($fp, $str);
+            fclose($fp);
+            */
+        }
+    } else {
+        error_log('Cannot create buildings.xml! Supported languages list non-existent or empty!');
+    }
+
+    file_put_contents(SERVER_ROOT.locale_data_path().'buildings.xml', $str);
+
+    return $str;
+
+    // Тут же актуализируем инофрмацию о возможности покупки поместий
+    $areas = area_list();
+    $area_estates = make_hash(area_estate_list());
+    foreach($areas as $area) {
+        $kind = 0;
+        if (($area['flags'] & AREA_FLAG_NO_INVISIBLE_MAGMAR) && ($area['flags'] & AREA_FLAG_ENABLE_ESTATE)) {
+            $kind = KIND_HUMAN;
+        } elseif (($area['flags'] & AREA_FLAG_NO_INVISIBLE_HUMAN) && ($area['flags'] & AREA_FLAG_ENABLE_ESTATE)) {
+            $kind = KIND_MAGMAR;
+        }
+        if ($kind) {
+            // можно строить какой-то расе
+            if (!$area_estates[$area['id']]) {
+                area_estate_save(array('_mode' => CSMODE_INSERT, 'id' => $area['id'], 'kind_id' => $kind, 'active' => 1, 'cnt' => 0));
+            } elseif (($area_estates[$area['id']]['active'] != 1) || ($area_estates[$area['id']]['kind'] != $kind)) {
+                area_estate_save(array('id' => $area['id'], 'kind_id' => $kind, 'active' => 1));
+            }
+        } else {
+            if ($area_estates[$area['id']] && ($area_estates[$area['id']]['active'] == 1)) {
+                area_estate_save(array('id' => $area['id'], 'active' => 0));
+            }
+        }
+    }
+}
+
+function building_setting_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_BUILDING_SETTINGS,$ref,$add);
+}
+
+function building_settings_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_BUILDING_SETTINGS,$ref,$add);
+}
+function building_setting_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_BUILDING_SETTINGS,$param,FIELD_BUILDING_SETTINGS);
+}
+
+function area_estate_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_AREA_ESTATES,$ref,$add);
+}
+
+function area_estate_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_AREA_ESTATES,$ref,$add);
+}
+
+function area_estate_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_AREA_ESTATES, $ref, $add);
+}
+
+function area_estate_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_AREA_ESTATES,$param,FIELD_AREA_ESTATES);
+}
+
+function area_estate_delete($ref=false) {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if (!$ref) return false;
+	return common_delete($db_2,TABLE_AREA_ESTATES,$ref);
+}
+
+function area_estate_set_min_price($area_id) {
+	$min_row = estate_sell_request_get(array('area_id' => $area_id), ' order by price');
+	$min_price = intval($min_row['price']);
+	area_estate_save(array(
+		'id' => $area_id,
+		'_set' => sql_pholder('min_price=?',$min_price),
+	));
+	return true;
+}
+
+function estate_sell_request_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_ESTATE_SELL_REQUESTS,$ref,$add);
+}
+
+function estate_sell_request_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_ESTATE_SELL_REQUESTS,$ref,$add);
+}
+
+function estate_sell_request_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_ESTATE_SELL_REQUESTS, $ref, $add);
+}
+
+function estate_sell_request_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_ESTATE_SELL_REQUESTS,$param,FIELD_ESTATE_SELL_REQUESTS);
+}
+
+function estate_sell_request_delete($ref=false) {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if (!$ref) return false;
+	return common_delete($db_2,TABLE_ESTATE_SELL_REQUESTS,$ref);
+}
+
+function estate_work_request_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_ESTATE_WORK_REQUESTS,$ref,$add);
+}
+
+function estate_work_request_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_ESTATE_WORK_REQUESTS,$ref,$add);
+}
+
+function estate_work_request_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_ESTATE_WORK_REQUESTS, $ref, $add);
+}
+
+function estate_work_request_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_ESTATE_WORK_REQUESTS,$param,FIELD_ESTATE_WORK_REQUESTS);
+}
+
+function estate_work_request_delete($ref=false) {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if (!$ref) return false;
+	return common_delete($db_2,TABLE_ESTATE_WORK_REQUESTS,$ref);
+}
+
+function estate_craft_request_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_ESTATE_CRAFT_REQUESTS,$ref,$add);
+}
+
+function estate_craft_request_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_ESTATE_CRAFT_REQUESTS,$ref,$add);
+}
+
+function estate_craft_request_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_ESTATE_CRAFT_REQUESTS, $ref, $add);
+}
+
+function estate_craft_request_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_ESTATE_CRAFT_REQUESTS,$param,FIELD_ESTATE_CRAFT_REQUESTS);
+}
+
+function estate_craft_request_delete($ref=false) {
+	global $db_2;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if (!$ref) return false;
+	return common_delete($db_2,TABLE_ESTATE_CRAFT_REQUESTS,$ref);
+}
+
+function estate_get_cost($cnt, $area) { // Возвращает в золотых!
+	if (!$area['price_k1']) return 10000;
+	
+	if (!$cnt) $cost = ceil($area['price_k1'] / 100);
+	else $cost = ceil($area['price_k1'] * pow($cnt, $area['price_k2']) / 100);
+	
+	if (!$area['price_max']) return $cost;
+	else return min($cost, (int) $area['price_max']);
+}
+
+function building_add_work($user_id, $building, $level, $amount, $max_work) {
+	global $building_types;
+	
+	$building['work'] += $amount;
+	building_save(array(
+		'id' => $building['id'],
+		'work' => $building['work'],
+	));
+	
+	if ($building['work'] >= $max_work) {
+		building_save(array(
+			'id' => $building['id'],
+			'level' => $level,
+			'work' => 0,
+		));
+		
+		$building_artikul = building_artikul_get(array('type_id' => $building['type_id'], 'level' => $level));
+		if ($building_artikul && $building_artikul['build_bonus_id']) {
+			if (NODE_PUSH(null, $user_id)) { // better safe than sorry
+				bonus_apply(user_get($user_id), $building_artikul['build_bonus_id']);
+				NODE_POP();
+			}
+		}
+		
+		$work_request = estate_work_request_get(array('building_id' => $building['id']));
+		if ($work_request) {
+			$operations = array(MONEY_STAT_OPERATION_RECEIVE,MONEY_STAT_OPERATION_PURE_RECEIVE);
+			user_make_payment(MONEY_TYPE_GAME,$work_request['user_id'],($work_request['price']*$work_request['amount']), translate('Возврат за уменьшение заявки на энергию'), false, $operations);
+			artifact_add(CEMENT_ARTIKUL_ID, $work_request['amount'], $user_id);
+			logserv_log_operation(array(
+			   'money_type' => MONEY_TYPE_GAME,
+			   'amount' => ($work_request['price']*$work_request['amount']),
+			   'comment' => sprintf(translate('Возврат заявки на %d энергии по %01.2f серебра за ед.'), $work_request['amount'], $work_request['price']),
+			), $user_id); 
+			estate_work_request_delete(array('building_id' => $building['id']));
+		}
+		
+		logserv_log_action(array(
+			'act_code' => 1300,
+			'comment' => sprintf(translate('Здание &laquo;%s&raquo; улучшено до %d уровня'), $building_types[$building['type_id']]['title'], $level),
+		), $user_id);
+		
+		if ($level == 1) {
+			chat_msg_send_system(sprintf(translate('Здание &laquo;%s&raquo; установлено, но необходимо его еще достроить!'), $building_types[$building['type_id']]['title']),CHAT_CHF_USER,$user_id);
+		} else {
+			chat_msg_send_system(sprintf(translate('Здание &laquo;%s&raquo; улучшено до %d уровня, но необходимо его еще достроить!'), $building_types[$building['type_id']]['title'], $level),CHAT_CHF_USER,$user_id);
+		}
+	}
+}
+
+function estate_flush_last_enter($estate) {
+	global $session_user;
+	
+	$in_estate_time = time_current() - $estate['last_enter'];
+	$buildings = make_hash(building_list(array('user_id' => $session_user['id']), ' AND level > 0 '), 'type_id');
+	
+	if ($buildings[BUILDING_TYPE_EXP] && !($estate['flags'] & ESTATE_FLAG_EXP_USE)) {
+		$exp_settings = get_hash(building_settings_list(array('building_type_id' => BUILDING_TYPE_EXP, 'building_level' => $buildings[BUILDING_TYPE_EXP]['level'])), 'name', 'value');
+		$value_update = floor($exp_settings['LIMIT'] * ($in_estate_time / 28800)); //86400
+		$value_update = min($exp_settings['LIMIT'], $estate['exp_value'] + $value_update) - $estate['exp_value'];
+		$estate['exp_value'] += $value_update;
+		user_stat_update($session_user['id'], USER_STAT_TYPE_MISC, USER_STAT_OBJECT_ESTATE_GAIN_EXP, $value_update);
+	}
+	
+	if ($buildings[BUILDING_TYPE_OBELISK] && !($estate['flags'] & ESTATE_FLAG_HONOR_USE)) {
+		$honor_settings = get_hash(building_settings_list(array('building_type_id' => BUILDING_TYPE_OBELISK, 'building_level' => $buildings[BUILDING_TYPE_OBELISK]['level'])), 'name', 'value');
+		$value_update = floor($honor_settings['LIMIT'] * ($in_estate_time / 28800)); //86400
+		$value_update = min($honor_settings['LIMIT'], $estate['honor_value'] + $value_update) - $estate['honor_value'];
+		$estate['honor_value'] += $value_update;
+		user_stat_update($session_user['id'], USER_STAT_TYPE_MISC, USER_STAT_OBJECT_ESTATE_GAIN_HONOR, $value_update);
+	}
+	
+	if ($buildings[BUILDING_TYPE_HOSPITAL]) {
+		$injury_list = artifact_list(false,$session_user['id'],'*',true,false," AND slot_id!='TEMP_EFFECT' AND type_id=".ARTIFACT_TYPE_ID_INJURY);
+		if ($injury_list) {
+			$hospital_settings = get_hash(building_settings_list(array('building_type_id' => BUILDING_TYPE_HOSPITAL, 'building_level' => $buildings[BUILDING_TYPE_HOSPITAL]['level'])), 'name', 'value');
+			$cure_time = floor($in_estate_time*$hospital_settings['REG_PERCENT']/100);
+			if ($cure_time) {
+				$total_cure_time = 0;
+				foreach($injury_list as $injury_art) {
+					$time_expire = $injury_art['time_expire'] - $cure_time;
+					if ($time_expire > time_current()) {
+						artifact_save(array(
+							'id' => $injury_art['id'],
+							'time_expire' => $time_expire,
+						));
+						$total_cure_time += $cure_time;
+					} else {
+						artifact_delete($injury_art);
+						$total_cure_time += max(0, $injury_art['time_expire'] - time_current());
+					}
+				}
+				user_save(array(
+					'id' => $session_user['id'],
+					'_set' => sql_pholder(' injury_time = injury_time - ? ', $cure_time),
+				));
+				if ($total_cure_time) user_stat_update($session_user['id'], USER_STAT_TYPE_MISC, USER_STAT_OBJECT_ESTATE_HEAL_TIME, $total_cure_time);
+			}
+		}
+	}
+	
+	estate_save(array(
+		'id' => $estate['id'],
+		'exp_value' => $estate['exp_value'],
+		'honor_value' => $estate['honor_value'],
+		'last_enter' => time_current(),
+		'last_active' => time_current(),
+	));
+}
+
+function estate_exit($estate) {
+	global $session_user;
+	$area_id = $estate['area_id'];
+	
+	estate_flush_last_enter($estate);
+	
+	
+	$user_param = array(
+		'id' => $session_user['id'],
+		'_set' => 'flags2=flags2 & ~'.USER_FLAG2_IN_ESTATE,
+	);
+	user_save($user_param);
+}
+
+function estate_user_work_update($user, $user_skills, $estate, $value) {
+	if (!$user || !$user_skills || !$estate || !$value) return 0;
+	
+	$max_work = get_max_work($user['level']);
+	
+	// ничего не даем, если в поместье максимальная работа
+	if ($estate['work'] >= $max_work) return 0;
+    // ничего не даем, если юзер наработал сегодня максимум
+	if ($estate['work_today'] >= $max_work) return 0;
+	// ничего не даем юзеру-преступнику
+	if (($user['flags'] & USER_FLAG_PUNISH) && user_get_punishment_state($user['id'], CRIME_FINANCE)) return 0;
+	
+	$estate_update = min(array($estate['work'] + $value, $max_work)) - $estate['work'];
+	$skill_update  = min(array($value, $max_work));
+	$update = min(array($estate_update, $skill_update));
+	
+	if (!NODE_PUSH(null, $user['id'])) return 0;
+	//skill_object_set_value(OBJECT_CLASS_USER, $user['id'], 'WORK_TODAY', $update, array('relative' => true));
+	NODE_POP();
+	estate_save(array(
+		'id' => $estate['id'],
+		'_set' => sql_pholder(' work_dtime = ?, work_today = work_today + ?, work = work + ? ', (mktime(23,59,59) + 1), $update, $update),
+	));
+	chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user['id'], array('func' => "updateSwf({'lvl':''})"));
+	
+	return $update;
+}
+
+function estate_user_work_today_cron(){
+    estate_save(array(
+        '_add' => sql_pholder(' AND work_dtime < ?', time_current()),
+        '_set' => sql_pholder(' work_dtime = ?, work_today = 0', (mktime(23, 59,59) + 1)),
+    ));
+}
+
+function estate_commission($x) {
+	return pow(0.5, log($x,10)+2)*$x;
+}
+
+function get_max_work($level) {
+	if ($level < 3) return 0;
+	return floor(100*pow(1.1,min(10,$level)-3));
+}
+
+function work_request_update_money($user, $amount, &$error) {
+	if (0 == $amount) return true; 
+	$message = ($amount > 0) ? translate('Списание за заявку на биржу энергии') : translate('Возврат за заявку на биржу энергии');
+	$operations = array(MONEY_STAT_OPERATION_LOST,MONEY_STAT_OPERATION_PURE_LOST);
+	$result = user_make_payment(MONEY_TYPE_GAME, $user['id'], -$amount, $message, false, $operations);
+	if (!$result) $error = translate('Ошибка при изменении заявки!');
+	return $result;
+}
+
+function work_request_update_cement($user, $amount, &$error) {
+	if (0 == $amount) return true;
+	if ($amount > 0) {
+		if (!artifact_remove(CEMENT_ARTIKUL_ID, $amount, $user['id'])) {
+			$error = translate('Ошибка при изменении заявки!');
+			return false;
+		}
+	} else {
+		if (!artifact_add(CEMENT_ARTIKUL_ID, -$amount, $user['id'])) {
+			$error = translate('Ошибка при изменении заявки!');
+			return false;
+		}
+	}
+	return true;
+}
+
+function work_request_update_request($request, $price, $amount, &$error) {
+	$result = estate_work_request_save(array(
+		'id' => $request['id'],
+		'price' => $price,
+		'amount' => $amount,
+		'amount_full' => $request['amount_full'] + $amount - $request['amount'],
+	));
+	if (!$result) $error = translate('Ошибка при изменении заявки!');
+	return $result;
+}
+
+
+//THRONE ROOM
+
+
+function throne_room_item_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_THRONE_ROOM_ITEMS_USER,$ref,$add);
+}
+
+function throne_room_item_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_THRONE_ROOM_ITEMS_USER,$ref,$add);
+}
+
+function throne_room_item_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_THRONE_ROOM_ITEMS_USER, $ref, $add);
+}
+
+function throne_room_item_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_THRONE_ROOM_ITEMS_USER,$param,FIELD_THRONE_ROOM_ITEMS_USER);
+}
+
+function throne_room_item_user_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_THRONE_ROOM_ITEMS_USER,$ref);
+}
+
+function throne_room_item_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_THRONE_ROOM_ITEMS,$ref,$add);
+}
+
+function throne_room_item_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_THRONE_ROOM_ITEMS,$ref,$add);
+}
+
+function throne_room_item_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_THRONE_ROOM_ITEMS, $ref, $add);
+}
+
+function throne_room_item_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_THRONE_ROOM_ITEMS,$param,FIELD_THRONE_ROOM_ITEMS);
+}
+
+function throne_room_item_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_THRONE_ROOM_ITEMS,$ref);
+}
+
+function throne_room_type_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_THRONE_ROOM_TYPES,$ref,$add);
+}
+
+function throne_room_type_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_THRONE_ROOM_TYPES,$ref,$add);
+}
+
+function throne_room_type_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_THRONE_ROOM_TYPES, $ref, $add);
+}
+
+function throne_room_type_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_THRONE_ROOM_TYPES,$param,FIELD_THRONE_ROOM_TYPES);
+}
+
+function throne_room_type_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_THRONE_ROOM_TYPES,$ref);
+}
+
+///BUILDING NEW
+
+
+function building_portal_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BUILDING_PORTAL_USER,$ref,$add);
+}
+
+function building_portal_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_BUILDING_PORTAL_USER,$ref,$add);
+}
+
+function building_portal_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BUILDING_PORTAL_USER, $ref, $add);
+}
+
+function building_portal_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BUILDING_PORTAL_USER,$param,FIELD_BUILDING_PORTAL_USER);
+}
+
+function building_portal_user_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_BUILDING_KENNEL_USER,$ref);
+}
+
+
+function building_kennel_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BUILDING_KENNEL_USER,$ref,$add);
+}
+
+function building_kennel_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_BUILDING_KENNEL_USER,$ref,$add);
+}
+
+function building_kennel_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BUILDING_KENNEL_USER, $ref, $add);
+}
+
+function building_kennel_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BUILDING_KENNEL_USER,$param,FIELD_BUILDING_KENNEL_USER);
+}
+
+function building_kennel_user_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_BUILDING_KENNEL_USER,$ref);
+}
+
+
+function building_kennel_cron(){
+    building_kennel_user_save(array(
+        '_add' => sql_pholder(' AND dtime < ?',time_current()),
+        '_set' => sql_pholder(' can_kill = ?, kill_cnt = ?, dtime= ?', BUILD_KENNEL_FREE_CNT, BUILD_KENNEL_DEFAULT_CNT, mktime(23,59,59) + 1),
+    ));
+}
+
+
+function building_mine_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BUILDING_MINE_USER,$ref,$add);
+}
+
+function building_mine_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_BUILDING_MINE_USER,$ref,$add);
+}
+
+function building_mine_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BUILDING_MINE_USER, $ref, $add);
+}
+
+function building_mine_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BUILDING_MINE_USER,$param,FIELD_BUILDING_MINE_USER);
+}
+
+function building_mine_user_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_BUILDING_MINE_USER,$ref);
+}
+
+
+////////////////////////////////////////////////////
+function building_res_artikul_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BUILDING_RES_ARTIKUL,$ref,$add);
+}
+
+function building_res_artikul_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_BUILDING_RES_ARTIKUL,$ref,$add);
+}
+
+function building_res_artikul_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BUILDING_RES_ARTIKUL, $ref, $add);
+}
+
+function building_res_artikul_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BUILDING_RES_ARTIKUL,$param,FIELD_BUILDING_RES_ARTIKUL);
+}
+
+function building_res_artikul_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_BUILDING_RES_ARTIKUL,$ref);
+}
+
+////////////////////////////////////////////////////
+function building_res_craft_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BUILDING_RES_CRAFT,$ref,$add);
+}
+
+function building_res_craft_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_BUILDING_RES_CRAFT,$ref,$add);
+}
+
+function building_res_craft_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BUILDING_RES_CRAFT, $ref, $add);
+}
+
+function building_res_craft_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BUILDING_RES_CRAFT,$param,FIELD_BUILDING_RES_CRAFT);
+}
+
+function building_res_craft_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_BUILDING_RES_CRAFT,$ref);
+}
+
+////////////////////////////////////////////////////
+function building_res_craft_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BUILDING_RES_CRAFT_USER,$ref,$add);
+}
+
+function building_res_craft_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_BUILDING_RES_CRAFT_USER,$ref,$add);
+}
+
+function building_res_craft_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BUILDING_RES_CRAFT_USER, $ref, $add);
+}
+
+function building_res_craft_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BUILDING_RES_CRAFT_USER,$param,FIELD_BUILDING_RES_CRAFT_USER);
+}
+
+function building_res_craft_user_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_BUILDING_RES_CRAFT_USER,$ref);
+}
+////////////////////////////////////////////////////
+function building_res_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BUILDING_RES_USER,$ref,$add);
+}
+
+function building_res_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_BUILDING_RES_USER,$ref,$add);
+}
+
+function building_res_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BUILDING_RES_USER, $ref, $add);
+}
+
+function building_res_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BUILDING_RES_USER,$param,FIELD_BUILDING_RES_USER);
+}
+
+function building_res_user_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_BUILDING_RES_USER,$ref);
+}
+
+////////////////////////////////////////////////////
+function building_resources_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BUILDING_RESOURCES,$ref,$add);
+}
+
+function building_resources_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_BUILDING_RESOURCES,$ref,$add);
+}
+
+function building_resources_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BUILDING_RESOURCES, $ref, $add);
+}
+
+function building_resources_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BUILDING_RESOURCES,$param,FIELD_BUILDING_RESOURCES);
+}
+
+function building_resources_delete($ref=false) {
+    global $db_2;
+    if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+    if (!$ref) return false;
+    return common_delete($db_2,TABLE_BUILDING_RESOURCES,$ref);
+}
+
+function building_user_res_add($user_id, $artikul_id, $add, $building_res_user = array()){
+    if(!$building_res_user['id']){
+        $building_res_user = building_res_user_get(array(
+            'user_id' => $user_id,
+            'artikul_id' => $artikul_id,
+        ));
+    }
+    //if(!$building_res_user['id']) return false; //Пшел нахуй!
+
+    if($building_res_user){
+        return building_res_user_save(array(
+            'id' => $building_res_user['id'],
+            '_set' => sql_pholder(' cnt = cnt + ?', intval($add)),
+        ));
+    }else{
+        if(intval($add) <= 0) return false;
+        return building_res_user_save(array(
+            'user_id' => $user_id,
+            'artikul_id' => $artikul_id,
+            'cnt' => intval($add),
+        ));
+    }
+    return false;
+}

@@ -1,0 +1,96 @@
+<? # $Id: GIFT.action,v 1.8 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "подарить"
+// Параметры:
+//	$in['nick'] - ник
+//	$in['note'] - поздравление
+
+require_once('lib/clan.lib');
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+
+artifact_artikul_get_title($object);
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if (!($object['flags'] & ARTIFACT_FLAG_GIFT)) {
+	$out['error'] = translate('Эту вещь нельзя подарить!');
+	return;
+}
+
+$clan = clan_get(false, sql_pholder(' AND title = ? ORDER BY id', $in['clan']));
+if (!$clan) {
+	$out['error'] = translate('Клан не найден!');
+	return;
+}
+
+$action['param2'] = intval($action['param2']);
+$from_clan_to_clan = $action['param2'] & 1;
+$anonim = $action['param2'] & 2;
+if ($from_clan_to_clan && $subject['clan_id'] == $clan['id']) {
+	$out['error'] = translate('Вы не можете преподнести данный подарок клану, в котором состоите.');
+	return;
+}
+if ($from_clan_to_clan) {
+	$sender_clan = clan_get($subject['clan_id']);
+	if(!$sender_clan) {
+		$out['error'] = translate('Вы не можете преподнести данный подарок клану, так как не состоите ни в одном из кланов.');
+		return;
+	}
+}
+
+$kind_restriction = intval($action['param1']);
+$clan_leader_id = clan_leader_id_get($clan['id']);
+if (!$clan_leader_id) return;
+$clan_leader = user_get($clan_leader_id);
+if ($kind_restriction && ($subject['kind'] != $clan_leader['kind'])) {
+	$out['error'] = translate('Эту вещь можно дарить только кланам своей расы!');
+	return;
+}
+artifact_save(array(
+	'id' => $object['id'],
+	'slot_id' => '',
+	'type_id' => ARTIFACT_TYPE_ID_GIFT,
+	'kind_id' => ARTIFACT_KIND_ID_GIFT,
+	'backgroup_id' => ARTIFACT_BACKGROUPID_GIFT,
+	'ctime' => time_current(),
+	'flags' => ($object['flags'] & ~(ARTIFACT_FLAG_GIFT | ARTIFACT_FLAG_USE)) | ARTIFACT_FLAG_NOGIVE | ARTIFACT_FLAG_NOWEIGHT,
+));
+if ($from_clan_to_clan) $note = mb_substr(($anonim ? translate('От анонимного клана.') : sprintf(translate('От клана %s.'),$sender_clan['title'])).' '.$in['note'],0,1024);
+else $note = mb_substr(($anonim ? translate('От анонимного игрока.') : sprintf(translate('От %s.'),$subject['nick'])).' '.$in['note'],0,1024);
+artifact_note_save(array(
+	'artifact_id' => $object['id'],
+	'note' => $note,
+));
+artifact_transfer($object['id'],0,$kind_info[$clan_leader['kind']]['city_area_id'],$clan['id']);
+$out['status'] = ACTION_STATUS_OK;
+chat_msg_send_system(sprintf(translate('Вы подарили подарок "%s" клану %s.'),$object['title'],html_clan_info($clan)),CHAT_CHF_USER,$object['user_id']);
+
+$clan_members_hash = make_hash(clan_member_list($clan['id'], CM_STATUS_ACTIVE), 'user_id');
+$clan_member_ids = get_hash($clan_members_hash, 'user_id', 'user_id');
+if ($from_clan_to_clan) {
+	$str = $anonim ? sprintf(translate('Анонимный клан подарил вашему клану подарок "%s".'),$object['title']) : sprintf(translate('Клан %s подарил вашему клану подарок "%s".'),html_clan_info($sender_clan),$object['title']);
+	chat_msg_send_system($str,CHAT_CHF_USER,$clan_member_ids);
+} else {
+	$str = $anonim ? sprintf(translate('Анонимный игрок подарил вашему клану подарок "%s".'),$object['title']) : sprintf(translate('Игрок %s подарил вашему клану подарок "%s".'),html_user_info($subject),$object['title']);
+	chat_msg_send_system($str,CHAT_CHF_USER,$clan_member_ids);
+}
+
+// лог-сервис -----------------------
+logserv_log_action(array(
+	'action' => $action,
+	'comment' => $note,
+),$action_user,$user);
+logserv_log_operation(array(
+	'artifact' => $object,
+	'cnt' => -max($artifact['cnt'],1),
+),$action_user,$user);
+// ----------------------------------
+
+// Логирование
+$log['user_id2'] = $user['id'];
+
+?>

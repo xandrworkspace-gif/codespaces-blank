@@ -1,0 +1,104 @@
+<?
+// действие "раздробить предмет"
+// Параметры:
+//	$in['artifact_id'] - артефакт который нужно раздробить
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+//if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+$artifact_id = intval($in['artifact_id']);
+$artifact = $artifact_id ? artifact_get(array('id' => $artifact_id, 'user_id' => $subject['id'],)) : false;
+if (!$artifact || $artifact['slot_id']) { // неверный или одетый предмет
+	$out['error'] = translate('Нужно выбрать предмет!');
+	return;
+}
+
+if ($artifact['flags'] & ARTIFACT_FLAG_CANT_CRUSHED) {
+	$out['error'] = translate('Этот предмет невозможно раздробить!');
+	return;
+}
+
+global $quality_info, $user_body_slots, $disenchant2_quality, $disenchant2_slots;
+
+$enchant = $object['param1'] ? artifact_artikul_get($object['param1']) : false;
+$artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+if (!in_array($artifact_artikul['quality'], $disenchant2_quality) || !$disenchant2_slots[$artifact_artikul['slot_id']] || ($artifact_artikul['durability_max'] <= 0)) {
+	$out['error'] = translate('Невозможно выполнить действие, неверный слот, цвет вещи или вещь не имеет прочности.');
+	return;
+}
+
+//Далее разыгрывается случайное число К, распределенное от A до 3A с плотностью p(X) = 1,5A/X^2. 
+//Это число должно служить множителем ко всем РАЗМЕРАМ ДРОПА во всех подбонусах выдаваемого бонуса.
+//Для получения числа К с требуемой плотностью можно разыграть случайное R,
+//равномерно распределенное на [0,1) и потом взять К = 1,5А/(1,5-R)
+
+$A = @($artifact['durability_max'] / $artifact_artikul['durability_max']);
+$R = rand(0,999999)/1000000;
+$K = (1.2 * $A) / (1.2 - $R);
+// COLOR = цвет предмета для дробления
+$color = $artifact_artikul['quality'];
+// LEVEL = 1 для кирас и поножей, 2 для рук, 3 для кольчуг и сапог, 4 для плеч и перчаток.
+// LEVEL = LEVEL + (5, если раздробляемый предмет 6-10 уровней; 10, если он 11-15 уровней)
+$level = 1;
+if (in_array($artifact_artikul['level_min'], range(6,10))) {
+	$level += 5;
+}
+elseif (in_array($artifact_artikul['level_min'], range(11,15))) {
+	$level += 10;
+}
+
+artifact_delete($artifact);
+artifact_artikul_get_title($artifact);
+$msg_txt = sprintf(translate('Вы применили магию дробления на %s '),$artifact['title']);
+
+// Определяем артикул вещи, которую нужно выдать
+// Выдаём количество указанное в param2 на артикуле, домножив на K
+// с округлением в большую сторону
+$ref = array(
+	'type_id' => ARTIFACT_TYPE_ID_DISENCHANT2,
+	'quality' => $color,
+);
+$disenchant2_list = make_hash(artifact_artikul_list($ref, sql_pholder(' AND level_min IN('.implode(',', range($level, $level+4)).')')));
+shuffle($disenchant2_list);
+if($disenchant2_list) {
+	$osk_cnt = 1;
+	$osk_cnt += (rand_roll(50 / 100) ? 1 : 0);
+	$osk_cnt += (rand_roll(10 / 100) ? 1 : 0);
+	$osk_cnt += (rand_roll(1 / 100) ? 1 : 0);
+	$n_cnt = $osk_cnt;
+	$n_all = mt_rand(8, 28);
+	$msg_arts = array();
+	for ($i = 0; $i < $osk_cnt; $i++) {
+		$disenchant2_artikul = array_shift($disenchant2_list);
+		$_nn = ceil($n_all / $n_cnt);
+		$n_cur = mt_rand(max($_nn - 2, 1), max($_nn + 2, 1));
+		$n_all -= $n_cur;
+		$n = $n_cur;
+	if ($n <= 0) $n = 1;
+		$msg_arts[] = tpl_artikul_info($disenchant2_artikul).' <b>'.abs($n).' шт.</b>';
+	$status = artifact_add($disenchant2_artikul['id'], $n, $subject['id']);
+		$n_cnt--;
+}
+	$msg_txt .= sprintf(translate('и получили ' . implode(', ', $msg_arts)));
+}else {
+	$msg_txt .= sprintf(translate('и от %s осталась только пыль.'), $artifact_artikul['title']);
+}
+$out['status'] = ACTION_STATUS_OK;
+
+chat_msg_send_system($msg_txt, CHAT_CHF_USER, $subject['id']);
+
+// лог-сервис -----------------------
+logserv_log_action(array(
+	'action' => $action,
+),$action_user);
+logserv_log_operation(array(
+	'artifact' => $artifact,
+	'cnt' => -max($artifact['cnt'],1),
+	'comment' => ($out['status'] == ACTION_STATUS_OK ? translate('Вещь раздроблена') : translate('Вещь не раздроблена')),
+),$action_user);
+// ----------------------------------
+
+?>

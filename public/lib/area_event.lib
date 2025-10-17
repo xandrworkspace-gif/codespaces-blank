@@ -1,0 +1,342 @@
+<?
+
+/*
+
+
+id, int
+title, string
+type_id, int
+area_ids, json string,
+param1,
+param2,
+time_expire,
+
+
+*/
+
+define('AREA_EVENT_PROVOCATION_DEFAULT', 1);
+define('AREA_EVENT_PROVOCATION_UNLIMIT', 2);
+
+define('AREA_EVENT_TYPE_BOT', 1);
+define('AREA_EVENT_TYPE_FARM', 2);
+define('AREA_EVENT_TYPE_PROVOCATION', 3);
+define('AREA_EVENT_TYPE_PVP_LC', 4);
+
+$area_event_type_hash = array(
+    AREA_EVENT_TYPE_BOT => 'фарм мобов',
+    AREA_EVENT_TYPE_FARM => 'фарм ресурсов',
+    //AREA_EVENT_TYPE_PROVOCATION => 'провокация мобов',
+    AREA_EVENT_TYPE_PVP_LC => 'пвп в локальном конфликте',
+);
+
+define('AREA_EVENT_BOT_MULTI_BONUS', 1);
+define('AREA_EVENT_BOT_BONUS_ID', 2);
+define('AREA_EVENT_BOT_MARATHONE', 3);
+$area_event_bot_bonus_hash = array(
+    AREA_EVENT_BOT_MULTI_BONUS => 'Удвоенный бонус',
+    AREA_EVENT_BOT_BONUS_ID => 'Произвольный бонус',
+    AREA_EVENT_BOT_MARATHONE => 'Марафон',
+);
+
+define('AREA_EVENT_FARM_MULITI_BONUS', 1);
+define('AREA_EVENT_FARM_BONUS_ID', 2);
+define('AREA_EVENT_FARM_MARATHONE', 3);
+$area_event_farm_bonus_hash = array(
+    AREA_EVENT_FARM_MULITI_BONUS => '+3 к сбору',
+    AREA_EVENT_FARM_BONUS_ID => 'Произвольный бонус',
+    AREA_EVENT_FARM_MARATHONE => 'Марафон',
+);
+
+define('AREA_EVENT_FLAG_ACTIVE', 0x000001); //Евент активен
+
+$area_event_flags_hash = array(
+    AREA_EVENT_FLAG_ACTIVE => 'Евент активен',
+);
+
+define('TABLE_AREA_EVENT', 'area_event');
+define('TABLE_AREA_EVENT_USER', 'area_event_user');
+
+function area_event_get($ref=false, $add='') {
+    global $db_2;
+    $campaign = common_get($db_2,TABLE_AREA_EVENT,$ref,$add);
+    return $campaign;
+}
+
+function area_event_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_AREA_EVENT,$ref,$add);
+}
+
+function area_event_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_AREA_EVENT, $ref, $add);
+}
+
+function area_event_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_AREA_EVENT,$param);
+}
+
+function area_event_delete($ref=false, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_AREA_EVENT,$ref,$add);
+    return true;
+}
+
+/////////////////////////
+
+function area_event_user_get($ref=false, $add='') {
+    global $db_2;
+    $campaign = common_get($db_2,TABLE_AREA_EVENT_USER,$ref,$add);
+    return $campaign;
+}
+
+function area_event_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_AREA_EVENT_USER,$ref,$add);
+}
+
+function area_event_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_AREA_EVENT_USER, $ref, $add);
+}
+
+function area_event_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_AREA_EVENT_USER,$param);
+}
+
+function area_event_user_delete($ref=false, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_AREA_EVENT_USER,$ref,$add);
+    return true;
+}
+
+//////////////////////////
+
+function area_event_provocation_check($session_user = array(), &$area_event){
+    $area_event = area_event_current_get($session_user);
+    if(!$area_event) return AREA_EVENT_PROVOCATION_DEFAULT;
+    $area_ids = explode(',', $area_event['area_ids']);
+    if(!in_array($session_user['area_id'], $area_ids)) return AREA_EVENT_PROVOCATION_DEFAULT;
+    return AREA_EVENT_PROVOCATION_UNLIMIT;
+}
+
+function area_event_current_get($session_user = array()){
+    if(!area_event_current_id($session_user)) return false;
+    return area_event_get(area_event_current_id($session_user));
+}
+
+function area_event_current_id($session_user = array()){
+    if(defined('GL_AREA_EVENT_ADMIN') && GL_AREA_EVENT_ADMIN && !($session_user['flags'] & USER_FLAG_ADMIN)) return false;
+    if(defined('GL_AREA_EVENT_CURRENT_ID') && GL_AREA_EVENT_CURRENT_ID){
+        if(defined('GL_AREA_EVENT_TIME') && GL_AREA_EVENT_TIME > time_current()){
+            return GL_AREA_EVENT_CURRENT_ID;
+        }
+    }
+    return false;
+}
+
+function area_event_current_get_without(){
+    if(!area_event_current_id_without()) return false;
+    return area_event_get(area_event_current_id_without());
+}
+
+function area_event_current_id_without(){
+    if(defined('GL_AREA_EVENT_CURRENT_ID') && GL_AREA_EVENT_CURRENT_ID){
+        if(defined('GL_AREA_EVENT_TIME') && GL_AREA_EVENT_TIME > time_current()){
+            return GL_AREA_EVENT_CURRENT_ID;
+        }
+    }
+    return false;
+}
+
+function area_event_main_control_func($event_set = false, $n_event_id = false){
+    $current_event_id = area_event_current_id();
+
+    if(defined('GL_AREA_EVENT_ADMIN') && GL_AREA_EVENT_ADMIN ){
+        $current_event_id = area_event_current_id_without();
+    }
+
+    if(!$current_event_id || $event_set){
+
+        //Тут необходимо всем раздать награды за предыдущий эвент если это марафон, убить статистику и поставить новый эвент лок!
+        $area_event_settings = common_get_settings(array('GL_AREA_EVENT_CONTROL'));
+        $GL_AREA_EVENT_CONTROL = $area_event_settings['GL_AREA_EVENT_CONTROL'];
+
+        if(defined('GL_AREA_EVENT_CURRENT_ID') && GL_AREA_EVENT_CURRENT_ID && !$GL_AREA_EVENT_CONTROL){
+            $area_event_cur = area_event_get(GL_AREA_EVENT_CURRENT_ID);
+
+            if((($area_event_cur['type_id'] == AREA_EVENT_TYPE_BOT && intval($area_event_cur['param1']) ==  AREA_EVENT_BOT_MARATHONE)
+                || ($area_event_cur['type_id'] == AREA_EVENT_TYPE_FARM && intval($area_event_cur['param1']) ==  AREA_EVENT_FARM_MARATHONE))
+            ){
+                //Завершаем марафон
+                do{
+                    $marathone_bonus_ids = json_decode($area_event_cur['param4'], true);
+                    if(!$marathone_bonus_ids) break;
+                    //no bonus check
+                    $have_bonus = false;
+                    foreach ($marathone_bonus_ids as $place=>$bonus_id){
+                        if($bonus_id) { $have_bonus = true; break; }
+                    }
+                    if(!$have_bonus) break;
+                    $count_places = count($marathone_bonus_ids);
+                    if($count_places <= 0) break;
+
+                    $i = 1;
+                    //Отсеим чубак
+                    $area_event_user_list = area_event_user_list(array('event_id' => GL_AREA_EVENT_CURRENT_ID), sql_pholder(' ORDER BY cnt DESC LIMIT '.$count_places));
+                    foreach ($area_event_user_list as $area_event_user){
+                        $bonus_id = $marathone_bonus_ids[$i];
+                        if(!$bonus_id) continue;
+                        $user = user_get($area_event_user['user_id']);
+                        if(!$user) continue;
+                        bonus_apply($user, $bonus_id);
+                    }
+                }while(0);
+
+            }
+            common_save_settings(array(
+                'GL_AREA_EVENT_CONTROL' => 1,
+            ));
+        }
+
+        //Нужно установить следующий или новый евент!
+        $area_event_list = make_hash(area_event_list(false, sql_pholder(' AND flags & ?#AREA_EVENT_FLAG_ACTIVE')));
+        if(!$area_event_list) return false;
+        $area_rand_id = ($n_event_id ? $n_event_id : ($event_set ? $event_set : array_rand($area_event_list)));
+        $area_event = $area_event_list[$area_rand_id];
+        if(!$area_event) return false;
+
+        //Сбрасываем общее кол-во.
+        /*area_event_save(array(
+            'id' => $area_event['id'],
+        ));*/
+
+        //Запустим marquee
+        if($area_event['marquee_text']) {
+
+            $area_ids = explode(',', $area_event['area_ids']);
+            if($area_ids) $area_list_hash = get_hash(area_list(array('id' => $area_ids), false, 'id, title'));
+            $area_titles = implode(', ', $area_list_hash);
+
+            $area_event['marquee_text'] = str_replace('#AE_LOCS#', $area_titles, $area_event['marquee_text']);
+
+            if(defined('GL_AREA_EVENT_ADMIN') && GL_AREA_EVENT_ADMIN){
+                $admin_users = user_list(false, sql_pholder(' AND flags & ?#USER_FLAG_ADMIN'));
+                $user_ids = array();
+                foreach ($admin_users as $admin_user){
+                    if(user_is_online($admin_user['id'], true)) $user_ids[] = $admin_user['id'];
+                }
+                if($user_ids){
+                    marquee_send(CHAT_CHF_USER, $user_ids, array(
+                        'text' => $area_event['marquee_text'],
+                        'type' => CHAT_MARQUEE_TYPE_SCROLL, // Тип, вроде всего 4 похуй
+                        'direction' => CHAT_MARQUEE_DIRECTION_LEFT,
+                        'loop' => 3, // Сколько раз прокручивать
+                        'speed' => 10, //Скорость прокрутки px в сек пох
+                        //'onclick' => "_top().frames['main_frame'].frames['main'].location.href='blank.html';", // Событие на клик по ебучему спикку
+                        'rtimesec' => 60, //В течении которого времени пропадет
+                        'removeStack' => true, //Удалить предыдущие хуйнюшки которые крутятся
+                    ));
+                }
+            }else{
+                marquee_send(CHAT_CHF_AREA, false, array(
+                    'text' => $area_event['marquee_text'],
+                    'type' => CHAT_MARQUEE_TYPE_SCROLL, // Тип, вроде всего 4 похуй
+                    'direction' => CHAT_MARQUEE_DIRECTION_LEFT,
+                    'loop' => 3, // Сколько раз прокручивать
+                    'speed' => 10, //Скорость прокрутки px в сек пох
+                    //'onclick' => "_top().frames['main_frame'].frames['main'].location.href='blank.html';", // Событие на клик по ебучему спикку
+                    'rtimesec' => 60, //В течении которого времени пропадет
+                    'removeStack' => true, //Удалить предыдущие хуйнюшки которые крутятся
+                ));
+            }
+        }
+
+        //Очистим статистику игроков?
+        area_event_user_delete(array('event_id' => GL_AREA_EVENT_CURRENT_ID));
+        //Установим новое эвент
+        common_save_settings(array(
+            'GL_AREA_EVENT_CURRENT_ID' => $area_event['id'],
+            'GL_AREA_EVENT_TYPE_ID' => $area_event['type_id'],
+            'GL_AREA_EVENT_TIME' => time_current() + $area_event['time_expire'],
+            'GL_AREA_EVENT_CONTROL' => 0,
+        ));
+    }
+}
+
+function area_event_trigger($user = array(), $type_id = false, $param1 = false, $param2 = false, $param3 = false){
+    if(!(defined('GL_AREA_EVENT_TIME') && GL_AREA_EVENT_TIME > time_current())) return false;
+    if(!(defined('GL_AREA_EVENT_CURRENT_ID') && GL_AREA_EVENT_CURRENT_ID)) return false;
+    if(!(defined('GL_AREA_EVENT_TYPE_ID') && GL_AREA_EVENT_TYPE_ID)) return false;
+    if(!$type_id || !$param1) return false;
+    if(GL_AREA_EVENT_TYPE_ID != $type_id) return false;
+
+    if(!$user) return false;
+
+    $area_event = area_event_current_get($user);
+    if(!$area_event) return false;
+
+    $area_ids = explode(',', $area_event['area_ids']);
+    if(!in_array($user['area_id'], $area_ids)) return false;
+
+    switch($type_id){
+        //param1 ID бота, param2 Bonus_id бота, param3 кол-во убийств
+        case AREA_EVENT_TYPE_BOT:
+            if(intval($area_event['param3']) && intval($area_event['param3']) != $param1) return false; //Не прошли проверку по боту, если бот указан!
+            switch (intval($area_event['param1'])){
+                case AREA_EVENT_BOT_MULTI_BONUS:
+                    bonus_apply_many($user, $param2, $param3);
+                    break;
+                case AREA_EVENT_BOT_BONUS_ID:
+                    bonus_apply_many($user, intval($area_event['param2']), $param3);
+                    break;
+                case AREA_EVENT_BOT_MARATHONE:
+                    area_event_marathone_add($user['id'], $area_event['id'], $param3);
+                    break;
+            }
+            break;
+        //param1 ID артикула
+        case AREA_EVENT_TYPE_FARM:
+            if(intval($area_event['param3']) && intval($area_event['param3']) != $param1) return false; //Не прошли проверку по фарму, если фарм указан!
+            switch (intval($area_event['param1'])){
+                case AREA_EVENT_BOT_MULTI_BONUS:
+                    $status = artifact_add($param1, 3, $user['id']);
+                    if($status){
+                        $artikul = artifact_artikul_get($param1);
+                        $msg = 'Благодаря текущему событию вы смогли получить: +3 '.tpl_artikul_info($artikul);
+                        chat_msg_send_system($msg, CHAT_CHF_USER, $user['id']);
+                    }
+                    break;
+                case AREA_EVENT_BOT_BONUS_ID:
+                    bonus_apply($user, intval($area_event['param2']));
+                    break;
+                case AREA_EVENT_BOT_MARATHONE:
+                    area_event_marathone_add($user['id'], $area_event['id'], 1);
+                    break;
+            }
+            break;
+    }
+
+
+    return true;
+}
+
+function area_event_marathone_add($user_id, $event_id, $cnt = 1){
+    $area_event_user = area_event_user_get(array('user_id' => $user_id, 'event_id' => $event_id));
+    if($area_event_user){
+        area_event_user_save(array(
+            'id' => $area_event_user['id'],
+            '_set' => sql_pholder(' cnt = cnt + ?', $cnt),
+        ));
+    }else{
+        area_event_user_save(array(
+            'event_id' => $event_id,
+            'user_id' => $user_id,
+            'cnt' => $cnt,
+            'ctime' => time_current(),
+            'dtime' => GL_AREA_EVENT_TIME + 86400, //ЧОО?
+        ));
+    }
+}

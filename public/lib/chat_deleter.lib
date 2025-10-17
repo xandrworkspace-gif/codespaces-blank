@@ -1,0 +1,67 @@
+<?
+define('TABLE_CHAT_DELETER_LIST','chat_deleter');
+define('FIELD_CHAT_DELETER_LIST','');
+
+define('TABLE_CHAT_DELETER_MSG_LIST','chat_deleter_msg');
+define('FIELD_CHAT_DELETER_MSG_LIST','');
+
+#Работа с базой данных
+function chat_deleter_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_CHAT_DELETER_LIST,$ref,$add);
+}
+
+function chat_deleter_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_CHAT_DELETER_LIST,$ref,$add);
+}
+
+function chat_deleter_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_CHAT_DELETER_LIST, $ref, $add);
+}
+
+function chat_deleter_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_CHAT_DELETER_LIST,$param,FIELD_CHAT_DELETER_LIST);
+}
+
+function chat_deleter_delete($ref, $add='') {
+    global $db_path;
+    common_delete($db_path,TABLE_CHAT_DELETER_LIST,$ref,$add);
+    return true;
+}
+
+/////////////////////
+
+function chat_deleter_msg_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_CHAT_DELETER_MSG_LIST,$ref,$add);
+}
+
+function chat_deleter_msg_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_CHAT_DELETER_MSG_LIST,$ref,$add);
+}
+
+function chat_deleter_msg_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_CHAT_DELETER_MSG_LIST, $ref, $add);
+}
+
+function chat_deleter_msg_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_CHAT_DELETER_MSG_LIST,$param,FIELD_CHAT_DELETER_MSG_LIST);
+}
+
+function chat_deleter_msg_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_CHAT_DELETER_MSG_LIST,$ref,$add);
+    return true;
+}
+
+function chat_deleter_cron(){
+    chat_deleter_delete(false, ' AND dtime <= '.time_current());
+}
+#Работа с базой данных

@@ -1,0 +1,212 @@
+<?
+// Имена и поля таблиц
+define('TABLE_SESSION_STAT', 'session_stat');
+define('FIELD_SESSION_STAT', '');
+define('TABLE_SESSION_REPORT', 'session_report');
+define('FIELD_SESSION_REPORT', '');
+
+define('CRON_SESSION_STAT_USER_PORTION' ,1000);
+
+function session_stat_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_SESSION_STAT, $ref, $add);
+}
+
+function session_stat_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_SESSION_STAT, $ref, $add);
+}
+
+function session_stat_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_SESSION_STAT, $ref, $add);
+}
+
+function session_stat_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_SESSION_STAT, $param, FIELD_SESSION_STAT);
+}
+
+function session_stat_multi_update($data, $data_fields, $update_fields = array()) {
+	global $db_diff;
+	return common_multi_update($db_diff, TABLE_SESSION_STAT, $data, $data_fields, $update_fields);
+}
+
+function session_stat_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff, TABLE_SESSION_STAT, $ref, $add);
+}
+
+/* ============= session report =========================== */
+
+function session_report_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_SESSION_REPORT, $ref, $add);
+}
+
+function session_report_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_SESSION_REPORT, $ref, $add);
+}
+
+function session_report_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_SESSION_REPORT, $ref, $add);
+}
+
+function session_report_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_SESSION_REPORT, $param, FIELD_SESSION_REPORT);
+}
+
+function session_report_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff, TABLE_SESSION_REPORT, $ref, $add);
+}
+
+function session_report_multi_update($data, $data_fields, $update_fields = array()) {
+	global $db_diff;
+	return common_multi_update($db_diff, TABLE_SESSION_REPORT, $data, $data_fields, $update_fields);
+}
+
+// ===========================================================================================================================
+
+
+function generate_session_stat_report() {
+	define('SESSION_REPORT_TIME_STEP', 86400);
+
+	$user_cnt_by_time = array(
+		0 => 0,
+		60 => 0,
+		5 * 60 => 0,
+		10 * 60 => 0,
+		15 * 60 => 0,
+		30 * 60 => 0,
+		60 * 60 => 0,
+		2 * 60 * 60 => 0,
+		4 * 60 * 60 => 0,
+		5 * 60 * 60 => 0,
+		6 * 60 * 60 => 0,
+		7 * 60 * 60 => 0,
+		8 * 60 * 60 => 0,
+		9 * 60 * 60 => 0,
+		10 * 60 * 60 => 0,
+		15 * 60 * 60 => 0,
+		20 * 60 * 60 => 0,
+		24 * 60 * 60 => 0,
+		36 * 60 * 60 => 0,
+		72 * 60 * 60 => 0,
+	);
+
+
+	$last_report_record = session_report_get(false, ' ORDER BY ctime DESC ');
+	$last_gen_time = $last_report_record['ctime'];
+
+	if (!$last_gen_time) {
+		$last_gen_time = time_current() - 5 * 86400;
+	}
+	// округляем дату на всякий случай
+	$gen_time = $last_gen_time - ( $last_gen_time % SESSION_REPORT_TIME_STEP ) - 4 * 3600; // поправка на москвское время
+
+	while (true) {
+
+		$add_sql = sql_pholder(' AND time_logout > ? AND time_logout <= ? ORDER BY time_logout ',
+						$gen_time, $gen_time + SESSION_REPORT_TIME_STEP);
+		$session_stat_list = session_stat_list(false, $add_sql);
+
+		if ($gen_time > time_current()) {
+			break;
+		}
+		$gen_time += SESSION_REPORT_TIME_STEP;
+		if (!$session_stat_list)
+			continue;
+
+		$user_ids = get_hash($session_stat_list, 'uid', 'uid');
+		if (!$user_ids)
+			continue;
+		
+		$users_hash = array();
+		$i=0;
+		do {
+			$part = array_slice($user_ids,$i*1000,1000);
+			if (!$part) break;
+			$i++;   
+			$users_hash_part = make_hash(user_list(array('id' => $part), '', false, 'id, level'), 'id');
+			$users_hash += $users_hash_part;
+		} while(1);
+		$report_date_key = $gen_time;
+		$report = array();
+		foreach ($session_stat_list as $session_stat) {
+
+			if (!isset($users_hash[$session_stat['uid']]))
+				continue;
+			$level = $users_hash[$session_stat['uid']]['level'];
+
+			if (!isset($report[$level])) {
+				$report[$level] = array(
+					'level' => $level,
+					'ctime' => $gen_time,
+					'session_cnt' => 0,
+					'session_time_summary' => 0,
+					'long_sessions' => 0,
+					'by_time' => $user_cnt_by_time
+				);
+			}
+			$report[$level]['session_cnt']++;
+
+			$session_time_length = $session_stat['time_logout'] - $session_stat['time_login'];
+			$report[$level]['session_time_summary'] += $session_time_length;
+
+			$min_time = min(array_keys($report[$level]['by_time']));
+			$max_time = max(array_keys($report[$level]['by_time']));
+			if ($session_time_length <= $min_time) {
+				$report[$level]['by_time'][$min_time]++;
+			} else if ($session_time_length > $max_time) {
+				$report[$level]['by_time'][$max_time]++;
+			} else {
+				$pred_time = $min_time;
+				foreach ($report[$level]['by_time'] as $time => $cnt) {
+					if ($session_time_length < $time) {
+						$report[$level]['by_time'][$pred_time]++;
+						break;
+					}
+					$pred_time = $time;
+				}
+			}
+		}
+
+		// вычисляем среднее
+		foreach ($report as $level => $stat) {
+			$report[$level]['session_time_average'] = round($stat['session_time_summary'] / $stat['session_cnt']);
+		}
+
+		$user_long_session = array();
+		// количество игроков чья сессия выше среднего (хотя бы одна)
+
+		foreach ($session_stat_list as $session_stat) {
+			if (!isset($users_hash[$session_stat['uid']]))
+				continue;
+			$level = $users_hash[$session_stat['uid']]['level'];
+
+			$session_time_length = $session_stat['time_logout'] - $session_stat['time_login'];
+			if ($report[$level]['session_time_average'] < $session_time_length) {
+				if (!isset($user_long_session[$level])) {
+					$user_long_session[$level] = array();
+				}
+				$user_long_session[$level][$session_stat['uid']] = $session_stat['uid'];
+			}
+		}
+		if (!empty($user_long_session)) {
+			foreach ($user_long_session as $level => $long_sessions) {
+				$report[$level]['long_sessions'] = count($long_sessions);
+			}
+		}
+		$user_by_level_hash = make_hash($users_hash, 'level', true);
+		foreach ($report as $level => $stat) {
+			$report[$level]['users_cnt'] = count($user_by_level_hash[$level]);
+			$report[$level]['by_time'] = serialize($report[$level]['by_time']);
+		}
+
+		session_report_multi_update($report, array_keys(reset($report)), array_keys(reset($report)));
+	}
+}

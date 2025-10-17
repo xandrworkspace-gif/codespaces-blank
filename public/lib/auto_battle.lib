@@ -1,0 +1,173 @@
+<?
+
+define("TABLE_AUTOFIGHT", "auto_battle");
+$mode_url = "auto_battle.php";
+$max_battles_auto = 1000;
+
+function money_type_post_get($type)
+{
+	if(!$type){return;}
+	if($type == 1){return MONEY_TYPE_GAME;}
+	if($type == 2){return MONEY_TYPE_GOLD;}
+	if($type == 3){return MONEY_TYPE_DONAT;}
+}
+
+function get_data_bot($user_id)
+{
+	mysql_connect(DB_PATH_HOST,DB_PATH_USER,DB_PATH_PASSWD);
+	mysql_select_db(DB_PATH_NAME);
+	$sql = "SELECT * FROM `".DB_PATH_NAME."`.`".TABLE_AUTOFIGHT."` WHERE ".DB_PATH_NAME.".`".TABLE_AUTOFIGHT."`.`user_id` = ".$user_id;
+	$query = mysql_query($sql);
+	$user_info_auto = array();
+	if($query)
+	{
+		if(mysql_num_rows($query) > 0)
+		{
+			$array = mysql_fetch_array($query);
+			$user_info_auto['id'] = $array['id'];
+			$user_info_auto['user_id'] = $array['user_id'];
+			$user_info_auto['name_mob'] = $array['name_mob'];
+			$user_info_auto['id_mob'] = $array['id_mob'];
+			$user_info_auto['bonus_id'] = $array['bonus_id'];
+			$user_info_auto['count'] = $array['count'];
+			$user_info_auto['count_win'] = $array['count_win'];
+			$user_info_auto['time_start'] = $array['time_start'];
+			$user_info_auto['time_end'] = $array['time_end'];
+			$user_info_auto['level_mob'] = $array['level_mob'];
+			$user_info_auto['money_min'] = $array['money_min'];
+			$user_info_auto['money_max'] = $array['money_max'];
+			$user_info_auto['money_type'] = $array['money_type'];
+			$user_info_auto['area'] = $array['area'];
+		}
+	}
+	return $user_info_auto;
+}
+
+function get_data_bot_all($t = ''){
+	mysql_connect(DB_PATH_HOST,DB_PATH_USER,DB_PATH_PASSWD);
+	mysql_select_db(DB_PATH_NAME);
+	$sql = "SELECT * FROM `".DB_PATH_NAME."`.`".TABLE_AUTOFIGHT."` WHERE 1";
+	$query = mysql_query($sql);
+	$user_info_autos = array();
+	while($user_info_auto = mysql_fetch_array($query)){
+		if($t != ''){$user_info_autos[$user_info_auto[$t]] = $user_info_auto;}
+		else{$user_info_autos[] = $user_info_auto;}
+	}
+	return $user_info_autos;
+}
+
+function delete_data_bot($user_id)
+{
+	mysql_connect(DB_PATH_HOST,DB_PATH_USER,DB_PATH_PASSWD);
+	mysql_select_db(DB_PATH_NAME);
+	$sql = "DELETE FROM `".DB_PATH_NAME."`.`".TABLE_AUTOFIGHT."` WHERE ".DB_PATH_NAME.".`".TABLE_AUTOFIGHT."`.`user_id` = ".$user_id;
+	$query = mysql_query($sql);
+}
+
+function update_count_win($count, $user_id)
+{
+	mysql_connect(DB_PATH_HOST,DB_PATH_USER,DB_PATH_PASSWD);
+	mysql_select_db(DB_PATH_NAME);
+	$sql_update = "UPDATE  `".DB_PATH_NAME."`.`".TABLE_AUTOFIGHT."` SET  `count_win` =  '".$count."' WHERE  `".DB_PATH_NAME."`.`".TABLE_AUTOFIGHT."`.`user_id` = ".$user_id.";";
+	$query = mysql_query($sql_update);
+}
+
+//Время на 1 моба
+function get_time_lvl($lvl, $type = 0){
+	$ret_val = 110;
+	if($lvl == 1){
+		$ret_val = 8;
+	}
+	if($lvl == 2){
+		$ret_val = 15;
+	}
+	if($lvl == 3){
+		$ret_val = 25;
+	}
+	if($lvl == 4){
+		$ret_val = 35;
+	}
+	if($lvl == 5){
+		$ret_val = 48;
+	}
+	if($lvl == 6){
+		$ret_val = 80;
+	}
+	if($lvl == 7){
+		$ret_val = 110;
+	}
+	if($lvl == 8){
+		$ret_val = 150;
+	}
+	if($type == 0){
+		return $ret_val;
+	}
+	if($type == 1){
+		return intval($ret_val / 2);
+	}
+}
+
+//Уровень цен
+function price_perlvl($level,$type)
+{
+	if($type == 1)
+	{
+		if($level == 1){return 5;}
+		if($level == 2){return 20;}
+		if($level == 3){return 30;}
+		if($level == 4){return 40;}
+		if($level == 5){return 60;}
+		if($level == 6){return 80;}
+		if($level == 7){return 100;}
+		if($level > 7){return 250;}
+	}
+	else if($type == 2)
+	{
+		if($level == 1){return 0.06;}
+		if($level == 2){return 0.08;}
+		if($level == 3){return 0.12;}
+		if($level == 4){return 0.15;}
+		if($level == 5){return 0.15;}
+		if($level == 6){return 0.20;}
+		if($level == 7){return 0.30;}
+		if($level > 7){return 0.45;}
+	}
+	else if($type == 3)
+	{
+		if($level == 1){return 0.03;}
+		if($level == 2){return 0.05;}
+		if($level == 3){return 0.08;}
+		if($level == 4){return 0.10;}
+		if($level == 5){return 0.10;}
+		if($level == 6){return 0.15;}
+		if($level == 7){return 0.20;}
+		if($level > 7){return 0.30;}
+	}
+}
+
+//Запрет авто-битвы новый из базы данных на моба
+function get_access($target)
+{
+	mysql_connect(DB_PATH_HOST,DB_PATH_USER,DB_PATH_PASSWD);
+	mysql_select_db(DB_PATH_NAME);
+	$sql = "SELECT * FROM `auto_fight_settings` WHERE type = 0 AND zapret = ".$target;
+	$query = mysql_query($sql);
+	$cnt = mysql_num_rows($query);
+	if($cnt != 0)
+	{
+		return false; // Запрет
+	}
+	return true; // Нет запрета
+}
+
+function format_by_count($count, $form1, $form2, $form3)
+{
+    $count = abs($count) % 100;
+    $lcount = $count % 10;
+    if ($count >= 11 && $count <= 19) return($form3);
+    if ($lcount >= 2 && $lcount <= 4) return($form2);
+    if ($lcount == 1) return($form1);
+    return $form3;
+}
+
+?>

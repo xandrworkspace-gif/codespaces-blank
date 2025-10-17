@@ -1,0 +1,178 @@
+<? # $Id: xml_parser.lib,v 1.1 2009-09-18 12:41:16 v.krutov Exp $
+/**
+ * Парсер XML-данных
+ * - метод для разбора строки с xml-данными
+ * - метод для разбора streams с чтением по частям (актуально для очень больших потоков данных)
+ * - возможность многократного использования одного объекта для разбора разных строк и файлов
+ * - корректное завершение работы и обязательное освобождение resource variable парсера
+ *
+ * @package    XML
+ * @version    0.1
+ * @author     Pashugan
+ *
+ * create: 21.07.2008
+*/
+
+class XmlParser {
+	var $encoding;
+	var $buffer_size;
+	var $_parser;
+	var $_output;
+	var $_parsing = false;
+	var $ord = 0;
+
+	// constructor
+	function XmlParser($encoding='UTF-8', $buffer_size=4096) {
+		$this->encoding = $encoding;
+		$this->buffer_size = $buffer_size;
+		// "Уходя гасите всех" (http://ru2.php.net/manual/en/function.xml-parser-free.php#37022)
+		register_shutdown_function(array(&$this, '_parser_shutdown'));
+	}
+
+	// protected
+	function _parser_init() {
+		$this->_parser = xml_parser_create($this->encoding);
+		xml_set_object($this->_parser, $this);
+		xml_parser_set_option($this->_parser, XML_OPTION_CASE_FOLDING, false);
+		xml_set_element_handler($this->_parser, '_tag_open', '_tag_closed');
+		xml_set_character_data_handler($this->_parser, '_tag_data');
+	}
+
+	// protected
+	function _parser_shutdown() {
+		if ($this->_parsing) { // корректно завершаемся в случае ЧП
+			xml_parse($this->_parser, null, 1);
+		}
+		@xml_parser_free($this->_parser);
+	}
+
+	// public
+	function parse_string($xml) {
+		$this->_output = array();
+		$this->_parser_init();
+
+		$this->_parsing = true;
+		$status = @xml_parse($this->_parser, $xml, true);
+		$this->_parsing = false;
+
+		if (!$status) {
+			$this->_log_xml_error();
+			$this->_output = false;
+		}
+
+		$this->_parser_shutdown();
+
+		return $this->_output;
+	}
+
+	// public
+	function parse_stream($xml_stream, $log_file=false) {
+		if (!$xml_stream || !($fp = @fopen($xml_stream, 'r'))) {
+			$this->_log_error('XML stream "'.$xml_stream.'" error');
+			return false;
+		}
+		if ($log_file && !($lp = @fopen($log_file, 'w'))) {
+			$this->_log_error('Can\'t create log file "'.$log_file.'"');
+			return false;
+		}
+
+		$this->_output = array();
+		$this->_parser_init();
+
+		$this->_parsing = true;
+
+		while ($data = fread($fp, $this->buffer_size)) {
+			if ($log_file) {
+				fwrite($lp, $data);
+			}
+			if (!xml_parse($this->_parser, $data, feof($fp))) {
+				$this->_log_xml_error();
+				$this->_output = false;
+				break;
+			}
+		}
+
+		$this->_parsing = false;
+
+		$this->_parser_shutdown();
+
+		fclose($fp);
+		if ($log_file) {
+			fclose($lp);
+		}
+
+		return $this->_output;
+	}
+
+	// private
+	function _tag_open($parser, $name, $attr) {
+		$tag = array('name' => $name, 'attr' => $attr);
+		$this->_output[] = $tag;
+	}
+
+	// private
+	function _tag_data($parser, $tag_data) {
+		if (trim($tag_data))	{
+			$count = count($this->_output);
+			if (isset($this->_output[$count - 1]['data'])) {
+				$this->_output[$count - 1]['data'] .= $tag_data;
+			} else {
+				$this->_output[$count - 1]['data'] = $tag_data;
+			}
+		}
+	}
+
+	// private
+	function _tag_closed($parser, $name) {
+		$count = count($this->_output); 
+		@$this->_output[$count - 2]['child'][] = $this->_output[$count - 1];
+		$el = array_pop($this->_output);
+	}
+
+	// protected
+	function _log_error($msg) {
+		//echo '<pre>'.$msg.'</pre><br/>';
+	}
+
+	// protected
+	function _log_xml_error() {
+		$error = xml_error_string(xml_get_error_code($this->_parser));
+		$line = xml_get_current_line_number($this->_parser);
+		$this->_log_error(sprintf('XML error: "%s" at line %d', $error, $line));
+	}
+}
+
+
+function xml_make_hash($item_list) {
+	$res = array();
+	foreach ($item_list as $item) {
+		$name = $item['name'];
+		unset($item['name']);
+		if (!$item['attr']) unset($item['attr']);
+		if (array_key_exists('child', $item)) {
+			$child = xml_make_hash($item['child']);
+			if (count($item) == 1) { // только 'child'
+				$item = $child;
+			} else {
+				$item = array_merge($item, $child);
+			}
+		}
+		if (count($item) == 1 && array_key_exists('data', $item)) {
+			$item = $item['data'];
+		}
+		if (isset($res[$name])) {
+			if (is_array($res[$name])) {
+				if (is_numeric(key($res[$name]))) {
+					$res[$name][] = $item;
+				} else {
+					$res[$name] = array($res[$name], $item);
+				}
+			} else {
+				$res[$name] = array($res[$name], $item);
+			}
+		} else {
+			$res[$name] = $item;
+		}
+	}
+	return $res;
+}

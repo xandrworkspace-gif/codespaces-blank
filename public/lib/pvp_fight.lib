@@ -1,0 +1,413 @@
+<?php
+
+define('TABLE_PVP_FIGHT_REQUEST','pvp_fight_request');
+define('FIELD_PVP_FIGHT_REQUEST','');
+
+define('TABLE_PVP_FIGHT_STAT','pvp_fight_stat');
+define('FIELD_PVP_FIGHT_STAT','');
+
+//TODO:Сначала будет учет по уровню потом по COST'y
+define('PVP_FIGHT_CONSUME_COST', 200); //Вариация разброса COST между игроками...
+
+#Работа с базой данных
+function pvp_fight_request_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_PVP_FIGHT_REQUEST,$ref,$add);
+}
+
+function pvp_fight_request_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_PVP_FIGHT_REQUEST,$ref,$add);
+}
+
+function pvp_fight_request_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_PVP_FIGHT_REQUEST, $ref, $add);
+}
+
+function pvp_fight_request_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_PVP_FIGHT_REQUEST,$param,FIELD_PVP_FIGHT_REQUEST);
+}
+
+function pvp_fight_request_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_PVP_FIGHT_REQUEST,$ref,$add);
+    return true;
+}
+
+///////////////////////////
+
+function pvp_fight_stat_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_PVP_FIGHT_STAT,$ref,$add);
+}
+
+function pvp_fight_stat_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_PVP_FIGHT_STAT,$ref,$add);
+}
+
+function pvp_fight_stat_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_PVP_FIGHT_STAT, $ref, $add);
+}
+
+function pvp_fight_stat_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_PVP_FIGHT_STAT,$param,FIELD_PVP_FIGHT_STAT);
+}
+
+function pvp_fight_stat_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_PVP_FIGHT_STAT,$ref,$add);
+    return true;
+}
+
+function pvp_fight_stat_add($user_id, $win = false, $fail = false){
+    $pvp_fight_stat = pvp_fight_stat_get(array('user_id' => $user_id));
+    if($pvp_fight_stat){
+        pvp_fight_stat_save(array(
+            'id' => $pvp_fight_stat['id'],
+            '_set' => sql_pholder(($win ? ' win = win + '.$win : '').($fail ? ' fail = fail + '.$fail : '')),
+        ));
+    }else{
+        $pvp_fight_stat = array(
+            'user_id' => $user_id,
+            'win' => ($win ? $win : 0),
+            'fail' => ($fail ? $fail : 0),
+        );
+        pvp_fight_stat_save($pvp_fight_stat);
+    }
+}
+
+//Смысл
+/*
+ * Для начала мы получим список всех текущих заявок.
+ * Потом преобразуем его по COST категориям, где COST - это величина силы игрока!
+ * COST не всегда совпадает по уровню.
+ */
+
+/*
+    pvp_fight_request_save(array(
+        'user_id' => $session_user['id'],
+        'cost' => user_get_cost($session_user['id']),
+        'level' => $session_user['level'],
+    ));
+ */
+
+function pvp_fight_cancel_lock($ref, $timewait=1, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('PVP_FIGHT_CRON_'.intval($ref),$timewait,$timelock);
+}
+
+function pvp_fight_cancel_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('PVP_FIGHT_CRON_'.intval($ref));
+}
+
+function pvp_fight_cron_lock($ref, $timewait=2, $timelock=60) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->capture('PVP_FIGHT_CRON_'.intval($ref),$timewait,$timelock);
+}
+
+function pvp_fight_cron_unlock($ref) {
+    global $tq;
+    if (!$ref) return false;
+    return $tq->release('PVP_FIGHT_CRON_'.intval($ref));
+}
+
+function pvp_fight_cron(){
+    if(!pvp_fight_cron_lock(1)){
+        return false;
+    } //Тут то похуй уже, главное залочься
+    $pvp_fight_requests = make_hash(pvp_fight_request_list(false),'user_id');
+
+    if(!$pvp_fight_requests) return false;
+    if(count($pvp_fight_requests) < 2) return false;
+
+    //Убираем юзеров оффлайн и кто в бою и инстансах уже
+    $user_hash = make_hash(user_list(array('id' => array_keys($pvp_fight_requests))));
+    foreach ($user_hash as $user_id=>$user){
+        if($user['fight_id'] || $user['instance_id']){
+            //Зявки эти нужно удалить, они уже не нужны...
+            pvp_fight_request_delete($pvp_fight_requests[$user_id]['id']);
+            unset($pvp_fight_requests[$user_id]);
+            continue;
+        }
+        if(!user_is_online($user_id) && $pvp_fight_requests[$user_id]){
+            //Зявки эти нужно удалить, они уже не нужны...
+            pvp_fight_request_delete($pvp_fight_requests[$user_id]['id']);
+            unset($pvp_fight_requests[$user_id]);
+            continue;
+        }
+    }
+
+    //Распределение юзеров по уровню xD пизда
+    $pvp_fight_level_hash = array(); //Массив битв по уровням...
+    $pvp_fight_cost_hash = array(); //Массив битв по COST'у...
+
+    foreach ($pvp_fight_requests as $pvp_fight_request){
+        $pvp_fight_level_hash[$pvp_fight_request['level']][] = $pvp_fight_request;
+    }
+    //Определяем кол-во оутсайдеров..
+    foreach ($pvp_fight_level_hash as $level=>$pvp_fight_requests_list){
+        //Оутсайдеров шлем в распределение по COST...
+        //Если в данной категории не четное кол-во игроков, значит есть оусайдеры
+        if (count($pvp_fight_requests_list) % 2 !== 0) {
+            //Определяем оутсайдера
+            common_fldsort($pvp_fight_requests_list, false, 'cost'); //Слабых шлем в оутсайдер лист...
+            foreach ($pvp_fight_requests as $k=>$pvp_fight_request){
+                unset($pvp_fight_level_hash[$level][$k]); //Уберем лишнего из битв по уровню!
+                $pvp_fight_cost_hash[] = $pvp_fight_request; //И добавим его по COST'у пусть пока тусуется там, может он найдет себе небожителя в другой битве.
+                break; //Работаем только с единичным оутсайдером
+            }
+        }
+    }
+
+    $pvp_fight_cost = array();
+
+    //Распределение по COST
+    foreach ($pvp_fight_cost_hash as $pvp_fight_request){
+        $cur_cost = intval($pvp_fight_request['cost'] / PVP_FIGHT_CONSUME_COST);
+        $pvp_fight_cost[$cur_cost][] = $pvp_fight_request;
+    }
+    //dump_pvp_fight($pvp_fight_cost);
+
+    foreach ($pvp_fight_cost as $pvp_cost=>$pvp_fight_request_list) {
+        //Если в данной категории не четное кол-во игроков, значит есть оусайдеры по косту
+        if (count($pvp_fight_request_list) % 2 !== 0) {
+            //Определяем оутсайдера
+            common_fldsort($pvp_fight_request_list, false, 'cost'); //Самый слабый оутсайдер, понизим ему категорию COST TODO:Или понизить уровень сильному? Бред
+            foreach ($pvp_fight_request_list as $k=>$pvp_fight_request){
+                if($pvp_cost > 0){
+                    $pvp_fight_cost[$pvp_cost - 1][] = $pvp_fight_request;
+                    unset($pvp_fight_cost[$pvp_cost][$k]);
+                }else{
+                    //Случай когда нужно повысить уровень COST
+                    $pvp_fight_cost[$pvp_cost + 1][] = $pvp_fight_request;
+                    unset($pvp_fight_cost[$pvp_cost][$k]);
+                }
+                break; //Работаем только с единичным оутсайдером
+            }
+        }
+    }
+
+    //echo "<hr><hr><hr>";
+
+    //Ну что оусайдеры как вам живется?
+    //dump_pvp_fight($pvp_fight_cost);
+
+    $pvp_battles = array();
+
+
+    $cur_index = 0;
+    //Формирование битв по уровню
+    foreach ($pvp_fight_level_hash as $level=>$pvp_fight_request_list) {
+        //Если все норм, то определим бойцов $pvp_battle
+        if (count($pvp_fight_request_list) % 2 == 0) {
+            $pvp_battle = array();
+            $pvp_fight_requests_shuffle = $pvp_fight_request_list; //Чтобы не ебать foreach
+            shuffle($pvp_fight_requests_shuffle); //Чтобы не ебать foreach
+
+            foreach ($pvp_fight_requests_shuffle as $k=>$pvp_fight_request){
+                $pvp_battle[$cur_index][] = $pvp_fight_request['user_id'];
+                if(count($pvp_battle[$cur_index]) == 2){
+                    $cur_index++;
+                }
+            }
+            $pvp_battles[] = $pvp_battle;
+        }
+    }
+
+    vardump($pvp_battles);
+
+    //Формирование битв по COST
+    /*foreach ($pvp_fight_cost as $pvp_cost=>$pvp_fight_request_list) {
+        //Если все норм, то определим бойцов $pvp_battle
+        if (count($pvp_fight_request_list) % 2 == 0) {
+            $pvp_battle = array();
+            $pvp_fight_requests_shuffle = $pvp_fight_request_list; //Чтобы не ебать foreach
+            shuffle($pvp_fight_requests_shuffle); //Чтобы не ебать foreach
+            $cur_index = 0;
+            foreach ($pvp_fight_requests_shuffle as $k=>$pvp_fight_request){
+                $pvp_battle[$cur_index][] = $pvp_fight_request['user_id'];
+                if(count($pvp_battle[$cur_index]) == 2){
+                    $cur_index++;
+                }
+            }
+            $pvp_battles[] = $pvp_battle;
+        }
+    }*/
+
+    //return false;
+
+    //Запуск всех батталий xD
+    foreach ($pvp_battles as $pvp_battle){
+        foreach ($pvp_battle as $user_ids){
+            $pers_data = array();
+            $team = true;
+            foreach ($user_ids as $user_id){
+                $team = !$team;
+                $pers_data[] = array('user_id' => $user_id, 'team' => ($team ? 1 : 2));
+            }
+            pvp_fight_request_delete(array('user_id' => $user_ids));
+            fight_start_pvp(array('title' => 'Дуэль'), $pers_data);
+        }
+    }
+    pvp_fight_cron_unlock(1);
+    //Создадим заявки уже..
+}
+
+function dump_pvp_fight($pvp_fight_cost = array()){
+    foreach ($pvp_fight_cost as $cost=>$pvp_fight_requests){
+        echo 'Категория №'.$cost.' Кол-во:'.count($pvp_fight_requests).'<br><hr>';
+        foreach ($pvp_fight_requests as $pvp_fight_request){
+            echo $pvp_fight_request['cost'].'<br>';
+        }
+    }
+}
+
+
+// Запуск боя
+// $param:
+//   ['fight_flags'] - флаги нового боя
+//   ['no_chat_msg'] - не показывать текстовки в чат
+//   ['fight_delay'] - задержка боя
+//   ['soft_reg'] - Пользователь проходит плавную регистрацию
+function fight_start_pvp($fight, $pers_data, $param=false, $user_hash = array()) {
+    global $fscl;
+
+    if (!$fight || !$pers_data) return false;
+
+    $fight_id = fight_generate_fight_id();
+
+    $fight_id = intval($fight_id);
+    if (!$fight_id) return false;
+
+    // creating fight
+    $fight['title'] = translate('Дуэль');
+    $fight['flags'] = intval($fight['flags']) | intval($param['fight_flags']);
+    $flags = FIGHT_FLAG_PRIVATE | FIGHT_FLAG_NO_BREAK | FIGHT_FLAG_BLIND;
+    fight_save(array(
+        '_mode' => CSMODE_INSERT,
+        'id' => $fight_id,
+        'area_id' => 614,
+        'instance_id' => 0,
+        'title' => $fight['title'],
+        'type' => FIGHT_TYPE_ADV_DUEL,
+        'status' => FIGHT_STATUS_PENDING,
+        'timeout' => 8,
+        'level_min' => intval($fight['level_min']),
+        'level_max' => intval($fight['level_max']),
+        'team_max' => intval($fight['team_max']),
+        'flags' => $flags,
+        'ctime' => time_current(),
+        'adv_chaot_id' => ($fight['adv_chaot_id'] ? $fight['adv_chaot_id'] : 0)
+    ));
+
+    $fight = fight_get($fight_id);
+
+    if (!$fight_id) {
+        error_log("[fight_start]: Can't create a new fight in DB!");
+        return false;
+    }
+    $answer = null;
+    $fscl->sendCommand(FS_SCCT_CREATE_FIGHT,$fight_id);
+    if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+        error_log(sprintf("[fight_start]: FS STATUS=%d: Can't create fight! (fight_id=%d)",$status,$fight_id));
+        return false;
+    }
+    $fscl->sendCommand(FS_SCCT_SET_FIGHT_PARAMS,$fight_id,intval($fight['timeout']),0);
+    if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+        error_log(sprintf("[fight_start]: FS STATUS=%d: Can't set fight params! (fight_id=%d)",$status,$fight_id));
+        return false;
+    }
+
+    if(is_array($param) && isset($param['lua_params'])){
+		$lua_params = fight_lua_params($param['lua_params']);
+		$fscl->sendCommand(FS_SCCT_SET_PARAMS_LUA, $fight_id, 'Fight', $lua_params);
+		if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+			error_log(sprintf("[fight_start]: FS STATUS=%d: Can't set lua params! (fight_id=%d)",$status,$fight_id));
+			return false;
+		}
+	}
+
+    // loading personages
+    $user_ids = array();
+    $bot_ids = array();
+
+    // вначале добавляем персонажей-людей
+    foreach ($pers_data as $item) {
+        if ($item['user_id']) {
+            if (!fight_bind($fight,$item['user_id'],$item['team'],$param)) {
+                error_log("[fight_start]: fight_bind() failed!");
+                return false;
+            }
+            $user_ids[] = $item['user_id'];
+        }
+    }
+
+    // starting fight
+    $fscl->sendCommand(FS_SCCT_START_FIGHT,$fight_id);
+    if (($status = $fscl->getAnswer($answer)) != FS_SS_OK) {
+        error_log(sprintf("[fight_start]: FS STATUS=%d: Can't start fight! (fight_id=%d)",$status,$fight_id));
+        return false;
+    }
+    $fight['id'] = $fight_id; // Чтобы fight_level_get нормально отработал
+    fight_save(array(
+        'id' => $fight_id,
+        'status' => FIGHT_STATUS_RUNNING,
+        'user_cnt' => count($user_ids) + count($bot_ids),
+        'level' => intval(fight_level_get($fight)),
+    ));
+    user_bulk_update($user_ids,'fight_id',$fight_id);
+    if ($user_ids) {
+        // Сбрасывание длительного действия
+        session_save(array(
+            '_add' => sql_pholder(' AND uid IN (?@)',$user_ids),
+            '_set' => 'action_id=0,ltime=0'
+        ));
+    }
+    bot_bulk_update($bot_ids,'fight_id',$fight_id);
+
+    if (!$param['no_chat_msg']) {
+        if (empty($user_hash)) {
+            $user_hash = $user_ids ? make_hash(user_list(array('id' => $user_ids))) : array();
+        }
+        foreach ($user_hash as $user) {
+            if ($user['language']) translate_default_language_push($user['language']);
+            chat_msg_send_system(sprintf(translate('Начался бой "<a href="#" onClick="showFightInfo(%d,%d);return false;"><b>%s</b></a>".'),$fight_id,SERVER_ID,htmlspecialchars($fight['title'])),CHAT_CHF_USER,$user['id']);
+            if ($user['language']) translate_default_language_pop();
+        }
+    }
+
+    $chat_param = array(
+        'func' => 'fightRedirect('.$fight_id.($param['fight_delay'] ? ', '.($param['fight_delay']*1000) : '').')',
+    );
+    // если Пользователь проходит плавную регистрацию установить время жизни fightRedirect
+    if ($param['soft_reg']) $chat_param['dead_time'] = time_current()+SOFT_REG_FIGHT_REDIRECT_TTL;
+    chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$user_ids,$chat_param);
+    return $fight_id;
+}
+
+
+function pvp_fight_open($user = array()){
+    if (((defined('DUEL_GLOBAL_OPEN_ADMIN') && DUEL_GLOBAL_OPEN_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('DUEL_GLOBAL_OPEN') && DUEL_GLOBAL_OPEN)) {
+        return true;
+    }
+    return false;
+}
+
+function pvp_stat_up($pvp_stat = array()){
+    if(!$pvp_stat['win'] && !$pvp_stat['fail']){
+        return 1.00;
+    }else{
+        return round(1/(1 + (($pvp_stat['fail']-$pvp_stat['win'])/100)), 2);
+    }
+}

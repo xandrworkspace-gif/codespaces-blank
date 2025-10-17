@@ -1,0 +1,74 @@
+<?php
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/common.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/user_info.lib");
+
+define('USER_CLOAK_FLAG_UNIQ', 0x00001);
+
+$cloak_flag_hash = array(
+    USER_CLOAK_FLAG_UNIQ => 'Можно получить только бонусом',
+);
+
+define('TABLE_USER_CLOAKS','user_cloaks');
+define('FIELD_USER_CLOAKS','');
+define('TABLE_USER_CLOAK_ARTIKULS','user_cloak_artikuls');
+define('FIELD_USER_CLOAK_ARTIKULS','');
+
+function user_cloak_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff, TABLE_USER_CLOAKS, $ref, $add);
+}
+
+function user_cloak_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff, TABLE_USER_CLOAKS, $ref, $add);
+}
+
+function user_cloak_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_USER_CLOAKS, $ref, $add);
+}
+
+function user_cloak_save($param) {
+    global $db_diff;
+    return common_save($db_diff, TABLE_USER_CLOAKS, $param, FIELD_USER_CLOAKS);
+}
+
+function user_cloak_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff, TABLE_USER_CLOAKS, $ref, $add);
+}
+
+function user_cloak_artikul_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff, TABLE_USER_CLOAK_ARTIKULS, $ref, $add);
+}
+
+function user_cloak_artikul_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff, TABLE_USER_CLOAK_ARTIKULS, $ref, $add);
+}
+
+function user_cloak_artikul_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_USER_CLOAK_ARTIKULS, $ref, $add);
+}
+
+function user_cloak_artikul_save($param) {
+    global $db_diff;
+    return common_save($db_diff, TABLE_USER_CLOAK_ARTIKULS, $param, FIELD_USER_CLOAK_ARTIKULS);
+}
+
+function user_cloak_artikul_delete($artikul_id) {
+    global $db_diff;
+    if (!$artikul_id) return false;
+    $cloak_ids = get_hash(user_cloak_list(array('artikul_id' => $artikul_id)), 'id', 'id');
+    user_info_save(array(
+        '_set' => ' fon_id = 0 ',
+        '_add' => sql_pholder(' AND cloak_id IN (?@) ', $cloak_ids),
+    ));
+    user_cloak_delete(array('id' => $cloak_ids));
+    return common_delete($db_diff, TABLE_USER_CLOAK_ARTIKULS, array('id' => $artikul_id));
+}
+
+

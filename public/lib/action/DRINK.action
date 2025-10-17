@@ -1,0 +1,69 @@
+<? # $Id: DRINK.action,v 1.9 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "Выпить". Вставка предмета в скрытый слот, с указанием времени жизни
+require_once("include/constant.inc");
+global $quality_info;
+
+if (!in_array($subject['object_class'], array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+if ($object['param1'] <= 0) {
+	$out['error'] = translate('Нельзя использовать эту вещь!');
+	return;
+}
+
+// делаем копию и помещаем в слот
+$old_artifact = $object;
+artifact_artikul_get_title($old_artifact);
+
+$new_artifact = $object;
+$new_artifact['time_expire'] = time_current() + intval($new_artifact['param1']);
+$new_artifact['slot_id'] = 'TEMP_EFFECT';
+$new_artifact['cnt'] = 0;
+unset($new_artifact['id'], $new_artifact['object_class']);
+
+$artikul = artifact_artikul_get($object['artikul_id']);
+
+if ($artikul && ($artikul['flags2'] & ARTIFACT_FLAG2_EFFECT_UNLIMIT) && $artikul['type_bafs_id']) {
+    $artifact_type_bafs = artifact_type_bafs_get($artikul['type_bafs_id']);
+    if($artifact_type_bafs){
+        $bafs = make_hash(json_decode($artifact_type_bafs['bafs'],true));
+        $artikul_ids = array_keys($bafs);
+        if($artikul_ids){
+            $user_bafs = make_hash(user_get_artifact_list($subject['id'], 'TEMP_EFFECT', sql_pholder(' AND type_bafs_id = ? AND artikul_id IN (?@)', $artikul['type_bafs_id'], $artikul_ids)));
+        }
+
+        //logfile(DEBUG_FILE_LOG_DEV, print_r($user_bafs,true));
+        $g_data = array();
+        foreach ($user_bafs as $user_baf){
+            if($user_baf['artikul_id'] == $artikul['id'] && $bafs[$artikul['id']] && ($user_baf['flags2'] & ARTIFACT_FLAG2_EFFECT_UNLIMIT)){
+                //logfile(DEBUG_FILE_LOG_DEV, print_r($user_baf,true));
+                //Только продлеваем значение, и уходим
+                $new_artifact = $user_baf;
+                unset($new_artifact['object_class']);
+                $new_artifact['time_expire'] += intval($object['param1']);
+                $new_artifact['slot_id'] = 'TEMP_EFFECT';
+                $new_artifact['cnt'] = 0;
+                break;
+            }else{
+                $g_data[$user_baf['artikul_id']] = $user_baf;
+            }
+        }
+
+        if(count($g_data)){
+            $out['error'] = translate('На вас уже наложена магия этого типа!');
+            return;
+        }
+    }
+}
+
+if (artifact_save($new_artifact)) {
+	// Обновляем страницу для пользователя
+	$out['status'] = ACTION_STATUS_OK;
+	$out['param_success'] = array('update_swf' => 1);
+	chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => "updateSwf({'lvl':'', 'inventory':''})"));
+	chat_msg_send_system(sprintf(translate('Вы использовали %s.'),$old_artifact['title']),CHAT_CHF_USER,$subject['id']);
+}

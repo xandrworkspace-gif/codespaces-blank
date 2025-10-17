@@ -1,0 +1,95 @@
+<?
+
+define('TABLE_BOT_SKIN_ARTIKUL', 'bot_skin_artikul');
+define('TABLE_BOT_SKIN', 'bot_skin');
+
+define('BOT_SKIN_FLAG_DISABLED', 0x000001);
+$bot_skin_flags_hash = array(
+    BOT_SKIN_FLAG_DISABLED => 'Отключен',
+);
+
+define('BOT_SKIN_TYPE_DEFAULT', 0);
+define('BOT_SKIN_TYPE_GRAY', 1);
+define('BOT_SKIN_TYPE_GREEN', 2);
+define('BOT_SKIN_TYPE_BLUE', 3);
+define('BOT_SKIN_TYPE_VIOLET', 4);
+define('BOT_SKIN_TYPE_RED', 5);
+define('BOT_SKIN_TYPE_ORANGE', 6);
+
+$bot_skin_type_hash = array(
+    BOT_SKIN_TYPE_DEFAULT => 'Не выдавать скин',
+    BOT_SKIN_TYPE_GRAY => 'Серый',
+    BOT_SKIN_TYPE_GREEN => 'Зеленый',
+    BOT_SKIN_TYPE_BLUE => 'Синий',
+    BOT_SKIN_TYPE_VIOLET => 'Фиолетовый',
+    BOT_SKIN_TYPE_RED => 'Красный',
+    BOT_SKIN_TYPE_ORANGE => 'Оранжевый',
+);
+
+define('BOT_SKIN_RENT_TIME', 7200);
+define('BOT_SKIN_DAY_CNT', 2);
+
+function bot_skin_artikul_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BOT_SKIN_ARTIKUL,$ref,$add);
+}
+
+function bot_skin_artikul_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_BOT_SKIN_ARTIKUL,$ref,$add);
+}
+
+function bot_skin_artikul_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BOT_SKIN_ARTIKUL, $ref, $add);
+}
+
+function bot_skin_artikul_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BOT_SKIN_ARTIKUL,$param);
+}
+
+function bot_skin_artikul_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_BOT_SKIN_ARTIKUL,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+
+function bot_skin_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BOT_SKIN,$ref,$add);
+}
+
+function bot_skin_list($ref=false, $add='', $field='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_BOT_SKIN,$ref,$add,$field);
+}
+
+function bot_skin_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BOT_SKIN, $ref, $add);
+}
+
+function bot_skin_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BOT_SKIN,$param);
+}
+
+function bot_skin_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_BOT_SKIN,$ref,$add);
+    return true;
+}
+
+function bot_skin_open($user = array()){
+    if(((defined('BOT_SKIN_GLOBAL_OPEN_ADMIN') && BOT_SKIN_GLOBAL_OPEN_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('BOT_SKIN_GLOBAL_OPEN') && BOT_SKIN_GLOBAL_OPEN)) {
+        return true;
+    }
+    return false;
+}
+
+function bot_skin_title($bot_skin_artikul = array()) {
+    return ($bot_skin_artikul['title'] ? $bot_skin_artikul['title'] : '#'.$bot_skin_artikul['bot_sk']);
+}

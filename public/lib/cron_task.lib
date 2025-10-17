@@ -1,0 +1,161 @@
+<?
+/**
+ * Настрокйи кронов (отслеживание и управление задачами cron)
+ *
+ * Обвязка, предназначенная для облегчения управления и контроля кронов
+ * Эта обвязка ничего сама волшебным образом не стартует и crontab не настраивает!
+ * Предназначение:
+ *  1) обеспечить механизм атомарного запуска (запрет параллельного выполнения) нескольких одинаковых кронов
+ *  2) отслеживание статуса и времени выполения отдельных задач без просмотра логов
+ *  3) механизм обратной связи кронов с системой во время выполнения (сигнал "I'm alive")
+ *
+ * @package    System
+ * @version    2.0
+ * @author     Sergey Abrosimov <sabrosimov@mail.ru>
+ * @copyright  2008 Sergey Abrosimov
+ *
+*/
+
+// Имена и поля таблиц
+define('TABLE_CRON_TASKS', 'cron_tasks');
+define('FIELD_CRON_TASKS', '');
+
+define('CT_STATUS_UNKNOWN', 1);
+define('CT_STATUS_RUNNING', 2);
+define('CT_STATUS_OK', 3);
+define('CT_STATUS_ERROR', 4);
+define('CT_STATUS_WARNING', 5);
+define('CT_STATUS_DIE', 6);
+
+define('CT_FLAG_ONLY_ONE', 0x01);
+define('CT_FLAG_SEND_ALIVE', 0x02);
+
+define('CT_LOG_FILE_PATH', 'logs/cron_');
+
+define('CT_MIN_TICK_RATE', 10);
+
+
+global $cron_status_info;
+$cron_status_info = array(
+	CT_STATUS_UNKNOWN => array('id' => CT_STATUS_UNKNOWN, 'title' => translate('Неизвестно'), 'color' => 'gray'),
+	CT_STATUS_RUNNING => array('id' => CT_STATUS_RUNNING, 'title' => translate('Работает'), 'color' => 'red'),
+	CT_STATUS_OK => array('id' => CT_STATUS_OK, 'title' => translate('Ок'), 'color' => 'green'),
+	CT_STATUS_ERROR => array('id' => CT_STATUS_ERROR, 'title' => translate('Ошибка'), 'color' => 'red'),
+	CT_STATUS_WARNING => array('id' => CT_STATUS_WARNING, 'title' => translate('Предупреждение'), 'color' => 'magenta'),
+	CT_STATUS_DIE => array('id' => CT_STATUS_DIE, 'title' => translate('Умер'), 'color' => 'red'),
+);
+
+global $cron_flag_hash;
+$cron_flag_hash = array(
+);
+
+function cron_task_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_CRON_TASKS, $ref, $add);
+}
+
+function cron_task_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_CRON_TASKS, $ref, $add);
+}
+
+function cron_task_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_CRON_TASKS, $ref, $add);
+}
+
+function cron_task_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_CRON_TASKS, $param, FIELD_CRON_TASKS);
+}
+
+function cron_task_delete($ref) {
+	global $db_diff;
+	return common_delete($db_diff, TABLE_CRON_TASKS, $ref);
+}
+
+//////////////////////////////////////////////////
+
+function cron_logfile($cron_code, $str) {
+	return logfile(CT_LOG_FILE_PATH.$cron_code.'.log', $str);
+}
+
+//////////////////////////////////////////////////
+
+function cron_task_send_signal_alive($cron_task_id, $alive_tick_rate) {
+	static $last_send;
+	
+	$time = time();
+	if ($last_send+$alive_tick_rate <= $time) {
+		cron_task_save(array('id'=>$cron_task_id, 'atime' => $time));
+		$last_send = time(); // здесь уже может быть совсем другое время чем в начале функции
+	}
+}
+
+/**
+ * THis will check if cron is running
+ * @param array $cron_task Cron parameters
+ * @param bool $autokill - Obsolete param
+ * @return bool Return true, if cron is running, false, otherwise
+ */
+function cron_task_running(&$cron_task, $autokill=true) {
+	global $tq;
+	//If we got lock, cron is not running, return false, if we've failed to get lock, cron is running, return true
+	return !$tq->capture('lock_'.$cron_task['code']);
+}
+
+function cron_task_start(&$cron_task) {
+	if (!$cron_task['active']) {
+		return false;
+	}
+	if ($cron_task['period'] && $cron_task['stime']) { // запускаться не чаще чем ...
+		$sec = $cron_task['period']*60;
+		if ($cron_task['stime']+$sec > time_current()) { // рано
+			cron_logfile($cron_task['code'], 'Too early to start');
+			return false;
+		}
+	}
+	if ($cron_task['flags'] & CT_FLAG_ONLY_ONE) { // запуск только одной копии
+		if (cron_task_running($cron_task)) {
+			cron_logfile($cron_task['code'], 'another copy of cron (id='.$cron_task['stime'].') already running');
+			return false;
+		}
+	}
+	$time = time();
+	cron_logfile($cron_task['code'], 'cron task (id='.$time.') started');
+	cron_task_save(array(
+		'id' => $cron_task['id'],
+		'status' => CT_STATUS_RUNNING,
+		'stime' => $time,
+		'ftime' => 0,
+		'atime' => 0,
+	));
+	$cron_task['stime'] = $time;
+	if ($cron_task['flags'] & CT_FLAG_SEND_ALIVE) { // посылать сигнал "я живой"
+		$alive_tick_rate = max($cron_task['alive_tick_rate'], CT_MIN_TICK_RATE);
+		register_tick_function('cron_task_send_signal_alive', $cron_task['id'], $alive_tick_rate);
+	}
+	return true;
+}
+
+function cron_task_finish(&$cron_task, $status) {
+	global $tq;
+
+	cron_logfile($cron_task['code'], 'cron task (id='.$cron_task['stime'].') finished');
+	cron_task_save(array(
+		'id' => $cron_task['id'],
+		'status' => $status,
+		'ftime' => time(),
+	));
+	if ($cron_task['flags'] & CT_FLAG_SEND_ALIVE) { // посылать сигнал "я живой"
+		unregister_tick_function('cron_task_send_signal_alive');
+	}
+
+	//release lock
+	if ($cron_task['flags'] & CT_FLAG_ONLY_ONE) { // if this script allows only 1 running copy
+		$tq->release('lock_'.$cron_task['code']);
+	}
+
+	return true;
+}
+

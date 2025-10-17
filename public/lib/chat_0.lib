@@ -1,0 +1,450 @@
+<?php
+require_once 'include/lmts.inc';
+
+// в config.inc нужно задефайнить
+// CHAT_HOST - хост на котором слушается контрольный порт LMTS
+// CHAT_PORT - номер контрольного порта LMTS
+// CHAT_HTTP - адрес для клиентских хттп коннектов
+// CHAT_CLIENT_HOST - адрес для клиентского подключения к LMTS
+// CHAT_CLIENT_PORT - номер порта для клиентского подключения к LMTS.
+// CHAT_PING_INTERVAL - частота посылки TTL в LMTS.
+
+define('CHAT_AREA_ID_BROADCAST', 99999990);
+define('CHAT_AREA_ID_INST',       1000000);
+
+// Флаги каналов чата
+define('CHAT_CHF_AREA',  0x0001);
+define('CHAT_CHF_USER',  0x0002);
+define('CHAT_CHF_CLAN',  0x0004);
+define('CHAT_CHF_TRADE', 0x0008);
+define('CHAT_CHF_PARTY', 0x0010);
+define('CHAT_CHF_RAID',  0x0020);
+define('CHAT_CHF_ALLY',  0x0040);
+define('CHAT_CHF_AUX',   0x0100);	// вспомогательные каналы: 100+раса - каналы жалоб
+define('CHAT_CHF_AREA_SUBCHANNEL',  0x1000); // Межлокационные каналы чатов area_chat_subchannels
+
+// Типы сообщения
+define('CHAT_MSG_TYPE_DEFAULT', 0);
+define('CHAT_MSG_TYPE_SYSTEM', 1);
+define('CHAT_MSG_TYPE_BROADCAST', 2);
+define('CHAT_MSG_TYPE_SPECIAL', 3);
+
+// коды для специальных сообщений
+define('CODE_RESET_CHAT', 1);
+define('CODE_REDIRECT', 101);
+define('CODE_CHANGE_TITLE', 102);
+define('CODE_UNALLOC', 103);
+define('CODE_CALL_JSFUNC', 104);
+
+global $LMTS;
+$LMTS = new Lmts(CHAT_HOST, CHAT_PORT);
+
+// мудреная генерация ключика для авторизации в LMTS
+function chat_auth_key($user) {
+	$hash = md5(sprintf("blablabla%saltsaltsalt%s", $user['id'], $user['time_login']));
+	return sprintf('%08X', reset(unpack('N',pack('H*',substr($hash,0,8)))));
+}
+
+// формат именования каналов
+function chat_channel($channel, $id) {
+	$args = func_get_args();
+	return implode(':', $args);
+}
+
+// отписывает юзера от всех каналов в LMTS
+function chat_reset_user($user) {
+	global $LMTS;
+	$ret = $LMTS->reset(array($user['id']));
+	return $ret['rs'];
+}
+
+// авторизация пользователя в LMTS
+function chat_allow_user($user) {
+	global $LMTS;
+	
+	$key = chat_auth_key($user);
+	$ret = $LMTS->create(array($user['id'] => $key));
+	
+	if (!$ret) return false;
+	
+	if ($user['flags2'] & USER_FLAG2_NGINX_CHAT) {
+		$chat_http = CHAT_NGINX_HTTP . '/' . md5($key);
+	} else {
+		$chat_http = CHAT_HTTP . '/' . md5($key);
+	}
+	
+	return array(
+		'eid' => $LMTS->envId,
+		'cid' => $user['id'],
+		'key' => $key,
+		'host' => CHAT_CLIENT_HOST,
+		'port' => CHAT_CLIENT_PORT,
+		'http' => $chat_http,
+	);	
+}
+
+// подписка на канал
+function chat_subscribe_user($user, $channels) {
+	global $LMTS;
+	$ret = $LMTS->subscribe($user['id'], $channels);
+	return $ret['rs'];
+}
+
+// отписка от канала
+function chat_unsubscribe_user($user, $channels) {
+	global $LMTS;
+	$ret = $LMTS->unsubscribe($user['id'], $channels);
+	return $ret['rs'];
+}
+
+// проверка подключения юзера к чату
+function chat_user_is_connected($user) {
+	global $LMTS;
+	return $LMTS->isOnline($user['id']);
+}
+
+function chat_msg_send($msg, $channel, $channel_data=false,$param=false) {	
+	global $LMTS, $SUPPORTED_LANGUAGE_LIST;
+	if (!$msg || !$channel) return false;
+		
+	$msg['stime'] = time_current();
+	$msg['channel'] = $channel;
+	
+	if ($param['apply_tags']) {
+		require_once 'tpl/common.tpl';
+		$msg['msg_text'] = tpl_common_tags($msg['msg_text'], $param['tags_params'] ? $param['tags_params'] : array());
+	}
+	if ($param["user_level_start"]) $msg['user_level_start'] = (int)$param["user_level_start"];
+	if ($param["user_level_end"]) $msg['user_level_end'] = (int)$param["user_level_end"];
+	
+	if ($param['do_translate']) {
+		$msg['translate'] = array();
+		
+		$translate_languages = !empty($SUPPORTED_LANGUAGE_LIST) ? $SUPPORTED_LANGUAGE_LIST : array('ru'); 
+		foreach($translate_languages as $lang) {
+			translate_default_language_push($lang);
+			$text = translate($msg['msg_text']);
+			if ($param['translate_params']) {
+				$i = 0;
+				foreach ($param['translate_params'] as $tp_key => $tp) {
+					if ($param['translate_params_apply_func'][$i]) $tp = call_user_func($param['translate_params_apply_func'][$i], $tp);
+					$text = str_replace('{'.$i++.'}', $tp, $text);
+					if (!is_numeric($tp_key)) $text = str_replace($tp_key, $tp, $text);
+				}				
+			}
+			$msg['translate'][$lang] = $text;
+			translate_default_language_pop();
+		}
+		
+		unset($msg['msg_text']); 
+	}
+	
+	$talk_free = defined('SERVER_TALKFREE') && SERVER_TALKFREE;
+	$kinds = array(0);
+	if (!$talk_free && $msg['user_kind']) {
+		global $kind_info;
+		$kinds = array();
+		foreach ($kind_info as $kind) {
+			$kinds[] = $kind['id'];
+		}
+	}
+		
+	foreach ($kinds as $kind) {
+		$msg_copy = $msg;
+		
+		if ($kind != '0') {
+			if ($msg_copy['user_kind'] != $kind) {
+				if ($param['no_abracadabra'])
+					continue;
+				$msg_copy['msg_text'] = chat_abracadabra($msg_copy['msg_text']);
+			}
+			$kind = $msg_copy['user_kind'] . ':' . $kind;
+		}
+		
+		if ($channel & CHAT_CHF_AREA) { 
+			$obj_ids = (is_array($channel_data) && $channel_data['area_id']) ? $channel_data['area_id']: $channel_data;
+			if (!$obj_ids) $obj_ids = array(CHAT_AREA_ID_BROADCAST);
+			if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+			
+			foreach ($obj_ids as $obj_id) {
+				$LMTS->send(chat_channel(CHAT_CHF_AREA, $obj_id, $kind), $msg_copy);
+			}
+		}
+		
+		if ($channel & CHAT_CHF_AREA_SUBCHANNEL) { 
+			$obj_ids = (is_array($channel_data) && $channel_data['subchannel_id']) ? $channel_data['subchannel_id']: $channel_data;
+			if (!$obj_ids) $obj_ids = array(CHAT_AREA_ID_BROADCAST);
+			if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+			
+			foreach ($obj_ids as $obj_id) {
+				$LMTS->send(chat_channel(CHAT_CHF_AREA_SUBCHANNEL, $obj_id, $kind), $msg_copy);
+			}
+		}
+		
+		if ($channel & CHAT_CHF_TRADE) {
+			$obj_ids = (is_array($channel_data) && $channel_data['trade_id']) ? $channel_data['trade_id']: $channel_data;
+			if (!$obj_ids) return false;
+			if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+			foreach ($obj_ids as $obj_id) {
+				$LMTS->send(chat_channel(CHAT_CHF_TRADE, $obj_id, $kind), $msg_copy);
+			}
+		}
+	}	
+	
+	if ($channel & CHAT_CHF_USER) {
+		$obj_ids = (is_array($channel_data) && $channel_data['user_id']) ? $channel_data['user_id']: $channel_data;
+		if (!$obj_ids) return false;
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$msg_copy = $msg;
+			if ($msg_copy['user_id'] && $msg_copy['user_id'] != $obj_id && $msg_copy['user_kind'] && 
+				$msg_copy['to_user_kinds'][$obj_id] != $msg_copy['user_kind'] && !$talk_free) {
+				$msg_copy['msg_text'] = chat_abracadabra($msg_copy['msg_text']);
+			}
+			$LMTS->send(chat_channel(CHAT_CHF_USER, $obj_id), $msg_copy);
+		}
+	}
+	
+	if ($channel & CHAT_CHF_CLAN) {
+		$obj_ids = (is_array($channel_data) && $channel_data['clan_id']) ? $channel_data['clan_id']: $channel_data;
+		if (!$obj_ids) return false;
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$LMTS->send(chat_channel(CHAT_CHF_CLAN, $obj_id), $msg);
+		}
+	}
+
+	if ($channel & CHAT_CHF_PARTY) {
+		$obj_ids = (is_array($channel_data) && $channel_data['party_id']) ? $channel_data['party_id']: $channel_data;
+		if (!$obj_ids) return false;
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$LMTS->send(chat_channel(CHAT_CHF_PARTY, $obj_id), $msg);
+		}
+	}
+	
+	if ($channel & CHAT_CHF_RAID) {
+		$obj_ids = (is_array($channel_data) && $channel_data['raid_id']) ? $channel_data['raid_id']: $channel_data;
+		if (!$obj_ids) return false;
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$LMTS->send(chat_channel(CHAT_CHF_RAID, $obj_id), $msg);
+		}
+	}
+	
+	if ($channel & CHAT_CHF_ALLY) {
+		$obj_ids = (is_array($channel_data) && $channel_data['alliance_id']) ? $channel_data['alliance_id']: $channel_data;
+		if (!$obj_ids) return false;
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$LMTS->send(chat_channel(CHAT_CHF_ALLY, $obj_id), $msg);
+		}
+	}
+	
+	if ($channel & CHAT_CHF_AUX) {
+		$obj_ids = (is_array($channel_data) && $channel_data['aux']) ? $channel_data['aux']: $channel_data;
+		if (!$obj_ids) return false;
+		if (!is_array($obj_ids)) $obj_ids = array($obj_ids);
+		foreach ($obj_ids as $obj_id) {
+			$LMTS->send(chat_channel(CHAT_CHF_AUX, $obj_id), $msg);
+		}
+	}	
+
+	return true;
+}
+
+function chat_msg_send_system($msg_text, $channel, $channel_data=false, $urgent=false, $param=false) {
+	if (!mb_strlen($msg_text)) return false;
+	$msg = array(
+		'type' => CHAT_MSG_TYPE_SYSTEM,
+		'msg_text' => $msg_text,
+	);
+	if ($urgent) $msg['urgent'] = true;
+	if ($param['event_id']) $msg['event_id'] = $param['event_id'];
+	if ($param['user_kind']) $msg['user_kind'] = $param['user_kind'];
+	if ($param['command']) $msg['command'] = $param['command'];
+	return chat_msg_send($msg,$channel,$channel_data,$param);
+}
+
+function chat_msg_send_broadcast($msg_text, $user_id, $urgent=false, $kind=false, $params = false) {
+	if (!mb_strlen($msg_text) || !$user_id) return false;
+	if (is_array($user_id) && $user_id['id']) $user = $user_id;
+	else $user = user_get($user_id);
+	if (!$user) return false;
+	$msg = array(
+		'type' => CHAT_MSG_TYPE_BROADCAST,
+		'msg_text' => $msg_text,
+		'user_id' => $user['id'],
+		'user_nick' => $user['nick'],
+		'msg_color' => $user['msg_color'] ? $user['msg_color']: 'black',
+	);
+	
+	if ($urgent) $msg['urgent'] = true;
+	if ($kind) $msg['user_kind'] = $kind;
+	return chat_msg_send($msg,CHAT_CHF_AREA,CHAT_AREA_ID_BROADCAST,$params);
+}
+
+function chat_msg_send_special($code, $channel, $channel_data=false, $param=false) {
+	if (!$code) return false;
+	$msg = array(
+		'type' => CHAT_MSG_TYPE_SPECIAL,
+		'code' => $code,
+		'param' => $param,
+	);
+	return chat_msg_send($msg,$channel,$channel_data);
+}
+
+function chat_msg_send_party($msg_text,$party_id,$param=array()) {
+	if (!mb_strlen($msg_text)) return false;
+	if (!$party_id) return false;
+	require_once("lib/party.lib");
+	$msg = array(
+		'type' => CHAT_MSG_TYPE_SYSTEM,
+		'msg_text' => $msg_text,
+	);
+	if ($param['session_user_id']) {
+		$sql = sql_pholder(' AND user_id<>?',$param['session_user_id']);
+	}
+	$party = party_get($party_id);
+	if ($party['flags'] & PARTY_FLAG_NOCHAT) return false;
+	$party_list = party_member_list($party_id,PM_STATUS_ACTIVE,$sql);
+	$user_ids = get_hash($party_list,'user_id','user_id');
+	if ($param['area_id'] && is_array($user_ids) && $user_ids) {
+		$user_ids = user_list(false,sql_pholder(' AND area_id=? AND id IN (?@)',$param['area_id'],$user_ids),false,'id');
+		$user_ids = get_hash($user_ids,'id','id');
+	}
+	return chat_msg_send($msg,CHAT_CHF_USER,$user_ids,$param);
+}
+
+global $__elems, $__lang;
+$__elems[1] = array(
+	1 => explode(' ','a e i'),
+	2 => explode(' ','ad af ah an ar as ax be ca ce co da de do ea ed ef el em er es et ex fa fe fi fo fy ga ge he ia id il im in ir is ix ka ke la le ma me mo na ne of ol on or ox pa pe py qe ra re ri ro sa se so ta te to ve vi vo ya'),
+);
+$__elems[2] = array(
+	1 => explode(' ','j k n o u v'),
+	2 => explode(' ','ab ad ah aj an ar at av aw az ba be bh br bz da de do du ed ef eg ej eh el em ep er es et ev ew ez fa fe fh fi fo fr ga go gu ha he hi ho hu ib ic ig ik il in ip ir it iv iz ja jo ju ka ke kr me mh mn mo na ne of ol on or os ov ow oz pa pe ph pk po ra re rh ri ro sa se sh so ta te th to ve vi vo vh za zh zi zo zu'),
+);
+
+$__lang = 1;
+
+function __acword($matches) {
+	global $__elems, $__lang;
+	$word = $matches[1];
+	$word = strtolower($word);
+	$wordL = mb_strlen($word);
+	$h = md5($word);
+	$k = intval(mb_substr($h,0,4),16);
+	$lmin = $wordL*0.8;
+	$lmax = $wordL*1.2;
+	$len = ceil($lmin + $k % max($lmax-$lmin,1));
+	$str = '';
+	$r = $__lang;
+	$rI = 0;
+	$_e = $__elems[$__lang];
+	while ($len > 0) {
+		$r += ord($word{$rI%$wordL})^5678 + ord($word{($rI+1)%$wordL})^1234;
+		$_eL = min(count($_e),$len);
+		$_eA = $_e[$_eL];
+		$_eC = count($_eA);
+		$_s = $_eC ? $_eA[($_eC + $r) % $_eC] : 0;
+		$_sL = mb_strlen($_s);
+		$str .= $_s;
+		$len -= $_sL;
+		$rI += $_sL;
+	}
+	$word = ucfirst($matches[1]);
+	if ($matches[1]{0} == $word{0}) $str = ucfirst($str);
+	return $str;
+}
+
+function chat_abracadabra($text, $lang=1) {
+	global $__elems, $__lang;
+	$__lang = $lang;
+	$text = strip_tags($text);
+	$text = preg_replace_callback(translate('/(\S+)/'),'__acword',$text);
+	return $text;
+}
+
+function chat_check_links($msg_text) {
+	global $regexp_hash;
+	if (preg_match_all($regexp_hash['chat_search_link'],$msg_text,$matches)) {
+		$valid_domains = str_replace('\|', '|', preg_quote(translate('elements.dwar.xyz|dragon-comments.tk'), '/'));
+		foreach ($matches[0] as $v) {
+			if (!preg_match('/\b(?:'.$valid_domains.')\b/',trim($v))) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+function chat_msg_crc($msg_html) {
+	$c = array();
+	$c[] = substr_count($msg_html,"?");
+	$c[] = substr_count($msg_html,"+");
+	$c[] = substr_count($msg_html,"<");
+	$c[] = substr_count($msg_html,"%3C");
+	$msg_html = html_entity_decode(strip_tags($msg_html), ENT_COMPAT, charset_code());
+	return md5('MSG-'.$msg_html.'-'.implode('-',$c));
+}
+
+function chat_link_replace_callback($matches) {
+	$link = $text = $matches[0];
+	if (!$matches[3])
+		$link .= '/';
+	elseif ($matches[3] == '.') {
+		$link[strlen($link) - 1] = '/';
+		$text = substr($text, 0, mb_strlen($text) - 1);
+	}
+	if (stripos($link, 'http://') !== 0 && stripos($link, 'https://') !== 0)
+		$link = 'http://'.$link;
+	$encoded_link = '';
+	for ($i = 0; $i < mb_strlen($link); ++$i) {
+		$letter = mb_substr($link, $i, 1);
+		$ascii_code = ord($letter);
+		if ($ascii_code > 127)//http://www.asciitable.com/
+			$encoded_link .= urlencode($letter);
+		else
+			$encoded_link .= $letter;
+	}
+	$class = '';
+	$domain = $matches[2];
+	if (stripos($link, $domain.'/info/') !== false)
+		$class = ' class="info_portal"';
+	$str = '<a href="'.$link.'" target="_blank"'.$class.'>'.$text.'</a>';
+	return $str;
+}
+
+function chat_render_links($text) {
+	global $regexp_hash;
+	$valid_domains = str_replace('\|', '|', preg_quote(translate('dwar.mail.ru|dwar.icq.com|dwar.ru|terrabank.ru|dclans.ru|it-territory.ru|expressgold.ru'), '#'));
+	$matches = array();
+	return preg_replace_callback('#((?:ht'.'tps?://)?(?:[\w\d]+\.)?('.$valid_domains.')([^\s<]+|$|))#iu', 'chat_link_replace_callback', $text);
+}
+
+function chat_macros_artifact_replace_callback($matches) {
+	static $count = 0;
+	$str = '';
+	if ($count >= CHAT_MSG_MACROSES_MAX_ARTIFACT_COUNT)
+		return $str;
+	++$count;
+	$id = $matches[1];
+	if (!$id)
+		return $str;
+	$artifact = artifact_get($id);
+	if (!$artifact)
+		return $str;
+	$artifact_artikul = artifact_artikul_get($artifact['artikul_id']);
+	if (!$artifact_artikul)
+		return $str;
+	$title = $artifact_artikul['title'];
+	$str = '<a href="/artifact_info.php?artifact_id='.$id.'" target="_blank" class="macros_artifact macros_artifact_quality'.$artifact_artikul['quality'].'" onclick="showArtifactInfo('.$id.');return false;">'.$title.'</a>';
+	return $str;
+}
+
+function chat_render_macroses_links($text) {
+	$text = preg_replace_callback('#\[\[artifact_(\d+)\]\]#iu', 'chat_macros_artifact_replace_callback', $text);
+	return $text;
+}
+

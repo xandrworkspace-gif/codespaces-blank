@@ -1,0 +1,261 @@
+<? # $Id: user_info.lib,v 1.9 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// Имена и поля таблиц
+define('TABLE_COUNTRIES','countries');
+define('FIELD_COUNTRIES','');
+define('TABLE_USER_INFO_CHANGES','user_info_changes');
+define('FIELD_USER_INFO_CHANGES','');
+
+define('USER_INFO_PICTURE_SIZE_MAX', 500);  // Максимальный размер в Кб
+define('USER_INFO_PICTURE_BOX_MAX', 1024);  // Максимальный размер по горизонтали и по вертикали
+
+
+global $user_info_change_rules;
+
+$user_info_change_rules = array(		// Настройки времен изменений (в днях)
+//	array('fields' => array('email','passwd','question','answer'), 'days' => 3, 'title' => 'e-mail, пароль, контрольная пара'),
+	array('fields' => array('passwd','question','answer'), 'days' => 3, 'title' => translate('пароль, контрольная пара')),
+	array('fields' => array('phone'), 'days' => 30, 'title' => translate('телефон')),
+);
+
+
+function user_info_region_list($add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_COUNTRIES,false,$add);
+}
+
+function user_info_get($ref=false, $add='') {
+	global $db_auth;
+	return common_get($db_auth,TABLE_USER_INFO,$ref,$add,'uid');
+}
+
+function user_info_list($add='', $field_list='*', $ref = false) {
+	global $db_auth;
+	return common_list($db_auth,TABLE_USER_INFO,$ref,$add,$field_list);
+}
+
+function user_info_count($ref=false, $add='') {
+	global $db_auth;
+	return common_count($db_auth,TABLE_USER_INFO,$ref,$add);
+}
+
+function user_info_save($param, $force_insert=false) {
+	global $db_auth;
+	if ($force_insert) $param['_mode'] = CSMODE_INSERT;
+	return common_save($db_auth,TABLE_USER_INFO,$param,FIELD_USER_INFO,'uid');
+}
+
+function user_info_delete($ref=false, $add='') {
+	global $db_auth;
+	return common_delete($db_auth,TABLE_USER_INFO,$ref,$add,'uid');
+}
+
+function user_info_change_get($ref=false, $add='') {
+	global $db_auth;
+	return common_get($db_auth,TABLE_USER_INFO_CHANGES,$ref,$add);
+}
+
+function user_info_change_list($user_id=false, $add='') {
+	global $db_auth;
+	$ref = false;
+	if ($user_id) $ref['user_id'] = $user_id;
+	return common_list($db_auth,TABLE_USER_INFO_CHANGES,$ref,$add);
+}
+
+function user_info_change_save($param) {
+	global $db_auth;
+	return common_save($db_auth,TABLE_USER_INFO_CHANGES,$param,FIELD_USER_INFO_CHANGES);
+}
+
+function user_info_change_delete($ref=false, $add='') {
+	global $db_auth;
+	return common_delete($db_auth,TABLE_USER_INFO_CHANGES,$ref,$add);
+}
+
+// ===============================================
+
+// мигаем кнопками пользовательского интерфейса
+function user_info_set_button(/* int */ $user_id, /* string */ $type, /* int */ $id, /* bool */ $value, /* bool */ $client_update = true) {
+	$swf_type_id = array(
+		'top' => 'top_mnu',
+		'right' => 'items_right',
+	);
+
+	if (!isset($swf_type_id[$type]))
+		return false;
+
+	$user_info = user_info_get(array('uid' => $user_id));
+	if (!$user_info)
+		return false;
+
+	$swf_data = json_decode($user_info['swf_data'], true);
+	if (!$swf_data)
+		$swf_data = array('top_buttons' => 0, 'right_buttons' => 0);
+
+	if (!isset($swf_data[$type . '_buttons']))
+		$swf_data[$type . '_buttons'] = 0;
+
+	if ($value)
+		$swf_data[$type . '_buttons'] |= $id;
+	else
+		$swf_data[$type . '_buttons'] &= ~$id;
+
+	// update client
+	if ($client_update)
+		for ($i = 0; $i < 32; $i++)
+			if ($id & (1 << $i))
+				chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user_id, array(
+					'func' => "getSWF('{$swf_type_id[$type]}').blinkButton(" . ($i + 1) . ", " . $value . ")"
+				));
+
+	user_info_save(array(
+		'_mode' => CSMODE_UPDATE,
+		'uid' => $user_info['uid'],
+		'swf_data' => json_encode($swf_data),
+	));
+
+	return true;
+}
+
+// Функция проверки возможности изменения полей в анкете
+function user_info_check_changes($param) {
+	global $user_info_change_rules;
+	$user_id = $param['uid'] ? $param['uid']: $param['id'];
+	if (!$user_id) return array('status' => 0);
+	$param_old = user_get($user_id,false,'',true);
+	$error = array();
+	foreach ($param as $field=>$val) {
+		if ($param_old[$field] == $val) continue;
+		foreach ($user_info_change_rules as $rule) {
+			if (!in_array($field,$rule['fields'])) continue;
+			$days = $rule['days'];
+			$time = time_current() - $days*60*60*24;
+			$change = user_info_change_get(false,sql_pholder(" AND user_id=? AND field IN (?@) AND stime>? ORDER BY stime DESC",$user_id,$rule['fields'],$time));
+			if (!$change) continue;
+			$error[] = array_merge($rule,array(
+				'field' => $field,
+				'time_last' => $change['stime'],
+				'time_left' => $change['stime'] - $time,
+			));
+		}
+	}
+	$out = $error ? array(
+		'status' => 0,
+		'error' => $error,
+	): array('status' => 1);
+	return $out;
+}
+
+function user_info_apply_changes($param) {
+	global $user_info_change_rules;
+	$user_id = $param['uid'] ? $param['uid']: $param['id'];
+	if (!$user_id) return array('status' => 0);
+	$param_old = user_get($user_id,false,'',true);
+	foreach ($param as $field=>$val) {
+		if ($param_old[$field] == $val) continue;
+		foreach ($user_info_change_rules as $rule) {
+			if (!in_array($field,$rule['fields'])) continue;
+			user_info_change_save(array(
+				'user_id' => $user_id,
+				'field' => $field,
+				'value_old' => $param_old[$field],
+				'stime' => time_current(),
+			));
+		}
+	}
+	user_save($param);
+	return array('status' => 1);
+}
+
+function user_info_photo_upload($user_id) {
+	if (!$user_id) return false;
+	$out = array();
+	$msg_text = false;
+	if (!$_FILES['picture']['name'] || !$_FILES['picture']['size']) $msg_text = translate('Не указан файл!');
+	elseif ($_FILES['picture']['size'] > (USER_INFO_PICTURE_SIZE_MAX*1024)) $msg_text = sprintf(translate('Размер файла должен быть не больше %d Кб!'),USER_INFO_PICTURE_SIZE_MAX);
+	else {
+		$fn = $_FILES['picture']['name'];
+		$file_tmp_name = $_FILES['picture']['tmp_name'];
+		$fn_parts = pathinfo($fn);
+		$fn_ext = $fn_parts['extension'];
+		if (!preg_match("/(jpg|jpeg|png|gif)/i",$fn_ext)) $msg_text = translate('Неверный тип файла!');
+		else {
+			$photo_path = SERVER_ROOT.PATH_IMAGE_USERS;
+			$fn_new = sprintf("%08d_%s.jpg",$user_id,substr(md5(rand()),0,4));
+			$status = true;
+			$status &= user_info_photo_resize($file_tmp_name,$photo_path.$fn_new,$fn_ext);
+			if (!$status) $msg_text = translate('Картинка не может быть загружена!');
+			else {
+				chmod($photo_path.$fn_new, 0644);
+				$out['name'] = $fn_new;
+			}
+		}
+	}
+	$out['error'] = $msg_text;
+	return $out;
+}
+
+function user_info_photo_resize($src_fn, $dst_fn, $src_ext='jpg', $dst_size=1, $mode=2) {
+	if (!file_exists($src_fn)) return false;
+	switch ($dst_size) {
+		case 1:
+			$dst_size_x = 190;
+			$dst_size_y = 185;
+			break;
+	}
+	switch (strtolower($src_ext)) {
+		case 'jpg': $img_src = ImageCreateFromJpeg($src_fn); break;
+		case 'png': $img_src = ImageCreateFromPng($src_fn); break;
+		case 'gif': $img_src = ImageCreateFromGif($src_fn); break;
+	}
+	if (!$img_src) return false;
+	$src_size_x = Imagesx($img_src);
+	$src_size_y = Imagesy($img_src);
+	if (($src_size_x > USER_INFO_PICTURE_BOX_MAX) || ($src_size_y > USER_INFO_PICTURE_BOX_MAX)) {
+		ImageDestroy($img_src);
+		return false;
+	}
+
+	$dst_ratio = $dst_size_x/$dst_size_y;
+	$src_ratio = $src_size_x/$src_size_y;
+
+	if ($mode == 1) {   // Берем внешний контур
+		if ($dst_ratio >= $src_ratio) {
+			$new_size_x = ($src_size_x * $dst_size_y) / $src_size_y;
+			$new_size_y = $dst_size_y;
+		} else {
+			$new_size_x = $dst_size_x;
+			$new_size_y = ($src_size_y * $dst_size_x) / $src_size_x;
+		}
+		$dst_offset_x = ($dst_size_x - $new_size_x)/2;
+		$dst_offset_y = ($dst_size_y - $new_size_y)/2;
+		$img_dst = ImageCreateTrueColor($dst_size_x, $dst_size_y);
+		ImageCopyResampled($img_dst,$img_src,$dst_offset_x,$dst_offset_y,0,0,$new_size_x,$new_size_y,$src_size_x,$src_size_y);
+	} elseif ($mode == 2) {  // Берем внутренний контур
+		if ($dst_ratio >= $src_ratio) {
+			$new_size_x = $src_size_x;
+			$new_size_y = ($src_size_x * $dst_size_y) / $dst_size_x;
+		} else {
+			$new_size_x = ($src_size_y * $dst_size_x) / $dst_size_y;
+			$new_size_y = $src_size_y;
+		}
+		$src_offset_x = ($src_size_x - $new_size_x)/2;
+		$src_offset_y = ($src_size_y - $new_size_y)/2;
+		$img_dst = ImageCreateTrueColor($dst_size_x, $dst_size_y);
+		ImageCopyResampled($img_dst,$img_src,0,0,$src_offset_x,$src_offset_y,$dst_size_x,$dst_size_y,$new_size_x,$new_size_y);
+	} elseif ($mode == 3) {  // Зажимаем по горизонтали, не меняем пропорции
+		$new_size_x = $src_size_x;
+		$new_size_y = $src_size_y;
+		if ($src_size_x > $dst_size_x) {
+			$new_size_x = $dst_size_x;
+			$new_size_y = ($src_size_y * $dst_size_x) / $src_size_x;
+		}
+		$img_dst = ImageCreateTrueColor($new_size_x, $new_size_y);
+		ImageCopyResampled($img_dst,$img_src,0,0,0,0,$new_size_x,$new_size_y,$src_size_x,$src_size_y);
+	}
+	ImageJpeg($img_dst,$dst_fn);
+	ImageDestroy($img_src);
+	ImageDestroy($img_dst);
+	return true;
+}
+?>

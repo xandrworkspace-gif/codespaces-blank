@@ -1,0 +1,343 @@
+<?
+
+define('LITE_PASS_LIST', 'lite_pass');
+define('LITE_PASS_ITEM', 'lite_pass_item');
+define('LITE_PASS_USER', 'lite_pass_user');
+define('LITE_PASS_STAT', 'lite_pass_stat');
+define('LITE_PASS_ACTIONS', 'lite_pass_actions');
+
+define('LITE_PASS_FLAG_ACTIVE', 0x0000001);
+define('LITE_PASS_FLAG_ADMIN', 0x0000002);
+define('LITE_PASS_FLAG_DISABLE_PREMIUM', 0x0000004);
+
+define('LITE_PASS_TYPE_SYSTEM_BONUS', -1); //Системный тип!
+define('LITE_PASS_TYPE_DEFAULT', 0);
+define('LITE_PASS_TYPE_FIGHT', 1);
+
+$lite_pass_type_hash = array(
+    LITE_PASS_TYPE_DEFAULT => 'Стандартный',
+    LITE_PASS_TYPE_FIGHT => 'Боевой',
+);
+
+define('LITE_PASS_AWARD_LINES', 2);
+
+global $lite_pass_action_global_hash;
+$lite_pass_action_global_hash = array();
+
+$lite_pass_flags_hash = array(
+    LITE_PASS_FLAG_ACTIVE => 'Активный',
+    LITE_PASS_FLAG_ADMIN => 'Только для админов',
+    LITE_PASS_FLAG_DISABLE_PREMIUM => 'Отключить премиум ветку',
+);
+
+define('LITE_PASS_ACTION_CHAOT_FIGHT', 1); //ID участие в хаотических битвах
+define('LITE_PASS_ACTION_DUNGEON_PP', 2); //ID участия в Подземельях
+define('LITE_PASS_ACTION_KILL_ENEMY', 3); //ID участия Скальпы
+define('LITE_PASS_ACTION_ACTIVITY_GET', 5); //ID получить награду за активность
+define('LITE_PASS_ACTION_EVENT_GET', 6); //ID участие в событие
+define('LITE_PASS_ACTION_KILL_BOT', 7); //ID участия Убийство бота
+define('LITE_PASS_ACTION_COLLECTION_GET', 8); //ID собрать коллекцию
+define('LITE_PASS_ACTION_FRIEND_GIFT', 9); //ID отправить подарок другу
+define('LITE_PASS_ACTION_RESOURCE_GET', 10); //ID сбор ресурсов
+
+define('LITE_PASS_ACTION_DISABLED', 0x00000001);
+define('LITE_PASS_ACTION_IGNORE_LIMIT', 0x00000002);
+
+$lite_pass_action_flags_hash = array(
+    LITE_PASS_ACTION_DISABLED => 'Выключено',
+    LITE_PASS_ACTION_IGNORE_LIMIT => 'Выдачать игнорируя суточный лимит.',
+);
+
+////////////////////////////////////////////////////////////////////////////////////
+
+function lite_pass_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,LITE_PASS_LIST,$ref,$add);
+}
+
+function lite_pass_list($ref=false, $add='', $field='*') {
+    global $db_2;
+    return common_list($db_2,LITE_PASS_LIST,$ref,$add,$field);
+}
+
+function lite_pass_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, LITE_PASS_LIST, $ref, $add);
+}
+
+function lite_pass_save($param) {
+    global $db_2;
+    return common_save($db_2,LITE_PASS_LIST,$param);
+}
+
+function lite_pass_delete($ref, $add='') {
+    global $db_2;
+    //common_delete($db_2,LITE_PASS_LIST,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+
+function lite_pass_item_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,LITE_PASS_ITEM,$ref,$add);
+}
+
+function lite_pass_item_list($ref=false, $add='', $field='*') {
+    global $db_2;
+    return common_list($db_2,LITE_PASS_ITEM,$ref,$add,$field);
+}
+
+function lite_pass_item_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, LITE_PASS_ITEM, $ref, $add);
+}
+
+function lite_pass_item_save($param) {
+    global $db_2;
+    return common_save($db_2,LITE_PASS_ITEM,$param);
+}
+
+function lite_pass_item_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,LITE_PASS_ITEM,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+
+function lite_pass_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,LITE_PASS_USER,$ref,$add);
+}
+
+function lite_pass_user_list($ref=false, $add='', $field='*') {
+    global $db_2;
+    return common_list($db_2,LITE_PASS_USER,$ref,$add,$field);
+}
+
+function lite_pass_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, LITE_PASS_USER, $ref, $add);
+}
+
+function lite_pass_user_save($param) {
+    global $db_2;
+    return common_save($db_2,LITE_PASS_USER,$param);
+}
+
+function lite_pass_user_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,LITE_PASS_USER,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+
+function lite_pass_stat_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,LITE_PASS_STAT,$ref,$add);
+}
+
+function lite_pass_stat_list($ref=false, $add='', $field='*') {
+    global $db_2;
+    return common_list($db_2,LITE_PASS_STAT,$ref,$add,$field);
+}
+
+function lite_pass_stat_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, LITE_PASS_STAT, $ref, $add);
+}
+
+function lite_pass_stat_save($param) {
+    global $db_2;
+    return common_save($db_2,LITE_PASS_STAT,$param);
+}
+
+function lite_pass_stat_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,LITE_PASS_STAT,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+
+function lite_pass_action_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,LITE_PASS_ACTIONS,$ref,$add);
+}
+
+function lite_pass_action_list($ref=false, $add='', $field='*') {
+    global $db_2;
+    return common_list($db_2,LITE_PASS_ACTIONS,$ref,$add,$field);
+}
+
+function lite_pass_action_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, LITE_PASS_ACTIONS, $ref, $add);
+}
+
+function lite_pass_action_save($param) {
+    global $db_2;
+    return common_save($db_2,LITE_PASS_ACTIONS,$param);
+}
+
+function lite_pass_action_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,LITE_PASS_ACTIONS,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////
+
+function lite_pass_check_active($lite_pass, $session_user = array()) {
+    $admin = ($session_user ? ($session_user['flags'] & USER_FLAG_ADMIN) : false);
+    if(!$lite_pass) return false;
+    if(($lite_pass['flags'] & LITE_PASS_FLAG_ADMIN)) return $admin;
+    if(!($lite_pass['flags'] & LITE_PASS_FLAG_ACTIVE)) return false;
+    return ($lite_pass['stime'] < time_current() || $lite_pass['dtime'] > time_current());
+}
+
+function lite_pass_current_get($user, $type = LITE_PASS_TYPE_DEFAULT) {
+    $add = '';
+    //$add .= sql_pholder(' AND '.(!($user['flags'] & USER_FLAG_ADMIN) ? '!' : '').'(flags & ?#LITE_PASS_FLAG_ADMIN)');
+    $add .= sql_pholder(' AND (flags & ?#LITE_PASS_FLAG_ACTIVE) '.(!($user['flags'] & USER_FLAG_ADMIN) ? ' AND !(flags & ?#LITE_PASS_FLAG_ADMIN)' : ''));
+    $lite_pass = lite_pass_get(array('type' => $type), $add.sql_pholder(' AND stime < ? AND dtime > ?', time_current(), time_current()));
+    return $lite_pass;
+}
+
+function lite_pass_cron(){
+    lite_pass_user_save(array(
+        '_add' => sql_pholder(' AND dtime < ?', time_current()),
+        '_set' => sql_pholder(' dtime = ?, cond_day = 0', mktime(23, 59, 59) + 1),
+    ));
+    lite_pass_stat_save(array(
+        '_add' => sql_pholder(' AND dtime < ?', time_current()),
+        '_set' => sql_pholder(' dtime = ?, amount = 0, day_limit_bonus_apply = 0', mktime(23, 59, 59) + 1),
+    ));
+}
+
+function lite_pass_user_action($user, $action_id, $multi = 1, $type = LITE_PASS_TYPE_DEFAULT) {
+    if(!$user) return false;
+    if($type == LITE_PASS_TYPE_SYSTEM_BONUS) {
+        $lite_pass_action = lite_pass_action_get($action_id);
+        $type = $lite_pass_action['type'];
+    }else {
+        $lite_pass_action = lite_pass_action_get(array('id' => $action_id, 'type' => $type));
+    }
+    if(!$lite_pass_action) return false;
+    if($user['id'] != 33 && $lite_pass_action['flags'] & LITE_PASS_ACTION_DISABLED) return false;
+
+    $lite_pass_stat = lite_pass_stat_get(array('user_id' => $user['id'], 'action_id' => $lite_pass_action['id']));
+
+    $multi_max = 1;
+    if($lite_pass_action['day_limit']) {
+        $multi_max = min($lite_pass_action['day_limit'] - $lite_pass_stat['amount'], $multi);
+
+        if($lite_pass_stat){
+            lite_pass_stat_save(array(
+                'id' => $lite_pass_stat['id'],
+                '_set' => sql_pholder(' amount = amount + ?', $multi),
+            ));
+        }else{
+            lite_pass_stat_save(array(
+                'user_id' => $user['id'],
+                'action_id' => $lite_pass_action['id'],
+                'amount' => 1,
+                'dtime' => mktime(23, 59,59) + 1,
+            ));
+        }
+    }
+
+    if($lite_pass_action['day_limit'] && $lite_pass_stat['amount'] >= $lite_pass_action['day_limit']) {
+        return false;
+    }
+
+    if($lite_pass_action['day_limit'] && $lite_pass_action['day_limit_bonus_id']) {
+        $lite_pass_stat = lite_pass_stat_get(array('user_id' => $user['id'], 'action_id' => $lite_pass_action['id']));
+        if($lite_pass_stat) {
+            if ($lite_pass_stat['dtime'] && (mktime(23, 59, 59) + 1) > $lite_pass_stat['dtime']) return false;
+            if (!($lite_pass_action['flags'] & LITE_PASS_ACTION_IGNORE_LIMIT) && $lite_pass_stat['amount'] >= $lite_pass_action['day_limit']) {
+                if ($lite_pass_action['day_limit_bonus_id'] && !intval($lite_pass_stat['day_limit_bonus_apply'])) {
+                    $day_limit_bonus_apply_saved = lite_pass_stat_save(array(
+                        'id' => $lite_pass_stat['id'],
+                        'day_limit_bonus_apply' => 1,
+                    ));
+                    if($day_limit_bonus_apply_saved) {
+                        bonus_apply($user, $lite_pass_action['day_limit_bonus_id']);
+                    }
+                }
+            }
+        }
+    }
+
+    if($multi_max > 0) {
+        if (!lite_pass_user_add($user, ($lite_pass_action['cond'] * $multi_max), $type)) return false;
+    }
+
+    return true;
+}
+
+function lite_pass_action_init() {
+    global $lite_pass_action_global_hash;
+    if(!$lite_pass_action_global_hash) {
+        $lite_pass_action_global_hash = make_hash(lite_pass_action_list());
+    }
+}
+
+function lite_pass_action_limit_print($action_id, $lite_pass_stat) {
+    global $lite_pass_action_global_hash;
+    $action = $lite_pass_action_global_hash[$action_id];
+    if(!$action) return '';
+    return '[лимит: '.min(intval($lite_pass_stat['amount']), $action['day_limit']).' из '.$action['day_limit'].' в день]';
+        //[лимит: 1 из 5 в день]
+}
+
+function lite_pass_user_add($user, $conds = 1, $type = LITE_PASS_TYPE_DEFAULT) {
+    if(!$user) return false;
+    $lite_pass = lite_pass_current_get($user, $type);
+    if(!$lite_pass && ($user['flags'] & USER_FLAG_ADMIN)) $lite_pass = lite_pass_get(1);
+    if(!$lite_pass) return false;
+
+    $lite_pass_user = lite_pass_user_get(array(
+        'lite_pass_id' => $lite_pass['id'],
+        'user_id' => $user['id'],
+    ));
+    if(!$lite_pass_user) {
+        $lite_pass_user_id = lite_pass_user_save(array(
+            'lite_pass_id' => $lite_pass['id'],
+            'user_id' => $user['id'],
+            'dtime' => mktime(23, 59, 59) + 1,
+        ));
+        $lite_pass_user = lite_pass_user_get($lite_pass_user_id);
+    }
+    if(!$lite_pass_user) return false;
+
+    if($lite_pass['cond_max_day'] && (mktime(23, 59, 59) + 1) > $lite_pass_user['dtime']) return false;
+
+    if($lite_pass['cond_max_day'] && $lite_pass_user['cond_day'] >= $lite_pass['cond_max_day']) return false;
+    if($lite_pass['cond_max_day'] && $lite_pass_user['cond_day'] + $conds > $lite_pass['cond_max_day']) {
+        //Режем conds
+        $conds -= (($lite_pass_user['cond_day'] + $conds) - $lite_pass['cond_max_day']);
+        if($lite_pass_user['cond_day'] + $conds > $lite_pass['cond_max_day']){
+            $conds = 0;
+        }
+    }
+
+    if($conds > 0) {
+        lite_pass_user_save(array(
+            'id' => $lite_pass_user['id'],
+            '_set' => sql_pholder(' cond = cond + ?, cond_day = cond_day + ?, dtime = ?', $conds, $conds, (mktime(23, 59, 59) + 1)),
+        ));
+        chat_msg_send_system('<b>Вы получили <b class=redd>+'.$conds.'</b> к участию в Сезоне "'.$lite_pass['title'].'", всего очков: <b class=redd>'.($lite_pass_user['cond'] + $conds).'.</b></b>', CHAT_CHF_USER, $user['id']);
+    }
+
+    return true;
+}
+
+function lite_pass_open($user = array()){
+    if(((defined('PASS_SEASON_GLOBAL_OPEN_ADMIN') && PASS_SEASON_GLOBAL_OPEN_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('PASS_SEASON_GLOBAL_OPEN') && PASS_SEASON_GLOBAL_OPEN)) {
+        return true;
+    }
+    return false;
+}

@@ -1,0 +1,546 @@
+<? # $Id: quest.lib,v 1.63 2010-01-15 09:50:10 p.knoblokh Exp $
+
+require_once("/home/admin/web/dwar.fun/public_html/lib/log.lib");
+
+// Имена и поля таблиц
+define('TABLE_QUESTS','quests');
+define('FIELD_QUESTS','');
+define('TABLE_QUEST_POINTS','quest_points');
+define('FIELD_QUEST_POINTS','');
+define('TABLE_QUEST_POINT_AWARDS','quest_point_awards');
+define('FIELD_QUEST_POINT_AWARDS','');
+define('TABLE_QUEST_USERS','quest_users');
+define('FIELD_QUEST_USERS','');
+define('TABLE_QUEST_USER_POINTS','quest_user_points');
+define('FIELD_QUEST_USER_POINTS','');
+define('TABLE_QUEST_TYPES','quest_types');
+define('FIELD_QUEST_TYPES','');
+
+// статусы квеста
+define('QUEST_STATUS_AVAIL',     0);	// Доступен
+define('QUEST_STATUS_STARTED',   1);	// Начат
+define('QUEST_STATUS_FINISHED',  2);	// Закончен
+
+// флаги квеста
+define('QUEST_FLAG_MULTITIME',   0x0001); // Многоразовый
+define('QUEST_FLAG_ADMIN',       0x0002); // Видимый только администраторами
+define('QUEST_FLAG_CLAN',        0x0004); // Клановый квест
+define('QUEST_FLAG_DEFAULT',     0x0008); // Квест по-умолчанию
+define('QUEST_FLAG_MAIN',        0x0010); // Квест по-умолчанию
+define('QUEST_FLAG_NO_COOLDOWN', 0x0020); // не показывать кул даун
+define('QUEST_FLAG_NO_REFUSE',   0x0040); // Нельзя отказаться
+define('QUEST_FLAG_STAT',        0x0080); // Писать статистику по этому квесту
+define('QUEST_FLAG_STORE',       0x0200); // Магазин
+define('QUEST_FLAG_SEASON',      0x0400); // Сезонный
+define('QUEST_FLAG_FINISHER',      0x0800); // Можно завершить досрочно
+
+// пользовательские флаги квеста
+define('QUEST_USER_FLAG_UNREAD', 0x0001); // Этап квеста поменялся
+
+// статусы этапов квеста
+define('QUEST_PS_AVAIL',   0);	// Доступен
+define('QUEST_PS_PASSED',  1);	// Пройден
+
+// флаги этапов квеста
+define('QUEST_PF_START',     0x0001);	// Начало квеста
+define('QUEST_PF_FINISH',    0x0002);	// Конец квеста
+define('QUEST_PF_MULTITIME', 0x0004);	// Многоразовый
+define('QUEST_PF_HIDDEN',    0x0008);	// Скрытый
+define('QUEST_PF_REMIND',    0x0010);	// Напоминающий этап
+
+$quest_status_hash = array(
+	QUEST_STATUS_AVAIL => translate('Доступен'),
+	QUEST_STATUS_STARTED => translate('Начат'),
+	QUEST_STATUS_FINISHED => translate('Закончен'),
+);
+
+$quest_point_status_hash = array(
+	QUEST_PS_AVAIL => translate('Доступен'),
+	QUEST_PS_PASSED => translate('Пройден'),
+);
+
+
+function quest_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_QUESTS,$ref,$add);
+}
+
+function quest_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_QUESTS,$ref,$add, $field_list);
+}
+
+function quest_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_QUESTS, $ref, $add);
+}
+
+function quest_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_QUESTS,$param,FIELD_QUESTS);
+}
+
+function quest_delete($ref) {
+	global $db_2, $NODE_NUMS;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_2,TABLE_QUESTS,$ref);
+	quest_point_delete(array('quest_id' => $ref));
+	foreach ($NODE_NUMS as $nn) {
+		if (!NODE_SWITCH($nn)) continue;
+		quest_user_delete(array('quest_id' => $ref));
+		quest_user_point_delete(array('quest_id' => $ref));
+	}
+	return true;
+}
+
+function quest_type_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_QUEST_TYPES,$ref,$add);
+}
+
+function quest_type_list($add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_QUEST_TYPES,false,$add);
+}
+
+function quest_type_count($add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_QUEST_TYPES, $ref, $add);
+}
+
+function quest_type_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_QUEST_TYPES,$param,FIELD_QUEST_TYPES);
+}
+
+function quest_type_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_QUEST_TYPES,$ref,$add);
+}
+
+function quest_point_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_QUEST_POINTS,$ref,$add);
+}
+
+function quest_point_list($ref=false, $add='') {
+	global $db_2;
+	if (!$ref && !$add) return false;
+	return common_list($db_2,TABLE_QUEST_POINTS,$ref,$add);
+}
+
+function quest_point_count($ref=false, $add='') {
+	global $db_2;
+	if (!$ref && !$add) return false;
+	return common_count($db_2,TABLE_QUEST_POINTS,$ref,$add);
+}
+
+function quest_point_save($param) {
+	global $db_2;
+	if (!$param['id'] && !$param['quest_id']) return false;
+	return common_save($db_2,TABLE_QUEST_POINTS,$param,FIELD_QUEST_POINTS);
+}
+
+function quest_point_delete($ref=false) {
+	global $db_2, $NODE_NUMS;
+	if ($ref && !is_array($ref)) $ref = array('id' => $ref);
+	if (!$ref) return false;
+	$data = common_list($db_2,TABLE_QUEST_POINTS,$ref);
+	foreach ($data as $k=>$item) $data[$k]['object_class'] = OBJECT_CLASS_QUEST_POINT;
+	restriction_objects_list($data);
+	foreach ($data as $item) {
+		quest_point_award_delete(array('point_id' => $item['id']));
+		foreach ($item['object_restrictions'] as $restriction) restriction_delete($restriction['id']);
+		foreach ($NODE_NUMS as $nn) {
+			if (!NODE_SWITCH($nn)) continue;
+			quest_user_point_delete(array('quest_id' => $item['quest_id'], 'point_id' => $item['id']));
+		}
+		quest_point_delete(array('parent_id' => $item['id']));
+	}
+	return common_delete($db_2,TABLE_QUEST_POINTS,$ref);
+}
+
+function quest_copy($quest) {
+	$old_quest_id = $quest['id'];
+	unset($quest['id']);
+	
+	$quest_copy_id = quest_save($quest);
+	if (!$quest_copy_id) return false;
+	
+	$point_id_map = array();
+	
+	$root_points = quest_point_list(array('quest_id' => $old_quest_id), ' AND parent_id = 0');
+	foreach ($root_points as $point) {
+		quest_point_copy($point, $point_id_map, $quest_copy_id, true);
+	}
+
+	$references = array('next_id', 'alt_point_id1', 'alt_point_id2', 'parent_id', 'root_id');
+	$quest_points = quest_point_list(array('quest_id' => $quest_copy_id));
+	foreach ($quest_points as $point) {
+		foreach($references as $reference) {
+			if (!$point[$reference]) continue;
+			$new_id = isset($point_id_map[$point[$reference]]) ? $point_id_map[$point[$reference]] : 0;
+			$point[$reference] = $new_id;
+			quest_point_save($point);
+		}
+	}
+
+	return $quest_copy_id;
+}
+
+function quest_point_copy($quest_point, &$point_map, $quest_id = false, $quest_copy = false) {
+	if (!is_array($quest_point)) $quest_point = quest_point_get($quest_point);
+	if (!$quest_point) return false;
+	
+	$old_point_id = $quest_point['id'];
+	unset($quest_point['id']);
+	
+	if ($quest_id) $quest_point['quest_id'] = $quest_id;
+
+	if (!$quest_copy) {
+		$references = array('next_id', 'alt_point_id1', 'alt_point_id2', 'parent_id', 'root_id');
+		foreach ($references as $key) {
+			if ($quest_point[$key] && isset($point_map[$quest_point[$key]])) $quest_point[$key] = $point_map[$quest_point[$key]];
+		}
+	}
+
+	$quest_point_copy_id = quest_point_save($quest_point);
+	if (!$quest_point_copy_id) return false;
+	
+	$point_map[$old_point_id] = $quest_point_copy_id;
+	
+	$point_awards = quest_point_award_list(array('point_id' => $old_point_id));
+	foreach ($point_awards as $award) {
+		unset($award['id']);
+		$award['point_id'] = $quest_point_copy_id;
+		quest_point_award_save($award);
+	}
+	
+	$restrictions = restriction_list(OBJECT_CLASS_QUEST_POINT, $old_point_id);
+	foreach($restrictions as $restriction) {
+		restriction_copy($restriction, $quest_point_copy_id);
+	}
+
+	$subpoints = quest_point_list(array('parent_id' => $old_point_id));
+	foreach ($subpoints as $subpoint) {
+		quest_point_copy($subpoint, $point_map, $quest_id, $quest_copy);
+	}
+	
+	return $quest_point_copy_id; 
+}
+
+function quest_point_award_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_QUEST_POINT_AWARDS,$ref,$add);
+}
+
+function quest_point_award_list($ref=false, $add='') {
+	global $db_2;
+	if (!$ref && !$add) return false;
+	return common_list($db_2,TABLE_QUEST_POINT_AWARDS,$ref,$add);
+}
+
+function quest_point_award_count($ref=false, $add='') {
+	global $db_2;
+	if (!$ref && !$add) return false;
+	return common_count($db_2,TABLE_QUEST_POINT_AWARDS,$ref,$add);
+}
+
+function quest_point_award_save($param) {
+	global $db_2;
+	if (!$param['id'] && !$param['point_id']) return false;
+	return common_save($db_2,TABLE_QUEST_POINT_AWARDS,$param,FIELD_QUEST_POINT_AWARDS);
+}
+
+function quest_point_award_delete($ref=false) {
+	global $db_2;
+	return common_delete($db_2,TABLE_QUEST_POINT_AWARDS,$ref);
+}
+
+function quest_user_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_QUEST_USERS,$ref,$add);
+}
+
+function quest_user_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_QUEST_USERS,$ref,$add);
+}
+
+function quest_user_count($ref=false, $add='') {
+	global $db;
+	return common_count($db,TABLE_QUEST_USERS,$ref,$add);
+}
+
+function quest_user_save($param, $add='') {
+	global $db;
+	if (!$param['id'] && !$param['quest_id'] && $add == '' && !isset($param['_set'])) return false;
+	return common_save($db,TABLE_QUEST_USERS,$param,FIELD_QUEST_USERS,'id',$add);
+}
+
+function quest_user_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_QUEST_USERS,$ref,$add);
+}
+
+function quest_user_cancel($quest, $user) {
+	NODE_PUSH(null, $user['id']);
+	$quest_user = quest_user_get(array('quest_id' => $quest['id'], 'user_id' => $user['id']));
+	NODE_POP();
+	if (!$quest_user || ($quest_user['status'] != QUEST_STATUS_STARTED)) return false;
+	// Выдаем бонус отмены
+	if ($quest['flags'] & QUEST_FLAG_CLAN) {
+		if (!$user['clan_id'] || (clan_leader_id_get($user['clan_id']) != $user['id'])) return false;
+		// В случае кланового квеста всем соклановцам
+		$clan_member_list_hash = $user['clan_id'] ? get_hash(clan_member_list($user['clan_id']),'user_id') : array();
+		foreach (array_keys($clan_member_list_hash) as $member_id){
+			$cur_user = user_get($member_id);
+			chat_msg_send_system(sprintf(translate('Вы лишились кланового квеста "<b>%s</b>"'),htmlspecialchars($quest['title'])), CHAT_CHF_USER, $cur_user['id']);
+			if ($quest['cancel_bonus_id']) bonus_apply($cur_user,$quest['cancel_bonus_id']);
+		}
+	} else {
+		// В случае обычного квеста только текущему пользователю
+		chat_msg_send_system(sprintf(translate('Вы отказались от квеста "<b>%s</b>".'),$quest['title']),CHAT_CHF_USER,$user['id']);
+		if ($quest['cancel_bonus_id']) bonus_apply($user,$quest['cancel_bonus_id']);
+	}
+	NODE_PUSH(null, $user['id']);
+	if (quest_user_delete(array('quest_id' => $quest['id'], 'user_id' => $user['id'])) && ($quest['flags'] & QUEST_FLAG_STAT)) {
+		log_quest_user_save(array(
+			'quest_id' => $quest['id'],
+			'user_id' => $user['id'],
+			'status' => LOG_QUEST_USER_STATUS_CANCEL,
+			'user_kind'	=> $user['kind'],
+			'user_level'=> $user['level'],
+			'stime' => time_current(),
+		));
+	}
+	quest_user_point_delete(array('quest_id' => $quest['id'], 'user_id' => $user['id']));
+	NODE_POP();
+	return true;
+}
+
+function quest_user_finish($quest, $user) {
+    NODE_PUSH(null, $user['id']);
+    $quest_user = quest_user_get(array('quest_id' => $quest['id'], 'user_id' => $user['id']));
+    NODE_POP();
+    if (!$quest_user || ($quest_user['status'] != QUEST_STATUS_STARTED)) return false;
+    // Выдаем бонус отмены
+    if ($quest['flags'] & QUEST_FLAG_CLAN) {
+        if (!$user['clan_id'] || (clan_leader_id_get($user['clan_id']) != $user['id'])) return false;
+        // В случае кланового квеста всем соклановцам
+        $clan_member_list_hash = $user['clan_id'] ? get_hash(clan_member_list($user['clan_id']),'user_id') : array();
+        foreach (array_keys($clan_member_list_hash) as $member_id){
+            $cur_user = user_get($member_id);
+            chat_msg_send_system(sprintf(translate('Вы завершили клановый квест "<b>%s</b>"'),htmlspecialchars($quest['title'])), CHAT_CHF_USER, $cur_user['id']);
+            if ($quest['end_bonus']) bonus_apply($cur_user,$quest['end_bonus']);
+            if ($quest['end_bonus_'.$cur_user['kind']]) bonus_apply($cur_user,$quest['end_bonus_'.$cur_user['kind']]);
+        }
+    } else {
+        // В случае обычного квеста только текущему пользователю
+        chat_msg_send_system(sprintf(translate('Вы завершили квест "<b>%s</b>".'),$quest['title']),CHAT_CHF_USER,$user['id']);
+        if ($quest['end_bonus']) bonus_apply($user,$quest['end_bonus']);
+        if ($quest['end_bonus_'.$user['kind']]) bonus_apply($user,$quest['end_bonus_'.$user['kind']]);
+    }
+    NODE_PUSH(null, $user['id']);
+
+    quest_user_save(array(
+        '_mode' => CSMODE_REPLACE,
+        'quest_id' => $quest['id'],
+        'user_id' => $user['id'],
+        'status' => QUEST_STATUS_FINISHED,
+        'point_num' => 0,
+        'flags' => 0,
+        'dtime' => 0,
+        'stime' => time_current(),
+    ));
+
+    log_quest_user_save(array(
+        'quest_id' => $quest['id'],
+        'user_id' => $user['id'],
+        'status' => LOG_QUEST_USER_STATUS_FINISHED,
+        'user_kind'	=> $user['kind'],
+        'user_level'=> $user['level'],
+        'stime' => time_current(),
+    ));
+
+    quest_user_point_delete(array('quest_id' => $quest['id'], 'user_id' => $user['id']));	// не храним информацию по законченным квестам
+    NODE_POP();
+    return true;
+}
+
+function quest_user_point_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_QUEST_USER_POINTS,$ref,$add);
+}
+
+function quest_user_point_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_QUEST_USER_POINTS,$ref,$add);
+}
+
+function quest_user_point_save($param) {
+	global $db;
+	if (!$param['id'] && !$param['quest_id'] && !$param['user_id'] && !$param['_add']) return false;
+	return common_save($db,TABLE_QUEST_USER_POINTS,$param,FIELD_QUEST_USER_POINTS);
+}
+
+function quest_user_point_delete($ref=false) {
+	global $db;
+	return common_delete($db,TABLE_QUEST_USER_POINTS,$ref);
+}
+
+// ===========================================================================================================================
+
+function quest_restriction_check(&$point, &$user, &$error) {
+	if (!$point || !$user) return false;
+	$check_object_list = array();
+	restriction_get_dependent($user,$check_object_list,array(OBJECT_CLASS_AREA));
+	$point['object_class'] = OBJECT_CLASS_QUEST_POINT;
+	$out_restriction = restriction_check(0,array($point),$check_object_list);
+	if ($out_restriction['status'] != RESTRICTION_STATUS_ALLOW) {
+		$error = $out_restriction['title'] ? $out_restriction['title'] : sprintf(translate('Для прохождения этого этапа требуется %s'),$out_restriction['error']);
+		return false;
+	}
+	return true;
+}
+
+// ==============   Функция завершения этапа квеста ============================================================================
+
+function quest_done ($point_id, $subpoint_id, &$user, &$error, $notify_user = false) {
+	if (!$point_id || !$subpoint_id) return false;
+	$point = quest_point_get($point_id);
+	$subpoint = quest_point_get($subpoint_id);
+	if (!$point || !$subpoint) return false;
+	$quest_id = $point['quest_id'];
+	$quest = quest_get($quest_id);
+	if (!$quest) return false;
+	if ($quest['level_min'] > $user['level']) return false;
+	NODE_PUSH(null, $user['id']);
+	$quest_user = quest_user_get(array('quest_id' => $quest_id, 'user_id' => $user['id']));
+	NODE_POP();
+	$quest_status = intval($quest_user['status']);
+	$quest_point_num = intval($quest_user['point_num']);
+	$quest_user_flags = intval($quest_user['flags']) | ($notify_user ? QUEST_USER_FLAG_UNREAD : 0);
+	if ($point['num'] > 0) {
+		if ($quest_point_num != $point['num'] - 1) return false;	// ограничение на номер текущего этапа
+		$quest_point_num = $point['num'];
+	}
+	if ($quest_status == QUEST_STATUS_FINISHED) return false;
+	if (!quest_restriction_check($subpoint, $user, $error)) return false;	// проверяем ограничения
+
+	// прохождение этапа
+	NODE_PUSH(null, $user['id']);
+	if ($point['flags'] & QUEST_PF_MULTITIME) {	// Многоразовый этап
+		quest_user_point_delete(array('user_id' => $user['id'], 'point_id' => $point_id));
+	} else {
+		quest_user_point_save(array(
+			'_mode' => CSMODE_REPLACE,
+			'quest_id' => $quest_id,
+			'user_id' => $user['id'],
+			'point_id' => $point_id,
+			'subpoint_id' => $subpoint_id,
+			'status' => QUEST_PS_PASSED,
+		));
+	}
+	$t = array();
+	if ($quest['flags'] & QUEST_FLAG_CLAN) {
+		if (!$user['clan_id'] || (clan_leader_id_get($user['clan_id']) != $user['id'])) return false;
+		$clan_member_hash = get_hash(clan_member_list($user['clan_id']), 'user_id');
+		if ($point['flags'] & QUEST_PF_START) {	// Начало квеста
+			$quest_status = QUEST_STATUS_STARTED;
+			$t[] = sprintf(translate('Ваш клан начал квест "<b>%s</b>". Желаем удачи!'),$quest['title']);
+		}
+		if ($point['flags'] & QUEST_PF_FINISH) {	// Конец квеста
+			$quest_status = QUEST_STATUS_FINISHED;
+			quest_user_point_delete(array('quest_id' => $quest_id, 'user_id' => $user['id']));	// не храним информацию по законченным квестам
+			$t[] = sprintf(translate('Ваш клан завершил квест "<b>%s</b>".'),$quest['title']);
+		}
+		if (count($t) == 1) chat_msg_send_system($t[0],CHAT_CHF_USER,array_keys($clan_member_hash));
+	} else {
+		if ($point['flags'] & QUEST_PF_START) {	// Начало квеста
+			$quest_status = QUEST_STATUS_STARTED;
+			$t[] = sprintf(translate('Для Вас начался квест "<b>%s</b>". Желаем удачи!'),$quest['title']);
+		}
+		if ($point['flags'] & QUEST_PF_FINISH) {	// Конец квеста
+			$quest_status = QUEST_STATUS_FINISHED;
+			quest_user_point_delete(array('quest_id' => $quest_id, 'user_id' => $user['id']));	// не храним информацию по законченным квестам
+			$t[] = sprintf(translate('Вы завершили квест "<b>%s</b>".'),$quest['title']);
+		}
+		if (count($t) == 1) chat_msg_send_system($t[0],CHAT_CHF_USER,$user['id']);
+	}
+	if (($quest_status == QUEST_STATUS_FINISHED) && ($quest['flags'] & QUEST_FLAG_STAT)) {
+		// собираем статистику
+		require_once('lib/user_stat.lib');
+		user_stat_update($user['id'], USER_STAT_TYPE_QUEST, $quest_id);
+	}
+
+	if (($quest['flags'] & QUEST_FLAG_MULTITIME) && ($quest_status == QUEST_STATUS_FINISHED) && ($quest['cooldown_time'] <= 0)) {	// Многоразовый квест
+		quest_user_delete(array('quest_id' => $quest_id, 'user_id' => $user['id']));
+	} else {
+		$quest_cooldown_time = $quest['cooldown_time'] + time_current();
+		$s1date = date('d.m.Y', time_current());
+		$s2date = date('d.m.Y', $quest_cooldown_time);
+		if($s1date != $s2date) {
+			$quest_cooldown_time = mktime(0,0,0, date('m', $quest_cooldown_time), date('d', $quest_cooldown_time), date('Y', $quest_cooldown_time));
+		}
+
+		quest_user_save(array(
+			'_mode' => CSMODE_REPLACE,
+			'quest_id' => $quest_id,
+			'user_id' => $user['id'],
+			'status' => $quest_status,
+			'point_num' => $quest_point_num,
+			'flags' => $quest_user_flags,
+			'dtime' => ($quest['flags'] & QUEST_FLAG_MULTITIME) && ($quest_status == QUEST_STATUS_FINISHED) && ($quest['cooldown_time'] > 0) ? $quest_cooldown_time : 0,
+			'stime' => time_current(),
+		));
+		if ($notify_user)
+			user_info_set_button($user['id'], 'right', GUI_RIGHT_BUTTON_QUESTS, true);
+	}
+
+	if (($quest_user['status'] != $quest_status) && (($quest_status == QUEST_STATUS_STARTED) || ($quest_status == QUEST_STATUS_FINISHED)) && !($quest['flags'] & QUEST_PF_MULTITIME ) && ($quest['flags'] & QUEST_FLAG_STAT)) {
+		log_quest_user_save(array(
+			'quest_id' => $quest_id,
+			'user_id' => $user['id'],
+			'status' => ($quest_status == QUEST_STATUS_STARTED) ? LOG_QUEST_USER_STATUS_STARTED : LOG_QUEST_USER_STATUS_FINISHED,
+			'user_kind' => $user['kind'],
+			'user_level' => $user['level'],
+			'stime' => time_current(),
+		));
+		if (($quest_status == QUEST_STATUS_FINISHED) && !($quest['flags'] & QUEST_FLAG_MULTITIME)) {
+			// собираем статистику
+			require_once('lib/user_stat.lib');
+			user_stat_update($user['id'], USER_STAT_TYPE_MISC, USER_STAT_OBJECT_QUEST_NORMAL, 1);
+		}
+	}
+
+
+
+
+
+
+
+
+	require_once('lib/log_stat_uniform.lib');
+	log_stat_uniform::quests($user['id'], $quest_id, $point_id, $quest_status, ($point['flags'] & QUEST_PF_START));
+
+	do {	// выдаем обязательный бонус
+		if (!$subpoint['bonus_id']) break;
+		if ($quest['flags'] & QUEST_FLAG_CLAN) {
+			if (!$user['clan_id']) break;
+			$clan_members = get_hash(clan_member_list($user['clan_id']),'user_id');
+			if (!$clan_members) break;
+			$users = user_list(array('id' => array_keys($clan_members)));
+			if (!$users) break;
+			bonus_apply($user,$subpoint['bonus_id']);
+		} else {
+			bonus_apply($user,$subpoint['bonus_id']);
+		}
+	} while (0);
+	NODE_POP();
+	return true;
+}
+
+
+
+?>

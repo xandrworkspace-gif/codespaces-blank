@@ -1,0 +1,73 @@
+<?php
+
+define('TABLE_TRADE_LOG', 'trade_log');
+
+define('TRADE_LOG_TRADE', 1);
+define('TRADE_LOG_AUCTION', 2);
+define('TRADE_LOG_REQUEST', 3);
+define('TRADE_LOG_POST', 4);
+define('TRADE_LOG_USER_STORE', 5);
+
+$trade_log_hash = array(
+    TRADE_LOG_TRADE => array(
+        'id' => TRADE_LOG_TRADE,
+        'title' => 'Торговля',
+    ),
+    TRADE_LOG_AUCTION => array(
+        'id' => TRADE_LOG_AUCTION,
+        'title' => 'Аукцион',
+    ),
+    TRADE_LOG_REQUEST => array(
+        'id' => TRADE_LOG_REQUEST,
+        'title' => 'Биржа',
+    ),
+    TRADE_LOG_POST => array(
+        'id' => TRADE_LOG_POST,
+        'title' => 'Почта',
+    ),
+    TRADE_LOG_USER_STORE => array(
+        'id' => TRADE_LOG_USER_STORE,
+        'title' => 'Магазин игрока',
+    ),
+);
+
+function trade_log_get($ref=false, $add='') {
+    global $db_path;
+    return  common_get($db_path,TABLE_TRADE_LOG,$ref,$add);
+}
+
+function trade_log_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_TRADE_LOG,$ref,$add);
+}
+
+function trade_log_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_TRADE_LOG, $ref, $add);
+}
+
+function trade_log_save($param) {
+    global $db_path;
+    $db_path->die_on_error = false;
+    $save = common_save($db_path,TABLE_TRADE_LOG,$param);
+    $db_path->die_on_error = true;
+    return $save;
+}
+
+function trade_log_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_TRADE_LOG,$ref);
+    return true;
+}
+
+function trade_log_add($type, $param){
+    if(!$param['to_user_id']) return false;
+    if(!is_array($param['data'])) return false;
+    $param['type'] = $type;
+    $param['ctime'] = time_current();
+    $param['data'] = json_encode($param['data']);
+    try{
+        trade_log_save($param);
+    }catch (Exception $e){}
+}

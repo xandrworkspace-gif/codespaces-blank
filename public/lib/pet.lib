@@ -1,0 +1,1042 @@
+<? // $Id: pet.lib,v 1.40 2010-01-15 09:50:10 p.knoblokh Exp $
+// =========================================================================
+// Coder				: AKEB, IT-Territory
+// Work started	: 25.06.2009 18:28:09
+// User				: v.babajanyan
+// Description		: 
+// =========================================================================
+
+
+define('TABLE_PET_TYPES','pet_types');
+define('FIELD_PET_TYPES','');
+define('TABLE_ADV_PET_EFFECTS','pet_adv_effects');
+define('FIELD_ADV_PET_EFFECTS','');
+define('TABLE_PET_GROUPS','pet_groups');
+define('FIELD_PET_GROUPS','');
+
+define('TABLE_PET_SPELLS','pet_spells');
+
+define('PET_SATIATION_MAX', 10000); // Сытость хранится в %*100 (точность до сотых), это максимум.
+
+// Флаги пета
+define('PET_FLAG_NAME_CHANGED',  0x000001); // Игрок изменил имя пета. В этом случае после получения петом уровня мы не перезаписываем его имя.
+define('PET_FLAG_PUTTED_ON',     0x000002); // Пет установлен игроком в качестве основного.
+define('PET_FLAG_REST',          0x000004); // Пет отдыхает.
+define('PET_FLAG_TRAINING',      0x000008); // Пет тренируется
+
+define('PET_COLOR_GREY',   1);
+define('PET_COLOR_GREEN',  2);
+define('PET_COLOR_BLUE',   3);
+define('PET_COLOR_PURPLE', 4);
+define('PET_COLOR_RED',    5);
+
+define('PET_SPELL_FLAG_ACTIVE', 0x00001);
+
+define('PET_FOOD_EAT_CNT', 4);
+define('PET_FOOD_EAT_STEP', 750);
+
+// временный костыль
+function pet_artikuls_get($ref=false, $add='')                    { return pet_artikul_get($ref,$add); }
+function pet_artikuls_list($ref=false, $add='', $field_list='*')  { return pet_artikul_list($ref,$add,$field_list); }
+function pet_artikuls_count($add='')                              { return pet_artikul_count($add); }
+function pet_artikuls_save($param)                                { return pet_artikul_save($param); }
+function pet_artikuls_delete($ref=false, $add='')                 { return pet_artikul_delete($ref,$add); }
+function pet_artikuls_truncate()                                  { return pet_artikul_truncate(); }
+function pet_artikuls_sync($artikul_id)                           { return pet_artikul_sync($artikul_id); }
+function pet_artikuls_copy($param)                                { return pet_artikul_copy($param); }
+
+//Временный костыль 2 xD
+$spell_max_cnt = 3; //Максимальное кол-во каждого из скиллов.
+
+$spell_max_cnt_all = false; // Максимальное число общее.
+
+//Цена за один скилл =)
+$price_elements = array(
+    0 => array('artikul_id' => 5288, 'cnt' => 10, 'cnt_sbros' => 7),
+    1 => array('artikul_id' => 5288, 'cnt' => 12, 'cnt_sbros' => 8),
+    2 => array('artikul_id' => 5288, 'cnt' => 14, 'cnt_sbros' => 9),
+	3 => array('artikul_id' => 5288, 'cnt' => 16, 'cnt_sbros' => 10),
+	4 => array('artikul_id' => 5288, 'cnt' => 18, 'cnt_sbros' => 11),
+);
+
+$price_upgrade_pets = array(
+    2 => 5000.00, //50 зю
+    3 => 15000.00, //150 зю
+    4 => 30000.00, //300 зю
+    5 => 50000.00, //500 зю
+);
+
+$title_upgrade_pets = array(
+    2 => array('title' => 'простую', 'color' => '#0e8e0d'),
+    3 => array('title' => 'усиленную', 'color' => '#021da7'),
+    4 => array('title' => 'мастерскую', 'color' => '#9411a2'),
+    5 => array('title' => 'элитную', 'color' => '#e80000'),
+);
+
+$pet_food_level = array(
+    0 => array(
+        1 => 3,
+        2 => 3,
+        3 => 4,
+        4 => 4,
+        5 => 5,
+        6 => 5,
+        7 => 6,
+        8 => 6,
+        9 => 7,
+        10 => 7,
+        11 => 8,
+        12 => 8,
+        13 => 8,
+        14 => 9,
+        15 => 9,  
+		16 => 10,
+        17 => 10,
+        18 => 10,
+        19 => 12,
+        20 => 12,
+    ),
+    1 => array(
+        1 => 4,
+        2 => 4,
+        3 => 5,
+        4 => 5,
+        5 => 6,
+        6 => 6,
+        7 => 7,
+        8 => 7,
+        9 => 8,
+        10 => 8,
+        11 => 9,
+        12 => 9,
+        13 => 9,
+        14 => 10,
+        15 => 10,
+		16 => 11,
+        17 => 11,
+        18 => 12,
+        19 => 12,
+        20 => 13,
+    ),
+    2 => array(
+        1 => 5,
+        2 => 5,
+        3 => 6,
+        4 => 6,
+        5 => 7,
+        6 => 7,
+        7 => 8,
+        8 => 8,
+        9 => 9,
+        10 => 9,
+        11 => 10,
+        12 => 10,
+        13 => 10,
+        14 => 11,
+        15 => 11,
+		16 => 12,
+        17 => 12,
+        18 => 13,
+        19 => 13,
+        20 => 14,
+    ),
+	3 => array(
+        1 => 6,
+        2 => 6,
+        3 => 7,
+        4 => 7,
+        5 => 8,
+        6 => 8,
+        7 => 9,
+        8 => 9,
+        9 => 10,
+        10 => 10,
+        11 => 11,
+        12 => 11,
+        13 => 12,
+        14 => 12,
+        15 => 13,
+		16 => 13,
+        17 => 14,
+        18 => 14,
+        19 => 15,
+        20 => 15,
+    ),
+	4 => array(
+        1 => 7,
+        2 => 7,
+        3 => 8,
+        4 => 8,
+        5 => 9,
+        6 => 9,
+        7 => 10,
+        8 => 10,
+        9 => 11,
+        10 => 11,
+        11 => 12,
+        12 => 12,
+        13 => 13,
+        14 => 13,
+        15 => 14,
+		16 => 14,
+        17 => 15,
+        18 => 15,
+        19 => 16,
+        20 => 16,
+    ),
+);
+
+//QUALITY => LEVEL => MAX_CNT
+$spell_max_cnts = array(
+    0 => array(
+        1 => 1,
+        2 => 2,
+        3 => 2,
+        4 => 2,
+        5 => 3,
+        6 => 3,
+        7 => 4,
+        8 => 4,
+        9 => 5,
+        10 => 5,
+        11 => 6,
+        12 => 6,
+        13 => 7,
+		14 => 7,
+        15 => 8,
+        16 => 8,
+        17 => 9,
+        18 => 9,
+        19 => 10,
+        20 => 10,
+    ),
+    1 => array(
+        1 => 2,
+        2 => 3,
+        3 => 3,
+        4 => 3,
+        5 => 4,
+        6 => 4,
+        7 => 5,
+        8 => 5,
+        9 => 6,
+        10 => 6,
+        11 => 7,
+        12 => 7,
+        13 => 8,
+		14 => 8,
+        15 => 9,
+        16 => 9,
+        17 => 10,
+        18 => 10,
+        19 => 11,
+        20 => 11,
+    ),
+    2 => array(
+        1 => 3,
+        2 => 4,
+        3 => 4,
+        4 => 4,
+        5 => 5,
+        6 => 5,
+        7 => 6,
+        8 => 6,
+        9 => 7,
+        10 => 7,
+        11 => 8,
+        12 => 8,
+        13 => 9,
+		14 => 9,
+        15 => 10,
+        16 => 10,
+        17 => 11,
+        18 => 11,
+        19 => 12,
+        20 => 12,
+    ),
+	3 => array(
+        1 => 4,
+        2 => 5,
+        3 => 5,
+        4 => 5,
+        5 => 6,
+        6 => 6,
+        7 => 7,
+        8 => 7,
+        9 => 8,
+        10 => 8,
+        11 => 9,
+        12 => 9,
+        13 => 10,
+		14 => 10,
+        15 => 11,
+        16 => 11,
+        17 => 12,
+        18 => 12,
+        19 => 13,
+        20 => 13,
+    ),
+	4 => array(
+        1 => 5,
+        2 => 6,
+        3 => 6,
+        4 => 6,
+        5 => 7,
+        6 => 7,
+        7 => 8,
+        8 => 8,
+        9 => 9,
+        10 => 9,
+        11 => 10,
+        12 => 10,
+        13 => 11,
+		14 => 11,
+        15 => 12,
+        16 => 12,
+        17 => 13,
+        18 => 13,
+        19 => 14,
+        20 => 14,
+    ),
+);
+
+function pet_adv_effects_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_ADV_PET_EFFECTS,$ref,$add);
+}
+function pet_adv_effects_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_ADV_PET_EFFECTS,$ref,$add);
+}
+
+function pet_adv_effects_sum($user_id = false){
+    global $db_path;
+    $sql = sql_pholder(' SELECT SUM(`cnt`) AS `cnt` FROM ?#TABLE_ADV_PET_EFFECTS WHERE `user_id` = ?', $user_id);
+    $retval = 0;
+    $db_path->db_getQueryVal($sql, $retval);
+    if(!$retval) $retval = 0;
+    return $retval;
+}
+
+function pet_adv_effects_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ADV_PET_EFFECTS, $ref, $add);
+}
+
+function pet_adv_effects_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ADV_PET_EFFECTS,$param,FIELD_ADV_PET_EFFECTS);
+}
+
+function pet_adv_effects_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_ADV_PET_EFFECTS,$ref,$add);
+}
+/////////////////////////////////
+
+function pet_artikul_get($ref=false, $add='') {
+	global $db;
+	$artikul = common_get($db,TABLE_PET_ARTIKULS,$ref,$add);
+	if ($artikul) $artikul['object_class'] = OBJECT_CLASS_PET_ARTIKUL;
+	return $artikul;
+}
+function pet_artikul_list($ref=false, $add='', $field_list='*') {
+	global $db;
+	$query_add = '';
+	$artikuls = common_list($db,TABLE_PET_ARTIKULS,$ref,$query_add.$add,$field_list);
+	foreach ($artikuls as $k=>$bot) $artikuls[$k]['object_class'] = OBJECT_CLASS_PET_ARTIKUL;
+	return $artikuls;
+}
+function pet_artikul_count($ref=false, $add='') {
+	global $db;
+	return common_count($db,TABLE_PET_ARTIKULS,$ref,$add);
+}
+function pet_artikul_save($param) {
+	global $db;
+	return common_save($db,TABLE_PET_ARTIKULS,$param,FIELD_PET_ARTIKULS);
+}
+function pet_artikul_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_PET_ARTIKULS,$ref,$add);
+}
+function pet_artikul_truncate() {
+	global $db;
+	return common_truncate($db,TABLE_PET_ARTIKULS);
+}
+
+function pet_get($ref=false, $add='') {
+	global $db;
+	$pet = common_get($db,TABLE_PETS,$ref,$add);
+	if ($pet) $pet['object_class'] = OBJECT_CLASS_PET;
+	return $pet;
+}
+
+function pet_list($artikul_id=false, $user_id=null, $add='', $field_list='*') {
+	global $db;
+	if (!$artikul_id && !isset($user_id) && !$add) return false;
+	$query_add = '';
+	if ($artikul_id) $query_add .= sql_pholder(" AND artikul_id=?",$artikul_id);
+	if (isset($user_id)) $query_add .= sql_pholder(" AND user_id=?",$user_id);
+	$pet_list = common_list($db,TABLE_PETS,false,$query_add.$add,$field_list);
+	foreach ($pet_list as $k=>$bot) $pet_list[$k]['object_class'] = OBJECT_CLASS_PET;
+	return $pet_list;
+}
+function pet_count($artikul_id=false, $user_id=null, $add='') {
+	global $db;
+	if (!$artikul_id && !isset($user_id) && !$add) return false;
+	$query_add = '';
+	if ($artikul_id) $query_add .= sql_pholder(" AND artikul_id=?",$artikul_id);
+	if (isset($user_id)) $query_add .= sql_pholder(" AND user_id=?",$user_id);
+	return common_count($db,TABLE_PETS,false,$query_add.$add);
+}
+function pet_save($param) {
+	global $db;
+	return common_save($db,TABLE_PETS,$param,FIELD_PETS);
+}
+function pet_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_PETS,$ref,$add);
+}
+function pet_truncate() {
+	global $db;
+	return common_truncate($db,TABLE_PETS);
+}
+
+function pet_type_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_PET_TYPES,$ref,$add);
+}
+function pet_type_list($add='') {
+	global $db;
+	return common_list($db,TABLE_PET_TYPES,false,$add);
+}
+
+function pet_type_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_PET_TYPES, $ref, $add);
+}
+
+function pet_type_save($param) {
+	global $db;
+	return common_save($db,TABLE_PET_TYPES,$param,FIELD_PET_TYPES);
+}
+function pet_type_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_PET_TYPES,$ref,$add);
+}
+
+function pet_group_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_PET_GROUPS,$ref,$add);
+}
+function pet_group_list($add='') {
+	global $db;
+	return common_list($db,TABLE_PET_GROUPS,false,$add);
+}
+
+function pet_group_count($ref=false, $add='') {
+	global $db;
+	return common_count($db, TABLE_PET_GROUPS, $ref, $add);
+}
+
+function pet_group_save($param) {
+	global $db;
+	return common_save($db,TABLE_PET_GROUPS,$param,FIELD_PET_GROUPS);
+}
+function pet_group_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_PET_GROUPS,$ref,$add);
+}
+
+function pet_artikul_effect_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_PET_ARTIKUL_EFFECTS,$ref,$add);
+}
+function pet_artikul_effect_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_PET_ARTIKUL_EFFECTS,$ref,$add);
+}
+function pet_artikul_effect_save($param) {
+	global $db;
+	return common_save($db,TABLE_PET_ARTIKUL_EFFECTS,$param,FIELD_PET_ARTIKUL_EFFECTS);
+}
+function pet_artikul_effect_delete($ref=false, $add='') {
+	global $db;
+	return common_delete($db,TABLE_PET_ARTIKUL_EFFECTS,$ref,$add);
+}
+
+function pet_spells_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_PET_SPELLS,$ref,$add);
+}
+function pet_spells_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_PET_SPELLS,$ref,$add);
+}
+function pet_spells_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_PET_SPELLS,$param);
+}
+function pet_spells_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_PET_SPELLS,$ref,$add);
+}
+
+
+// -----------------------------------------------------------
+
+function _pet_artikul_title(&$artikul) {
+	return $artikul['title'].' ['.$artikul['level'].']';
+}
+
+function pet_title($pet, $pet_artikul) {
+	if ($pet['flags'] & PET_FLAG_NAME_CHANGED) {
+		return $pet['title'];
+	} else {
+		return $pet_artikul['title'];
+	}
+}
+
+// Синхронизация с питомцами пользователей
+function pet_artikul_sync($artikul_id) {
+	if (!$artikul_id) return false;
+	$cnt = 0;
+	$pet_artikul = pet_artikul_get($artikul_id);
+	$param = array(
+		'exp_max' => $pet_artikul['exp_max'],
+		'next_artikul_id' => $pet_artikul['next_id'],
+		'upgrade_artikul_id' => $pet_artikul['upgrade_id'],
+		'quality' => $pet_artikul['quality'],
+		'satiation_drop' => $pet_artikul['satiation_drop'],
+		'_cnt' => true,
+		'_add' => sql_pholder(" AND artikul_id = ?",$artikul_id),
+	);
+	$cnt += pet_save($param);
+	return $cnt;
+}
+
+// Создает копию Артикула Питомца
+function pet_artikul_copy($param) {
+	$old_id = $param['id'];
+	unset($param['id']);
+	$new_id = pet_artikul_save($param);
+	if (!$new_id) return false;
+	
+	// копирование эффектов Питомца
+	$data = pet_artikul_effect_list(array('pet_artikul_id' => $old_id));
+	foreach($data as $item) {
+		unset($item['id']);
+		$item['pet_artikul_id'] = $new_id;
+		pet_artikul_effect_save($item);
+	}
+	
+	return $new_id;
+}
+
+/**
+ * Возвращает пета
+ * 
+ * @param unknown_type $pet
+ * @return unknown_type
+ */
+function pet_check_object($pet) {
+	if(!$pet) return false;
+	if(!is_array($pet)) {
+		$pet = pet_get(intval($pet));
+	}
+	if(!$pet['object_class'] == OBJECT_CLASS_PET) {
+		return false;	
+	}
+	return $pet;
+}
+
+/**
+ * Возвращает сытость пета в процентах.
+ * 
+ * @param array/int $pet
+ * @param $round
+ * @return int
+ */
+function pet_get_satiation($pet, $round = true) {
+	if(!$pet = pet_check_object($pet)) return false;
+	$result = $pet['satiation'];
+	$result = min(max($result, 0), PET_SATIATION_MAX);
+	if($round) {
+		$result = round($pet['satiation'] / 100, 0);
+	}
+	return $result;
+}
+
+/**
+ *  Создание экземпляра пета.
+ *  Возвращает id первого из созданых петов.
+ *  
+ * @param int $artikul_id
+ * @param int $user_id
+ * @param int $n count
+ * @return int
+ */
+function pet_create($artikul_id,$user_id,$n=1) {
+	if ($n<=0) return false;
+	if (!$artikul_id || !$user_id) return false;
+	$pet_artikul = pet_artikul_get($artikul_id);
+	if (!$pet_artikul) return false;
+	
+	$pet = array(
+		'artikul_id' => $pet_artikul['id'],
+		'user_id' => intval($user_id),
+		'exp' => 0,
+		'exp_max' => $pet_artikul['exp_max'],
+		'title' => $pet_artikul['title'],
+		'rest_time' => time_current() + $pet_artikul['awake_duration'],
+		'quality' => $pet_artikul['quality'],
+		'satiation' => PET_SATIATION_MAX,
+		'satiation_drop' => $pet_artikul['satiation_drop'],
+		'next_artikul_id' => $pet_artikul['next_id'],
+		'upgrade_artikul_id' => $pet_artikul['upgrade_id'],
+	);
+	$ids = array();
+	for ($i=0; $i<$n; $i++) {
+		$pet_id = pet_save($pet);
+		if (!$pet_id) return false;
+		$ids[] = $pet_id;
+	}
+	return count($ids)>1 ? $ids: $ids[0];
+}
+
+
+/**
+ * Кормление Пета передается Масив Пета и кол-во порций корма
+ * Возвращает реальное кол-во скормленных порций
+ * 
+ * @param array $pet
+ * @param int $cnt
+ * @return mixed
+ */
+function pet_feed(&$pet, $cnt) {
+
+	$satiation_current = $pet['satiation'];
+	
+	// пет уже сыт
+	if ($satiation_current >= PET_SATIATION_MAX) {
+		return 0;
+	}
+	
+	$pet_artikul = pet_artikul_get($pet['artikul_id']);
+	
+	// узнаем размер одной поции для питомца
+	$portion_size = PET_SATIATION_MAX / $pet_artikul['food_max'];
+	
+	// считаем недостающие кол-во порций до полного насыщения
+	$desire_portion_amount = ceil((PET_SATIATION_MAX - $satuation_current) / $portion_size);
+	
+	// действительное кол-во порций, которые нужно скормить
+	$portion_amount = min($cnt, $desire_portion_amount);
+	
+	// это новое значение satiation
+	$satiation_new = min($satiation_current + $portion_size * $portion_amount, PET_SATIATION_MAX);
+
+	if (!pet_save(array(
+		'id' => $pet['id'],
+		'satiation' => $satiation_new,
+	))) {
+		// не удалось сохранить сытость. не нужно убавлять кол-во корма
+		return false;
+	}
+	
+	return $portion_amount;
+}
+
+// выполнить апгрейд артикула питомца, апгрейд может быть следствием левелапа (вертикальный апгрейд) или выдачей спец-бонуса (горизонтальный апгрейд)
+function pet_upgrade($pet, $pet_artikul) {
+	if(!$pet = pet_check_object($pet)) return false;
+	// перезаписываем параметры пета пета
+	$param = array(
+		'id' => $pet['id'],
+		'artikul_id' => $pet_artikul['id'],
+		'exp' => $pet['exp'],
+		'exp_max' => $pet_artikul['exp_max'],
+		'quality' => $pet_artikul['quality'],
+		'next_artikul_id' => $pet_artikul['next_id'],
+		'upgrade_artikul_id' => $pet_artikul['upgrade_id'],
+		'satiation_drop' => $pet_artikul['satiation_drop'],
+	);
+	
+	if (!($pet['flags'] & PET_FLAG_NAME_CHANGED)) {
+		// устанавливаем новое имя пета из артикула, если игрок не переименовывал своего пета
+		$param['title'] = $pet_artikul['title'];
+	}
+
+    $achievement = false;
+    $achievement_item = achievement_item_get(array(
+        'type_id' => ACH_TYPE_PET,
+        'object_id' => $pet_artikul['group_id'],
+        'value' => $pet_artikul['type_id'],
+    ));
+    if($achievement_item){
+        $achievement = achievement_get(array(
+            'id' => $achievement_item['achievement_id'],
+            'group_id' => 23, //Группа питомцы
+        ));
+    }
+
+    if($achievement){
+        user_achievement_done($pet['user_id'], $achievement['id']);
+    }
+
+    //TODO:FIX Не работают эффекты епт!
+    if($pet['user_id']) $pet_spells = pet_spells_get(array('user_id' => $pet['user_id'], 'pet_id' => $pet['id']));
+
+    if($pet_spells){
+        pet_spells_save(array(
+            'id' => $pet_spells['id'],
+            'unaviable_ids' => '[]',
+        ));
+    }
+
+	return pet_save($param);
+}
+
+/**
+ * Сснимает сытость по факту боя.
+ * 
+ * @param array/int $pet
+ * @return bool
+ */
+function pet_fight_hunger($pet){
+	if(!$pet = pet_check_object($pet)) return false;
+
+	if($pet['satiation_drop'] <= 0){
+		return true;
+	}
+	$param = array(
+		'id' => $pet['id'],
+		'satiation' => max($pet['satiation'] - $pet['satiation_drop'], 0),
+	);
+	$result = pet_save($param);
+	return $result;
+}
+
+/**
+ * Зачисляет пету опыт, делает апгрейд если пора.
+ * 
+ * @param array/int $pet
+ * @param int $exp
+ * @param int $max_level
+ * @return bool
+ */
+function pet_exp($pet, $exp, $max_level =false) {
+	if(!$pet = pet_check_object($pet)) return false;
+	
+	$exp = round($exp);
+	
+	if (!$exp) {
+		return true;
+	}
+	
+	$level_up = $pet['exp_max'] <= ($pet['exp'] + $exp);
+
+    $pet_cur_artikul = pet_artikul_get($pet['artikul_id']);
+
+
+    if($max_level && $pet_cur_artikul['level'] >= $max_level){
+        if($level_up){
+        return true;
+    }
+    }
+
+	// Нам нужно обновить экспу пета только в случае если получен опыт и пет не левелапнулся
+	if (!$level_up) {
+		$status = pet_save(array(
+			'id' => $pet['id'],
+			'_set' => sql_pholder(' exp = exp + ? ', $exp),
+			'_add' => sql_pholder(' AND exp_max > exp + ? ', $exp), // по идеи такого произойти не может, т.к. эта функция вызывается только из fight_finish
+			'_cnt' => 1,
+		));
+		
+		if (!$status) {
+			error_log(sprintf('pet_exp: Unable to update experience of User\'s (%d) Pet (%d). Variables state in execution time: current experience: %d/%d, experience change: %d', $pet['id'], $pet['user_id'], $pet['exp'], $pet['exp_max'], $exp));
+		}
+		return $status;
+	}
+	
+	// Нету следующего уровня
+	if (!$pet['next_artikul_id']) {
+		return false;
+	}
+	
+	$pet_artikul = pet_artikul_get($pet['next_artikul_id']);
+
+    if($max_level && $pet_artikul['level'] > $max_level){
+        return true;
+    }
+
+	// избыток при двойном левелапе
+	$excess_exp = 0;
+	
+	// избыток который нужно перенести на новый уровень
+	$exp = ($pet['exp'] + $exp) - $pet['exp_max'];
+	
+	if ($pet_artikul['exp_max']) {
+		// в случае если мы получили двойной левелап
+		if ($exp >= $pet_artikul['exp_max']) {
+			$excess_exp = $exp - $pet_artikul['exp_max'] + 1;
+			$exp -= $excess_exp;
+		}
+	}
+	
+	$pet['exp'] = $exp;
+	$result = pet_upgrade($pet, $pet_artikul);
+	if ($result) {
+		chat_msg_send_system(sprintf(translate('Ваш питомец перешел на %d уровень.'), $pet_artikul['level']), CHAT_CHF_USER, $pet['user_id']);
+	}
+	
+	// не даем избыточный опыт, если достигли максимального возможно уровня
+	if ($max_level && $pet_artikul['level'] >= $max_level) {
+		$excess_exp = 0;
+	}
+		
+	// если есть избыточный опыт, то повторно вызываем функцию
+	if ($excess_exp) {
+		$result = pet_exp($pet['id'], $excess_exp, $max_level);
+	}
+	
+	return $result;
+}
+
+// TODO: Снять питомца!!!
+function pet_undress($user_id) {
+	
+}
+
+function pets_cron() {
+    global $NODE_NUMS;
+    foreach ($NODE_NUMS as $nn) {
+        if (!NODE_SWITCH($nn)) continue;
+        $repeats = 100;
+        while($repeats-- > 0) {
+            $pet_list = pet_list(false, null, sql_pholder(' AND !(flags & ?#PET_FLAG_REST) AND rest_time < ?', time_current()));
+            if(!$pet_list) break;
+            foreach ($pet_list as $pet) {
+                pet_putoff($pet);
+            }
+        }
+    }
+}
+
+function pet_putoff($pet = array()) {
+	global $session_user;
+
+    $user = $session_user;
+    if($pet) {
+        $user = user_get($pet['user_id']);
+        $user_pet = $pet['id'];
+    }else{
+        $user_pet = $user['pet_id'];
+    }
+    if(!$user) return false;
+	if ($user_pet) {
+	    $out_err = '';
+        pet_rest($user_pet, $out_err);
+		$param = array(
+			'id' => $user['id'],
+			'pet_id' => 0,
+		);
+		
+		if (user_save($param)) {
+			// [i.hrustalev] убираем флаг с пета, замораживаем сытость смещая time_current() в 0
+			NODE_PUSH(null, $user['id']);
+			$pet = pet_get($user_pet);
+			pet_save(array(
+				'id' => $user_pet,
+				'_mode' => CSMODE_UPDATE,
+				'_add' => sql_pholder(' AND flags & ?#PET_FLAG_PUTTED_ON'),
+				'_set' => sql_pholder(' flags=flags & (~?#PET_FLAG_PUTTED_ON)'),
+			));
+			NODE_POP();
+
+			return true;
+		}
+	}
+	return false;
+}
+
+function pet_puton($pet_id, &$error) {
+	global $session_user,$price_elements;
+
+	$pet = pet_get($pet_id);
+	$user_pet = $session_user['pet_id'];
+	$user_pet_pet = pet_get($user_pet);
+    //$pet_artikul = pet_artikul_get($pet['artikul_id']);
+    $user_pet_artikul = pet_artikul_get($user_pet_pet['artikul_id']);
+	
+	if (!$pet || ($pet['user_id'] != $session_user['id'])) {
+		return false;
+	}
+
+    /*
+	if ($pet['flags'] & PET_FLAG_REST) {
+        pet_awake($pet['id'], $out_errf);
+        $pet = pet_get($pet_id);
+	}
+    */
+
+	// Убираем сон питомца
+    /*if ($pet['flags'] & PET_FLAG_REST) {
+        if ($pet['rest_time'] < time_current()) {
+            pet_awake($pet['id'], $error);
+        } else {
+            $error = translate('Ваш питомец спит!');
+            return false;
+        }
+    }*/
+	
+	if ($pet['flags'] & PET_FLAG_TRAINING) {
+		$error = translate('Ваш питомец тренируется!');
+		return false;
+	}
+
+	//Убираем ненужные скиллы ВАЖНО!
+    $pet_spells = make_hash(pet_adv_effects_list(array('user_id' => $session_user['id'])),'artikul_id');
+    $pet_spells_ids = array();
+    foreach ($pet_spells as $pet_spell){
+        $pet_spells_ids[$pet_spell['id']] = $pet_spell['id'];
+    }
+
+    if($pet_spells_ids){
+        $user_max_spell_cnt = pet_adv_effects_sum($session_user['id']);
+
+        pet_adv_effects_save(array(
+            '_add' => sql_pholder(' AND id IN (?@)',$pet_spells_ids),
+            '_set' => ' cnt = 0',
+        ));
+
+        $user_max_spell_cnt_upd = pet_adv_effects_sum($session_user['id']);
+        if($user_max_spell_cnt_upd == 0){
+            $price_skill = $price_elements[$user_pet_artikul['quality']];
+            $cnt_added = $price_skill['cnt_sbros'] * $user_max_spell_cnt;
+            $added = artifact_add($price_skill['artikul_id'], $cnt_added, $session_user['id']);
+        }
+
+    }
+
+	// если уже есть другой призванный пет, отпускаем.
+    $out_errf = '';
+	if ($user_pet != $pet_id) {
+        pet_rest($user_pet, $out_errf);
+		pet_putoff();
+	}
+	$pet['flags'] = $pet['flags'] | PET_FLAG_PUTTED_ON;
+	// [i.hrustalev] устанавливаем флаг одетого пета
+	NODE_PUSH(null, $session_user['id']);
+	$result = pet_save(array(
+		'id' => $pet_id,
+		'_mode' => CSMODE_UPDATE,
+		'_add' => sql_pholder(' AND ((flags & (?#PET_FLAG_PUTTED_ON | ?#PET_FLAG_REST)) = 0)'),
+		'_set' => sql_pholder(' flags = flags | ?#PET_FLAG_PUTTED_ON'),
+	));
+	NODE_POP();
+	if(!$result) return false;
+	
+	$param = array(
+		'id' => $session_user['id'],
+		'pet_id' => $pet['id'],
+	);
+	$result = user_save($param);
+	if(!$result) return false;
+	
+	return true;
+}
+
+function pet_rest($pet_id, &$error) {
+	$pet = pet_get(array('id' => $pet_id));
+	
+	if (!$pet) {
+		return false;
+	}
+		
+	if ($pet['flags'] & PET_FLAG_REST) {
+		$error = translate('Ваш питомец уже отдыхает!');
+		return false;
+	} 
+	
+	if ($pet['flags'] & PET_FLAG_TRAINING) {
+		$error = translate('Ваш питомец тренируется!');
+		return false;
+	} 
+	
+	if ($pet['rest_time'] > time_current()) {
+		$error = translate('Ваш питомец не устал!');
+		return false;
+	}
+
+	$pet_artikul = pet_artikul_get($pet['artikul_id']);
+	if (!$pet_artikul) {
+		return false;
+	}
+	
+	pet_save(array(
+		'id' => $pet_id,
+		'_mode' => CSMODE_UPDATE,
+		'_add' => sql_pholder(' AND ((flags & ?#PET_FLAG_REST) = 0)'),
+		'_set' => sql_pholder(' flags = flags | ?#PET_FLAG_REST, rest_time = ?', $pet_artikul['rest_duration'] + time_current()),
+	));
+	
+	return true;
+}
+
+function pet_awake($pet_id, &$error) {
+	$pet = pet_get(array('id' => $pet_id));
+	
+	if (!$pet) {
+		return false;
+	}
+
+    if (!($pet['flags'] & PET_FLAG_REST)) {
+        $error = translate('В данный момент Ваш питомец не спит!');
+        return false;
+    }
+
+    $pet_artikul = pet_artikul_get($pet['artikul_id']);
+	if (!$pet_artikul) {
+		return false;
+	}
+
+	// если пет выспался нужно установить время когда он должен устать
+	if ($pet['rest_time'] < time_current()) {
+		$rest = time_current() + $pet_artikul['awake_duration'];
+	} else {
+		$rest = 0;
+	}
+
+	pet_save(array(
+		'id' => $pet_id,
+		'_mode' => CSMODE_UPDATE,
+		'_set' => sql_pholder(' flags = flags & ~?#PET_FLAG_REST, rest_time = ?', $rest),
+	));
+	
+	return true;
+}
+
+function pet_get_color($type_id) {
+	static $pet_colors = array(
+		7  => PET_COLOR_GREY,
+		8  => PET_COLOR_GREEN,
+		9  => PET_COLOR_BLUE,
+		10 => PET_COLOR_PURPLE,
+		11 => PET_COLOR_RED,
+	);
+	
+	return isset($pet_colors[$type_id]) ? $pet_colors[$type_id] : null;
+
+}
+
+function pet_name_is_correct($name) {
+	if ((mb_strlen($name) < 2) || (mb_strlen($name) > 12)) return false;
+	if (preg_match('/^\d/', $name)) return false;
+	if (preg_match(common_get_regexp('valid_pet_name_symbols'), $name)) return false;
+	if (@constant('_TRANS_LANG') == 'ru' && preg_match('/[a-zA-Z]/', $name) && preg_match(common_get_regexp('locale_symbols'), $name)) return false;
+	return true;
+}
+
+?>

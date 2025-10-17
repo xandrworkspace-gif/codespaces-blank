@@ -1,0 +1,264 @@
+<?php
+
+define('SQUESTS_LIST', 'squests');
+define('SQUESTS_USER', 'squests_user');
+
+define('SQUEST_ACTION_CHAOT_FIGHT', 1); //ID участие в хаотических битвах
+define('SQUEST_ACTION_DUNGEON_PP', 2); //ID участия в Подземельях
+define('SQUEST_ACTION_KILL_ENEMY', 3); //ID участия Скальпы
+define('SQUEST_ACTION_ACTIVITY_GET', 5); //ID получить награду за активность
+define('SQUEST_ACTION_EVENT_GET', 6); //ID участие в событие
+define('SQUEST_ACTION_KILL_BOT', 7); //ID участия Убийство бота
+define('SQUEST_ACTION_COLLECTION_GET', 8); //ID собрать коллекцию
+define('SQUEST_ACTION_FRIEND_GIFT', 9); //ID отправить подарок другу
+define('SQUEST_ACTION_RESOURCE_GET', 10); //ID сбор ресурсов
+define('SQUEST_ACTION_BONUS_GET', 11); //Получение по бонусу
+
+//id, type - тип это как получать
+//
+$squest_type_hash = array(
+    SQUEST_ACTION_CHAOT_FIGHT => 'участие в хаотических битвах',
+    SQUEST_ACTION_DUNGEON_PP => 'участие в Подземельях',
+    SQUEST_ACTION_KILL_ENEMY => 'получение скальпов',
+    SQUEST_ACTION_ACTIVITY_GET => 'получить награду за активность',
+    SQUEST_ACTION_EVENT_GET => 'участие в событие',
+    SQUEST_ACTION_KILL_BOT => 'участия Убийство бота',
+    SQUEST_ACTION_COLLECTION_GET => 'собрать коллекцию',
+    SQUEST_ACTION_FRIEND_GIFT => 'отправить подарок другу',
+    SQUEST_ACTION_RESOURCE_GET => 'собрать ресурсы',
+    SQUEST_ACTION_BONUS_GET => 'для + по бонусу',
+);
+
+define('SQUEST_FLAG_ACTIVE', 0x00000001);
+
+$squest_flags_hash = array(
+    SQUEST_FLAG_ACTIVE => 'Активно',
+);
+
+$squest_type_description_hash = array(
+    SQUEST_ACTION_CHAOT_FIGHT => 'Участие в Хаотичных битвах',
+    SQUEST_ACTION_DUNGEON_PP => 'Участие в Подземельях',
+    SQUEST_ACTION_KILL_ENEMY => 'Получить скальпы',
+    SQUEST_ACTION_ACTIVITY_GET => 'Получить награду за активность #LIST#',
+    SQUEST_ACTION_EVENT_GET => 'Участие в событии #LIST#',
+    SQUEST_ACTION_KILL_BOT => 'Убить монстров #LIST#',
+    SQUEST_ACTION_COLLECTION_GET => 'Собрать коллекции #LIST#',
+    SQUEST_ACTION_FRIEND_GIFT => 'Отправить друзьям подарки',
+    SQUEST_ACTION_RESOURCE_GET => 'Собрать ресурсы #LIST#',
+    SQUEST_ACTION_BONUS_GET => 'Неизвестная задача',
+);
+
+//Зависимости
+require_once("/home/admin/web/dwar.fun/public_html/lib/activity.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/event.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/bot.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/collection.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/farm.lib");
+
+////////////////////////////////////////////////////////////////////////////////////
+
+function squests_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,SQUESTS_LIST,$ref,$add);
+}
+
+function squests_list($ref=false, $add='', $field='*') {
+    global $db_2;
+    return common_list($db_2,SQUESTS_LIST,$ref,$add,$field);
+}
+
+function squests_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, SQUESTS_LIST, $ref, $add);
+}
+
+function squests_save($param) {
+    global $db_2;
+    return common_save($db_2,SQUESTS_LIST,$param);
+}
+
+function squests_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,SQUESTS_LIST,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+
+function squests_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,SQUESTS_USER,$ref,$add);
+}
+
+function squests_user_list($ref=false, $add='', $field='*') {
+    global $db_2;
+    return common_list($db_2,SQUESTS_USER,$ref,$add,$field);
+}
+
+function squests_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, SQUESTS_USER, $ref, $add);
+}
+
+function squests_user_save($param) {
+    global $db_2;
+    return common_save($db_2,SQUESTS_USER,$param);
+}
+
+function squests_user_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,SQUESTS_USER,$ref,$add);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+
+function squest_auto_description($squest) {
+    global $squest_type_description_hash;
+
+    $ids = array_filter(array_map('trim', explode(',', $squest['value'])), function ($id) {
+        return intval($id) > 0;
+    });
+    if(count($ids)) {
+        $objects_names = array();
+        switch ($squest['type']) {
+            case SQUEST_ACTION_ACTIVITY_GET:
+                $activity_list = activity_list(array('id' => $ids));
+                foreach ($activity_list as $activity) {
+                    $objects_names[] = $activity['title'];
+                }
+                break;
+            case SQUEST_ACTION_EVENT_GET:
+                $event_list = event_artikul_list(array('id' => $ids));
+                foreach ($event_list as $event) {
+                    $objects_names[] = $event['title'];
+                }
+                break;
+            case SQUEST_ACTION_KILL_BOT:
+                $bot_artikul_list = bot_artikul_list(false, sql_pholder(' AND id IN (?@)', $ids));
+                foreach ($bot_artikul_list as $bot) {
+                    $objects_names[] = $bot['nick'].' ['.$bot['level'].']';
+                }
+                break;
+            case SQUEST_ACTION_COLLECTION_GET:
+                $collection_list = collection_list(array('id' => $ids));
+                foreach ($collection_list as $collection) {
+                    $objects_names[] = $collection['title'];
+                }
+                break;
+            case SQUEST_ACTION_RESOURCE_GET:
+                $farm_list = farm_list(array('id' => $ids));
+                foreach ($farm_list as $farm) {
+                    $objects_names[] = $farm['title'];
+                }
+                break;
+        }
+    }
+    $description = $squest_type_description_hash[$squest['type']];
+    if($objects_names) {
+        $description = str_replace('#LIST#', ': '.implode(', ', $objects_names), $description);
+    }else{
+        $description = str_replace('#LIST#', '', $description);
+    }
+    return $description;
+}
+
+//Вешаем на логин)
+function squest_generate($user_id) {
+    if(intval($user_id) <= 0) return false;
+
+    //Выдача заданий урчи только админам
+    $user = user_get($user_id);
+    if(!squest_open($user)) return false;
+
+    $squest_ids = get_hash(squests_list(false, sql_pholder(' AND flags & ?#SQUEST_FLAG_ACTIVE')), 'id', 'id');
+    if(count($squest_ids) <= 0) return false;
+
+    $squest_user = squests_user_get(array('user_id' => $user_id));
+    if(!$squest_user) {
+        squests_user_save(array(
+            'user_id' => $user_id,
+            'dtime' => mktime(23, 59, 59) + 1,
+            'status' => 0,
+        ));
+        $squest_user = squests_user_get(array('user_id' => $user_id));
+    }
+    if(!$squest_user) return false;
+    if($squest_user['squests_id']) return false;
+
+    $squest_id = intval(array_rand($squest_ids));
+    if($squest_id <= 0) return false;
+
+    chat_msg_send_system('<b class="grnn">Вам было выдано задание Урчи!</b> <b>Зайдите к Урчи за заданием!</b>', CHAT_CHF_USER, $user_id);
+    chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user_id, array('func' => "_top().frames['main_frame'].$('.urchi_btn').addClass('active')",));
+
+    squests_user_save(array(
+        'id' => $squest_user['id'],
+        'squests_id' => $squest_id,
+        'status' => 0,
+        'points' => 0,
+        'dtime' => mktime(23, 59, 59) + 1,
+    ));
+
+    return true;
+}
+
+function squest_trigger_bonus($user, $squests_id) {
+    if(!$user) return false;
+    if(!squest_open($user)) return false;
+
+    $squest_user = squests_user_get(array('user_id' => $user['id']));
+    if(!$squest_user || !$squest_user['squests_id']) return false;
+    if($squest_user['status']) return false; //Уже все.. забрали награду
+    if($squest_user['squests_id'] != $squests_id) return false;
+
+    $squest = squests_get(array('id' => $squest_user['squests_id']));
+    if(!$squest || !($squest['flags'] & SQUEST_FLAG_ACTIVE)) return false;
+
+    squests_user_save(array(
+        'id' => $squest_user['id'],
+        '_set' => sql_pholder(' points = points + 1'),
+    ));
+    return true;
+}
+
+function squest_trigger($user, $type_id, $value = '', $multi = 1) {
+    if(!$user) return false;
+    if(!squest_open($user)) return false;
+
+    $squest_user = squests_user_get(array('user_id' => $user['id']));
+    if(!$squest_user || !$squest_user['squests_id']) return false;
+    if($squest_user['status']) return false; //Уже все.. забрали награду
+    $squest = squests_get(array('id' => $squest_user['squests_id'], 'type' => $type_id));
+    if(!$squest || !($squest['flags'] & SQUEST_FLAG_ACTIVE)) return false;
+
+    if($squest_user['points'] >= $squest['points']) return false;
+
+    $ids = array_filter(array_map('trim', explode(',', $squest['value'])), function ($id) {
+        return intval($id) > 0;
+    });
+    if(count($ids) > 0 && !in_array($value, $ids)) { //Да да..
+        return false;
+    }
+
+    squests_user_save(array(
+        'id' => $squest_user['id'],
+        '_set' => sql_pholder(' points = points + ?', $multi),
+    ));
+
+    return true;
+}
+
+function squests_cron() {
+    squests_user_save(array(
+        '_add' => sql_pholder(' AND dtime < ?', time_current()),
+        '_set' => sql_pholder(' squests_id = 0, points = 0, status = 0, dtime = ?', (mktime(23, 59, 59) + 1)),
+    ));
+}
+
+function squest_open($user = array()){
+    if(((defined('SQUEST_ADMIN_ONLY') && SQUEST_ADMIN_ONLY) && $user['flags'] & SQUEST_ADMIN_ONLY) || (defined('SQUEST_OPENED') && SQUEST_OPENED)) {
+        return true;
+    }
+    return false;
+}

@@ -1,0 +1,108 @@
+<?
+
+define('TABLE_UNIT_ARTIKUL', 'unit_artikul');
+define('TABLE_UNIT', 'units');
+
+define('UNIT_CLASS_HUMAN', 1);
+define('UNIT_CLASS_ELF', 2);
+define('UNIT_CLASS_UNDEAD', 3);
+define('UNIT_CLASS_ORC', 4);
+
+$unit_class_hash = array(
+    UNIT_CLASS_HUMAN => 'Человек',
+    UNIT_CLASS_ELF => 'Эльф',
+    UNIT_CLASS_UNDEAD => 'Нежить',
+    UNIT_CLASS_ORC => 'Орк',
+);
+
+define('UNIT_STAR_1', 1);
+define('UNIT_STAR_2', 2);
+define('UNIT_STAR_3', 3);
+define('UNIT_STAR_4', 4);
+define('UNIT_STAR_5', 5);
+define('UNIT_STAR_6', 6);
+
+$array_units_list = array(
+    UNIT_CLASS_HUMAN => array(
+        UNIT_STAR_1 => array(123),
+        UNIT_STAR_2 => array(171,160),
+        UNIT_STAR_3 => array(258,259),
+        UNIT_STAR_4 => array(367,363,347,318,294,227),
+    ),
+    UNIT_CLASS_ELF => array(
+        UNIT_STAR_1 => array(397),
+        UNIT_STAR_2 => array(60,391),
+        UNIT_STAR_3 => array(264,185),
+        UNIT_STAR_4 => array(394,390,384,383,122,373),
+    ),
+    UNIT_CLASS_UNDEAD => array(
+        UNIT_STAR_1 => array(165),
+        UNIT_STAR_2 => array(180,211),
+        UNIT_STAR_3 => array(199,214),
+        UNIT_STAR_4 => array(183,206,204,300,308,357),
+    ),
+    UNIT_CLASS_ORC => array(
+        UNIT_STAR_1 => array(59),
+        UNIT_STAR_2 => array(62,196),
+        UNIT_STAR_3 => array(222,201),
+        UNIT_STAR_4 => array(421,396,337,269,266,342),
+    ),
+);
+
+////////////////////////////////////////////////////////////////////////
+
+function unit_artikul_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_UNIT_ARTIKUL,$ref,$add);
+}
+
+function unit_artikul_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_UNIT_ARTIKUL,$ref,$add);
+}
+
+function unit_artikul_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_UNIT_ARTIKUL, $ref, $add);
+}
+
+function unit_artikul_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_UNIT_ARTIKUL,$param);
+}
+
+function unit_artikul_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_UNIT_ARTIKUL,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+function units_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_UNIT,$ref,$add);
+}
+
+function units_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_UNIT,$ref,$add);
+}
+
+function units_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_UNIT, $ref, $add);
+}
+
+function units_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_UNIT,$param);
+}
+
+function units_delete($ref, $add='') {
+    global $db_2;
+    common_delete($db_2,TABLE_UNIT,$ref,$add);
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////

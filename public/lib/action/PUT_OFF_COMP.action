@@ -1,0 +1,34 @@
+<?
+// действие "снять предмет с тени"
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (!$object['slot_id_c'] || ($object['slot_id_c'] == 'TEMP_EFFECT')) return;
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = 'В настоящий момент это действие выполнить нельзя!';
+    return;
+}
+if ($object['type_id'] == ARTIFACT_TYPE_ID_INJURY) {
+    $out['error'] = 'Нельзя снять травму!';
+    return;
+}
+
+$companion_id = $subject['companion_id'];
+if(!$companion_id){
+    $out['error'] = 'У вас нет тени!';
+    return;
+}
+$companion = companion_user_get($subject['id']);
+if(!$companion){
+    $out['error'] = 'У вас нет тени!';
+    return;
+}
+
+artifact_save(array(
+    'id' => $object['id'],
+    'companion_id' => 0,
+    'slot_id_c' => '',
+), sql_pholder(' AND mount_id = ? AND type_id = ?',$companion_id, ARTIFACT_TYPE_ID_COMPANION));
+$out['status'] = ACTION_STATUS_OK;
+?>

@@ -1,0 +1,69 @@
+<? # $Id: alliance.lib,v 1.3 2009-02-06 15:01:44 razor Exp $
+
+// Имена и поля таблиц
+define('TABLE_ALLIANCES','alliances');
+define('FIELD_ALLIANCES','');
+define('TABLE_ALLIANCE_CLANS','alliance_clans');
+define('FIELD_ALLIANCE_CLANS','');
+
+define('ALLIANCE_LEVEL_MIN', 2);
+define('ALLIANCE_CLAN_LIMIT', 3);
+
+define('ALLIANCE_CS_INVITE', 0);
+define('ALLIANCE_CS_ACTIVE', 1);
+
+function alliance_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_ALLIANCES,$ref,$add);
+}
+
+function alliance_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_ALLIANCES,$ref,$add,$field_list);
+}
+
+function alliance_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_ALLIANCES,$param,FIELD_ALLIANCES);
+}
+
+function alliance_delete($ref) {
+	global $db_2;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_2,TABLE_ALLIANCES,$ref);
+	return true;
+}
+
+function alliance_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_ALLIANCES,$ref,$add);
+}
+
+function alliance_clan_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_ALLIANCE_CLANS,$ref,$add);
+}
+
+function alliance_clan_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_ALLIANCE_CLANS,$ref,$add,$field_list);
+}
+
+function alliance_clan_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_ALLIANCE_CLANS,$param,FIELD_ALLIANCE_CLANS);
+}
+
+function alliance_clan_delete($ref, $add = '') {
+	global $db_2;
+	if ((!$ref || is_array($ref)) && !$add) return false;
+	common_delete($db_2,TABLE_ALLIANCE_CLANS,$ref,$add);
+	return true;
+}
+
+function alliance_clan_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_ALLIANCE_CLANS,$ref,$add);
+}
+
+?>

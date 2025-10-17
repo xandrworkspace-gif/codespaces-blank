@@ -1,0 +1,141 @@
+<? # $Id: ACTMOUNT.action,v 1.23 2010-02-02 11:08:36 p.knoblokh Exp $
+
+// действие "активировать-деактивировать жывотное"
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+
+// Может так получиться, что человек вызывает или пытается оседлать животное, которое в бою
+// надо проверить что это во всех нодах нет активных боёв, в которых он вызывал зверя
+global $NODE_NUMS;
+foreach ($NODE_NUMS as $nn) {
+	if ($nn == FRIDGE_NN) continue;
+	NODE_PUSH($nn);
+		$check_flees = make_hash(fight_user_list(false, false, sql_pholder(' AND user_id=? AND flags & ?#FIGHT_USER_FLAG_FLEE AND flags & ?#FIGHT_USER_FLAG_MOUNTUSED', $subject['id'])), 'fight_id');
+		$flee_fight_ids = array();
+		foreach($check_flees as $flee_fight_user) {
+			$flee_fight_ids[$flee_fight_user['fight_id']] = $flee_fight_user['fight_id'];
+		}
+		if ($flee_fight_ids) {
+			$current_fights = fight_list(null, null, FIGHT_STATUS_RUNNING, sql_pholder(' AND id in (?@)', $flee_fight_ids));
+			if ($current_fights) {
+				$out['error'] =  translate('Ваше ездовое животное участвует в другом бою!');
+				return;
+			}
+		}
+	NODE_POP();					
+}
+
+if ($subject['fight_id']) {
+	if (!$action['param2']) { // не указан бот
+		$out['error'] = translate('Ваше ездовое животное неспособно вмешаться в бой!');
+		return;
+	}
+	$fight_user = fight_user_get(array('user_id' => $subject['id'], 'fight_id' => $subject['fight_id']));
+    $fight = fight_get($subject['fight_id']);
+	if ($fight['type'] == FIGHT_TYPE_WARDRAGONS){
+		$out['error'] = translate('Вы не можете призвать ездовое животное в битве драконов.');
+		return;
+	}
+	if ($fight['type'] == FIGHT_TYPE_WARIOR){
+		$out['error'] = translate('Вы не можете призвать ездовое животное в битве за материк.');
+		return;
+	}
+	$area = array();
+	if($fight['type'] == FIGHT_TYPE_ARENA || $fight['type'] == FIGHT_TYPE_ADV_DUEL){
+        $area = area_get($fight['area_id']);
+	}else{
+        $area = area_get($subject['area_id']);
+	}
+
+	if (intval($area['flags']) & AREA_FLAG_NO_MOUNT_FIGHT) {
+		$out['error'] = translate('Вы не можете призвать ездовое животное на помощь в этой локации.');	
+		return;
+	}
+	if ($subject['instance_id']) {
+		$object_instance = instance_get($subject['instance_id']);
+		if ($object_instance['flags'] & INST_FLAG_NO_MOUNT_FIGHT) {
+			$out['error'] = translate('Вы не можете призвать ездовое животное на помощь в этой локации.');
+			return;
+		}
+	}
+	
+
+	if ($fight['flags'] & FIGHT_FLAG_NO_GREAT){
+		$out['error'] = translate('Вы не можете призвать ездовое животное в битве драконов.');
+		return;
+	}	
+	if (intval($fight_user['flags']) & FIGHT_USER_FLAG_MOUNTUSED) {
+		$out['error'] = translate('Только одно ездовое животное может вмешаться в бой!');
+		return;		
+	}
+	if (intval($object['flags']) & ARTIFACT_FLAG_FIGHTONCE) { // уже использовано
+		$out['error'] = translate('Ваше ездовое животное неспособно вмешаться в этот бой!');
+		return;
+	}
+	if ($object['param1'] && artifact_amount($object['param1'], $subject['id'], null, '') < $action['param1']) {
+		$out['error'] = translate('У Вашего ездового животного недостаточно корма!');
+		return;
+	}
+	
+	require_once("lib/bot.lib");
+	
+	if (bot_help($subject, $action['param2'], array('activator_id' => $subject['id']))) {
+		if ($object['param1']) artifact_remove($object['param1'], $action['param1'], $subject['id']);
+		artifact_save(array(
+			'id' => $object['id'],
+			'_set' => "flags = flags | ".ARTIFACT_FLAG_FIGHTONCE,
+		));
+		fight_user_save(array( // "используем" животное
+			'id' => $fight_user['id'],
+			'_set' => "flags = flags | ".FIGHT_USER_FLAG_MOUNTUSED,
+		));
+		$out['status'] = ACTION_STATUS_OK;
+	}
+	chat_msg_send_system(translate('Вы призвали на помощь ездовое животное, оно будет бесстрашно сражаться на вашей стороне!'), CHAT_CHF_USER, $subject['id']);
+	return; 
+}
+
+$drop = $subject['mount_id'] == $object['id'];
+
+if (!$drop) {
+	$artikul = artifact_artikul_get($object['artikul_id']);
+	if ($subject['level'] < $artikul['level_min']) {
+		$out['error'] = sprintf(translate('Это ездовое животное не может быть призвано персонажем ниже %d уровня!'),$artikul['level_min']);
+		return;
+	}
+	if (($artikul['level_max'] >= $artikul['level_min']) && ($subject['level'] > $artikul['level_max'])) {
+		$out['error'] = sprintf(translate('Это ездовое животное не может быть призвано персонажем выше %d уровня!'),$artikul['level_max']);
+		return;
+	}
+	if ($artikul['gender'] && ($subject['gender'] != $artikul['gender'])) {
+		$gender_str = array(1 => translate('мужчиной'), 2 => translate('женщиной'));
+		$out['error'] = sprintf(translate('Это ездовое животное может быть призвано только %s!'),$gender_str[$artikul['gender']]);
+		return;
+	}
+}
+
+user_save(array(
+	'id' => $subject['id'],
+	'mount_id' => $drop ? 0 : $object['id'],
+));
+
+user_undress($subject['id'], 'MOUNT');
+$out['status'] = ACTION_STATUS_OK;
+$out['param_success'] = array('update_swf' => 1);
+chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$subject['id'],array('func' => "updateSwf({'items_right':''})",));
+chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$subject['id'],array('func' => "updateMount(".($drop ? 0 : $object['id']).")",));
+
+artifact_artikul_get_title($object);
+if ($drop) {
+	chat_msg_send_system(sprintf(translate('Вы использовали %s и отпустили ездовое животное.'), $object['title']), CHAT_CHF_USER, $subject['id']);
+} else {
+	chat_msg_send_system(sprintf(translate('Вы использовали %s и призвали ездовое животное.'), $object['title']), CHAT_CHF_USER, $subject['id']);
+}
+
+?>

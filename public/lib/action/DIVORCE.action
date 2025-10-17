@@ -1,0 +1,46 @@
+<? # $Id: DIVORCE.action,v 1.6 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "развести"
+// Параметры:
+//	$in['nick'] - ник
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+$user = user_get(false,$in['nick']);
+if (!$user) {
+	$out['error'] = translate('Пользователь не найден!');
+	return;
+}
+$ring = artifact_get_wedding_ring($user['id']);
+if (!$ring) {
+	$out['error'] = translate('Персонаж не состоит в браке!');
+	return;
+}
+artifact_delete_safe($ring['id']);
+$spouse_id = $ring['param1'];
+if ($spouse_id) {	// удаляем кольцо у второй половины
+	$ring2 = artifact_get_wedding_ring($spouse_id,$user['id']);
+	if ($ring2) { 
+		artifact_delete_safe($ring2['id']);
+	}
+	$user2 = user_get($spouse_id);
+}
+
+if($user2){
+    user_clan_stat_archive($user, CLAN_STAT_TYPE_USER_DISMARRY, $user2['id']);
+}
+
+$out['status'] = ACTION_STATUS_OK;
+
+// лог-сервис -----------------------
+foreach (array($subject, $user, $user2) as $person){
+	logserv_log_action(array(
+		'action' => $action,
+		'comment' => sprintf(translate('%s разводится с %s. Обрядник: %s. Удалены кольца: %s (мужу), %s (жене).'),
+				user_is_invisible($user) ? translate('Невидимка') : $user['nick'], user_is_invisible($user2) ? translate('Невидимка') : $user2['nick'], user_is_invisible($subject) ? translate('Невидимка') : $subject['nick'],
+				$ring['id'], $ring2['id'] 
+			),
+	),$person);
+}
+// ----------------------------------
+
+?>

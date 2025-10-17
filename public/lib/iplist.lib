@@ -1,0 +1,86 @@
+<? # $Id: iplist.lib,v 1.6 2009-10-27 13:46:19 s.ignatenkov Exp $
+
+// Имена и поля таблиц
+define('TABLE_IPLIST','iplist');
+define('FIELD_IPLIST','');
+
+define('TABLE_IPLIST_CID','iplist_cid');
+define('FIELD_IPLIST_CID','');
+
+define('IP_STATUS_DENYREG',   0x0001);	// запрет регистраций
+define('IP_STATUS_DENYLOGIN', 0x0002);	// запрет входа
+
+
+function iplist_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_IPLIST,$ref,$add);
+}
+
+function iplist_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_IPLIST,$ref,$add);
+}
+
+function iplist_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_IPLIST, $ref, $add);
+}
+
+function iplist_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_IPLIST,$param,FIELD_IPLIST);
+}
+
+function iplist_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_IPLIST,$ref,$add);
+}
+
+/////////////////////////////////////////////////////////////////////
+
+function iplist_cid_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_IPLIST_CID,$ref,$add);
+}
+
+function iplist_cid_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_IPLIST_CID,$ref,$add);
+}
+
+function iplist_cid_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff, TABLE_IPLIST_CID, $ref, $add);
+}
+
+function iplist_cid_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_IPLIST_CID,$param,FIELD_IPLIST_CID);
+}
+
+function iplist_cid_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff,TABLE_IPLIST_CID,$ref,$add);
+}
+
+// ===========================================================================================================================
+
+function iplist_check_status($ip=null) {
+	if (!$ip) $ip = common_client_ip();
+	if (!$ip) return false;
+	foreach (iplist_list() as $item) {
+		if (strpos($item['ip'],'/') !== false) {	// netaddr/netbits
+			$t = explode('/',$item['ip']);
+			$netbits = intval($t[1]);
+			$t = explode('.',$t[0]);
+			$netaddr = sprintf("%08b%08b%08b%08b",intval($t[0]),intval($t[1]),intval($t[2]),intval($t[3]));
+			$t = explode('.',$ip);
+			$ipaddr = sprintf("%08b%08b%08b%08b",intval($t[0]),intval($t[1]),intval($t[2]),intval($t[3]));
+			if (strncmp($netaddr,$ipaddr,$netbits)) continue;
+		} else if ($item['ip'] != $ip) continue;
+		return $item['status'];
+	}
+	return false;
+}
+
+?>

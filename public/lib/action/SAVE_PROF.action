@@ -1,0 +1,115 @@
+<?
+
+// действие "сохранение/получение профессии"
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+
+global $profession_info, $prof_paks;
+
+$artikul_item = artifact_artikul_get($object['artikul_id']);
+if(!$artikul_item || !$artikul_item['profession']){
+    $out['error'] = 'Неизвестная профессия';
+    return;
+}
+
+$prof_saved = intval($object['param1']);
+$prof_info = get_prof_info($subject['profession']);
+$prof_skill = skill_object_get(OBJECT_CLASS_USER, $subject, array('skill_id' => $profession_info[$artikul_item['profession']]['skill_id']));
+
+$rested = false;
+$saved = false;
+
+if($prof_saved){
+    //Получение профессии
+    //Если есть cur_pack, то пизда!
+    if($prof_info['cur_pack'][$prof_paks[$artikul_item['profession']]]){
+        $out['error'] = 'Вы не можете восстановить "'.$profession_info[$artikul_item['profession']]['title'].'", пока у вас есть профессия данного типа!';
+        return;
+    }else{
+        $rested = true;
+    }
+}elseif($prof_skill['value'] && !$prof_saved && $prof_info['cur_prof'][$artikul_item['profession']]){
+    //Сохранение профессии
+    $saved = true;
+}else{
+    $out['error'] = 'У вас нет такой профессии!';
+    return;
+}
+
+if((!$rested && !$saved) || ($rested && $saved)){
+    $out['error'] = 'Неизвестная ошибка!';
+    return;
+}
+
+if($saved){
+    $new_artifact = $object;
+    unset($new_artifact['object_class'], $new_artifact['id']);
+    $new_artifact['param1'] = $prof_skill['value'];
+    $new_artifact['title'] .= $artikul_item['title'].' +'.$prof_skill['value'];
+    $new_artifact['flags2'] |= ARTIFACT_FLAG2_TITLE_ON_A;
+    artifact_save($new_artifact);
+    $out['status'] = ACTION_STATUS_OK;
+    return;
+}
+
+if($rested){
+    //Дополнительные проверки нужны! Все равно
+    if($prof_info['cur_pack'][$prof_paks[$artikul_item['profession']]]){
+        $out['error'] = 'Вы не можете восстановить "'.$profession_info[$artikul_item['profession']]['title'].'", пока у вас есть профессия данного типа!';
+        return;
+    }
+    if($prof_info['cur_prof'][$artikul_item['profession']]){
+        $out['error'] = 'У вас уже есть эта профессия!';
+        return;
+    }
+
+    if(!$prof_saved){
+        $out['error'] = 'Скилл не сохранен!';
+        return;
+    }
+
+    $profession_id = intval($artikul_item['profession']);
+    $profession = $profession_info[$profession_id];
+    $user_professions = intval($subject['profession']);
+
+    if ($profession_id & $user_professions) { // уже есть такая профессия?
+        $out['error'] = 'У вас уже есть эта профессия!';
+        return;
+    } else { // уже есть изученная профессия такого типа?
+        foreach ($profession_info as $item) {
+            if (intval($item['id']) & $user_professions) {
+                if ($profession['type'] == $item['type']) {
+                    $out['error'] = 'Уже изучена профессия данного типа!';
+                    return;
+                }
+            }
+
+        }
+    }
+
+
+    //Сохранение скилла
+    skill_object_set_value(OBJECT_CLASS_USER, $subject['id'], $profession['skill_id'], $prof_saved, array('relative' => true));
+
+    //Сохранение профессии
+    user_save(array(
+        'id' => $subject['id'],
+        '_set' => 'profession=profession|'.$profession_id,
+    ));
+
+    // лог-сервис -----------------------
+    logserv_log_note(array(
+        'note' => sprintf(translate('Восстановление профессии "%s" '),$profession['title']),
+        'comment' => '+'.$prof_saved,
+    ),$subject);
+
+    $out['status'] = ACTION_STATUS_OK;
+    return;
+}
+
+?>

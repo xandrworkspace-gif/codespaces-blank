@@ -1,0 +1,476 @@
+<? # $Id: area_casino.lib,v 1.0 2009/11/17 12:24:36 i.hrustalev Exp $
+
+require_once("lib/area.lib");
+require_once("lib/user_stat.lib");
+require_once("lib/artifact.lib");
+require_once("lib/user.lib");
+
+
+
+
+
+// Имена и поля таблиц
+define('TABLE_AREA_CASINO_SUPER_GAMES','area_casino_super_games');
+define('FIELD_AREA_CASINO_SUPER_GAMES','');
+define('TABLE_AREA_CASINO_SUPER_GAMES_GOLD','area_casino_super_games_gold');
+define('FIELD_AREA_CASINO_SUPER_GAMES_GOLD','');
+define('TABLE_AREA_CASINO_JACKPOTS','area_casino_jackpots');
+define('FIELD_AREA_CASINO_JACKPOTS','');
+define('TABLE_AREA_CASINO_JACKPOTS_GOLD','area_casino_jackpots_gold');
+define('FIELD_AREA_CASINO_JACKPOTS_GOLD','');
+define('TABLE_AREA_CASINO_SCHEDULE','area_casino_schedule');
+define('FIELD_AREA_CASINO_SCHEDULE','id,date_start,date_finish,flags');
+define('AREA_CASINO_SCHEDULE_INTERVAL', 60*60*24*30); //на какое время вперёд генериться расписание
+define('AREA_CASINO_FLAG_TASK_START_INFORMED', 1); // о начале эвента казино уведомление отправлено
+define('AREA_CASINO_FLAG_TASK_FINISH_INFORMED', 2); // о конце эвента казино уведомление отправлено
+
+define('CASINO_SUPER_GAME_DURATION_MAX', 604800); // максимальная продолжительность супер-игры 7 дней
+
+if (defined('SETTINGS_JACKPOT_LIMIT_MIN') && SETTINGS_JACKPOT_LIMIT_MIN) {
+	define('CASINO_JACKPOT_LIMIT_MIN', SETTINGS_JACKPOT_LIMIT_MIN);
+} else {
+	define('CASINO_JACKPOT_LIMIT_MIN', 200000);
+}
+if (defined('SETTINGS_JACKPOT_LIMIT_MAX') && SETTINGS_JACKPOT_LIMIT_MAX) {
+	define('CASINO_JACKPOT_LIMIT_MAX', SETTINGS_JACKPOT_LIMIT_MAX);
+} else {
+	define('CASINO_JACKPOT_LIMIT_MAX', 300000);
+}
+define('LINE_COUNT', 5); // количество барабанов
+define('CASINO_SUPERGAME_STAGE_COUNT', 5); // количество стадий супер-игры
+
+//Расчет репутации
+define('CASINO_REP_PERCENT_GAME', 0.05);
+define('CASINO_REP_PERCENT_GOLD', 0.25);
+
+// Ставки и Виды игры
+global $session_user;
+
+$casino_bet_info = array(
+	1 => array(
+		'id'  => 1,
+		'bet' => '1',
+	),
+	2 => array(
+		'id'  => 2,
+		'bet' => '5',
+	),
+	3 => array(
+		'id'  => 3,
+		'bet' => '10',
+	),
+	4 => array(
+		'id'  => 4,
+		'bet' => '20',
+	),
+	5 => array(
+		'id'  => 5,
+		'bet' => '50',
+	),
+	6 => array(
+		'id'  => 6,
+		'bet' => '100',
+	),	
+);	
+
+
+
+
+// Ставки и Виды игры
+$casino_bet_info_gold = array(
+    1 => array(
+        'id'  => 1,
+        'bet' => '0.1',
+    ),
+    2 => array(
+        'id'  => 2,
+        'bet' => '0.25',
+    ),
+    3 => array(
+        'id'  => 3,
+        'bet' => '0.5',
+    ),
+    4 => array(
+        'id'  => 4,
+        'bet' => '1',
+    ),
+    5 => array(
+        'id'  => 5,
+        'bet' => '2',
+    ),
+);
+
+
+$casino_type_info = array(
+	1 => array(
+		'id'         => 1,
+		'title'      => translate('средняя линия'),
+		'figures'    => array(0, 0, 0, 0, 0), // строка для каждого барабана (-1 .. 1)
+		'multiplier' => 1,
+	),
+	2 => array(
+		'id'         => 2,
+		'title'      => translate('первая и вторая линии'),
+		'figures'    => array(-1, -1, -1, -1, -1),
+		'multiplier' => 2,
+	),
+	3 => array(
+		'id'         => 3,
+		'title'      => translate('три линии'),
+		'figures'    => array(1, 1, 1, 1, 1),
+		'multiplier' => 3,
+	),
+	4 => array(
+		'id'         => 4,
+		'title'      => translate('три линии и V-образная линия'),
+		'figures'    => array(-1, 0, 1, 0, -1),
+		'multiplier' => 4,
+	),
+	5 => array(
+		'id'         => 5,
+		'title'      => translate('три линии и две V-образных линии'),
+		'figures'    => array(1, 0, -1, 0, 1),
+		'multiplier' => 5,
+	),
+);
+
+// Настройки фигур
+$casino_figure_info = array(
+	CASINO_FIGURE_NORMAL1 => array(
+		'color' => '#000000',
+		'bonus' => array(3 => '3', 4 => '7', 5 => '20'),
+		'count' => 2,
+	),
+	CASINO_FIGURE_NORMAL2 => array(
+		'color' => '#000000',
+		'bonus' => array(3 => '5', 4 => '15', 5 => '80'),
+		'count' => 4,
+	),
+	CASINO_FIGURE_BONUS => array(
+		'color' => '#0000ff; font-weight: bold',
+		'bonus' => array(3 => '10', 4 => '30', 5 => '120'),
+		'count' => 2,
+	),
+	CASINO_FIGURE_JOKER => array(
+		'color' => '#ff0000; font-weight: bold',
+		'bonus' => array(3 => '100', 4 => '1000', 5 => '5000'),
+		'joker' => true,
+		'count' => 1,
+	),
+	CASINO_FIGURE_SUPER => array(
+		'color' => '#00ff00; font-weight: bold',
+		'super' => true,
+		'count' => 1,
+	),
+);
+
+// Варианты множителей в супер-игре
+$casino_supergame_multiplier_hash = array(
+	1 => 2,
+	2 => 7,
+	3 => 15,
+);
+
+
+
+
+
+
+function area_casino_super_game_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_AREA_CASINO_SUPER_GAMES,$ref,$add);
+}
+
+function area_casino_super_game_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_AREA_CASINO_SUPER_GAMES,$ref,$add);
+}
+
+function area_casino_super_game_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_AREA_CASINO_SUPER_GAMES,$param,FIELD_AREA_CASINO_SUPER_GAMES);
+}
+
+function area_casino_super_game_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_AREA_CASINO_SUPER_GAMES,$ref,$add);
+}
+
+//Супер игра для бриллиантов
+function area_casino_super_game_gold_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_AREA_CASINO_SUPER_GAMES_GOLD,$ref,$add);
+}
+
+function area_casino_super_game_gold_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_AREA_CASINO_SUPER_GAMES_GOLD,$ref,$add);
+}
+
+function area_casino_super_game_gold_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_AREA_CASINO_SUPER_GAMES_GOLD,$param,FIELD_AREA_CASINO_SUPER_GAMES_GOLD);
+}
+
+function area_casino_super_game_gold_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_AREA_CASINO_SUPER_GAMES_GOLD,$ref,$add);
+}
+
+// ДЖЭКПОТ
+
+function area_casino_jackpot_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_AREA_CASINO_JACKPOTS,$ref,$add);
+}
+
+function area_casino_jackpot_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_AREA_CASINO_JACKPOTS,$ref,$add);
+}
+
+function area_casino_jackpot_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_AREA_CASINO_JACKPOTS,$param,FIELD_AREA_CASINO_JACKPOTS);
+}
+
+function area_casino_jackpot_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_AREA_CASINO_JACKPOTS,$ref,$add);
+}
+
+// ДЖЭКПОТ ГОЛД
+
+function area_casino_jackpot_gold_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_AREA_CASINO_JACKPOTS_GOLD,$ref,$add);
+}
+
+function area_casino_jackpot_gold_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_AREA_CASINO_JACKPOTS_GOLD,$ref,$add);
+}
+
+function area_casino_jackpot_gold_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_AREA_CASINO_JACKPOTS_GOLD,$param,FIELD_AREA_CASINO_JACKPOTS_GOLD);
+}
+
+function area_casino_jackpot_gold_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_AREA_CASINO_JACKPOTS_GOLD,$ref,$add);
+}
+
+// получение типа фигуры по ее номеру
+function area_casino_type_by_number($figure_number) {
+	global $casino_figure_info;
+	$first = 1;
+	// определяем тип фигуры по ее номеру, учитывая кол-во визуальных разновидностей каждого типа
+	foreach ($casino_figure_info as $figure) {
+		$last = $first + $figure['count'] - 1;
+		if ($figure_number >= $first AND  $figure_number <= $last) {
+			return $figure;
+		}
+		$first = $last + 1;
+	}
+}
+
+// заполнение слот машины
+function area_casino_fill_slots() {
+	$slot_machine = array(
+		1 => array(1, 2, 1, 2, 1, 2, 5, 7, 3, 4, 8, 6, 1, 2, 1, 2, 5, 7, 3, 4, 8, 6, 6, 5, 3, 4, 1, 7, 2, 1, 8, 5, 3, 4, 6, 2, 1, 7, 5, 4, 8, 3, 6, 2, 1, 2, 5, 7, 3, 4, 8, 6, 1, 2, 6, 4, 3, 7, 5, 1, 8, 2, 6, 4, 3, 5, 1, 7, 2, 1, 8, 5, 3, 4, 6, 2, 7, 6, 5, 8, 9, 3, 4, 1, 2, 1, 5, 8, 3, 4, 7, 6, 2, 1, 2, 1, 5, 7, 3, 4, 8, 6, 2, 6, 3, 4, 5, 7, 1, 2, 8, 5, 3, 4, 6, 1, 5, 7, 3, 4, 8, 6, 2, 10, 1, 2, 5, 7, 3, 4, 8, 6, 1, 2, 6, 4, 3, 7, 5, 1, 8, 2, 1, 6, 3, 4, 5, 7, 2, 1, 8, 5, 3, 4, 6, 2, 1, 7, 5, 4, 8, 3, 6, 2, 1, 6, 7, 4, 9, 3, 8, 5, 2, 1, 2, 1, 2, 7, 3, 4, 8, 5, 6, 1, 6, 3, 4, 7, 5, 6, 8, 5, 3, 4, 2, 1, 2, 7, 5, 3, 8, 4, 6, 1, 2, 1, 5, 7, 3, 4, 8, 6, 2, 1, 6, 5, 3, 7, 4, 2, 8, 1, 2, 1, 3, 5, 4, 6, 2, 1, 2, 1, 2, 1, 2, 3, 5, 4, 6, 1, 2, 1, 2),
+		2 => array(5, 6, 5, 6, 5, 6, 4, 8, 1, 1, 7, 3, 5, 6, 5, 6, 4, 8, 1, 1, 7, 3, 3, 4, 1, 1, 5, 8, 6, 5, 7, 4, 1, 1, 3, 6, 5, 8, 4, 1, 7, 1, 3, 6, 5, 6, 4, 8, 1, 1, 7, 3, 5, 6, 3, 1, 1, 8, 4, 5, 7, 6, 3, 1, 1, 4, 5, 8, 6, 5, 7, 4, 1, 1, 3, 6, 8, 3, 4, 7, 9, 1, 1, 5, 6, 5, 4, 7, 1, 1, 8, 3, 6, 5, 6, 5, 4, 8, 1, 1, 7, 3, 6, 3, 1, 1, 4, 8, 5, 6, 7, 4, 1, 1, 3, 5, 4, 8, 1, 1, 7, 3, 6, 10, 5, 6, 4, 8, 1, 1, 7, 3, 5, 6, 3, 1, 1, 8, 4, 5, 7, 6, 5, 3, 1, 1, 4, 8, 6, 5, 7, 4, 1, 1, 3, 6, 5, 8, 4, 1, 7, 1, 3, 6, 5, 3, 8, 1, 9, 1, 7, 4, 6, 5, 6, 5, 6, 8, 1, 1, 7, 4, 3, 5, 3, 1, 1, 8, 4, 3, 7, 4, 1, 1, 6, 5, 6, 8, 4, 1, 7, 1, 3, 5, 6, 5, 4, 8, 1, 1, 7, 3, 6, 5, 3, 4, 1, 8, 1, 6, 7, 5, 6, 5, 1, 4, 1, 3, 6, 5, 6, 5, 6, 5, 6, 1, 4, 1, 3, 5, 6, 5, 6),
+		3 => array(3, 1, 3, 1, 3, 1, 2, 7, 6, 5, 8, 4, 3, 1, 3, 1, 2, 7, 6, 5, 8, 4, 4, 2, 6, 5, 3, 7, 1, 3, 8, 2, 6, 5, 4, 1, 3, 7, 2, 5, 8, 6, 4, 1, 3, 1, 2, 7, 6, 5, 8, 4, 3, 1, 4, 5, 6, 7, 2, 3, 8, 1, 4, 5, 6, 2, 3, 7, 1, 3, 8, 2, 6, 5, 4, 1, 7, 4, 2, 8, 9, 6, 5, 3, 1, 3, 2, 8, 6, 5, 7, 4, 1, 3, 1, 3, 2, 7, 6, 5, 8, 4, 1, 4, 6, 5, 2, 7, 3, 1, 8, 2, 6, 5, 4, 3, 2, 7, 6, 5, 8, 4, 1, 10, 3, 1, 2, 7, 6, 5, 8, 4, 3, 1, 4, 5, 6, 7, 2, 3, 8, 1, 3, 4, 6, 5, 2, 7, 1, 3, 8, 2, 6, 5, 4, 1, 3, 7, 2, 5, 8, 6, 4, 1, 3, 4, 7, 5, 9, 6, 8, 2, 1, 3, 1, 3, 1, 7, 6, 5, 8, 2, 4, 3, 4, 6, 5, 7, 2, 4, 8, 2, 6, 5, 1, 3, 1, 7, 2, 6, 8, 5, 4, 3, 1, 3, 2, 7, 6, 5, 8, 4, 1, 3, 4, 2, 6, 7, 5, 1, 8, 3, 1, 3, 6, 2, 5, 4, 1, 3, 1, 3, 1, 3, 1, 6, 2, 5, 4, 3, 1, 3, 1),
+		4 => array(2, 4, 2, 4, 2, 4, 3, 8, 5, 6, 7, 1, 2, 4, 2, 4, 3, 8, 5, 6, 7, 1, 1, 3, 5, 6, 2, 8, 4, 2, 7, 3, 5, 6, 1, 4, 2, 8, 3, 6, 7, 5, 1, 4, 2, 4, 3, 8, 5, 6, 7, 1, 2, 4, 1, 6, 5, 8, 3, 2, 7, 4, 1, 6, 5, 3, 2, 8, 4, 2, 7, 3, 5, 6, 1, 4, 8, 1, 3, 7, 9, 5, 6, 2, 4, 2, 3, 7, 5, 6, 8, 1, 4, 2, 4, 2, 3, 8, 5, 6, 7, 1, 4, 1, 5, 6, 3, 8, 2, 4, 7, 3, 5, 6, 1, 2, 3, 8, 5, 6, 7, 1, 4, 10, 2, 4, 3, 8, 5, 6, 7, 1, 2, 4, 1, 6, 5, 8, 3, 2, 7, 4, 2, 1, 5, 6, 3, 8, 4, 2, 7, 3, 5, 6, 1, 4, 2, 8, 3, 6, 7, 5, 1, 4, 2, 1, 8, 6, 9, 5, 7, 3, 4, 2, 4, 2, 4, 8, 5, 6, 7, 3, 1, 2, 1, 5, 6, 8, 3, 1, 7, 3, 5, 6, 4, 2, 4, 8, 3, 5, 7, 6, 1, 2, 4, 2, 3, 8, 5, 6, 7, 1, 4, 2, 1, 3, 5, 8, 6, 4, 7, 2, 4, 2, 5, 3, 6, 1, 4, 2, 4, 2, 4, 2, 4, 5, 3, 6, 1, 2, 4, 2, 4),
+		5 => array(6, 5, 6, 5, 6, 5, 1, 7, 4, 3, 8, 2, 6, 5, 6, 5, 1, 7, 4, 3, 8, 2, 2, 1, 4, 3, 6, 7, 5, 6, 8, 1, 4, 3, 2, 5, 6, 7, 1, 3, 8, 4, 2, 5, 6, 5, 1, 7, 4, 3, 8, 2, 6, 5, 2, 3, 4, 7, 1, 6, 8, 5, 2, 3, 4, 1, 6, 7, 5, 6, 8, 1, 4, 3, 2, 5, 7, 2, 1, 8, 9, 4, 3, 6, 5, 6, 1, 8, 4, 3, 7, 2, 5, 6, 5, 6, 1, 7, 4, 3, 8, 2, 5, 2, 4, 3, 1, 7, 6, 5, 8, 1, 4, 3, 2, 6, 1, 7, 4, 3, 8, 2, 5, 10, 6, 5, 1, 7, 4, 3, 8, 2, 6, 5, 2, 3, 4, 7, 1, 6, 8, 5, 6, 2, 4, 3, 1, 7, 5, 6, 8, 1, 4, 3, 2, 5, 6, 7, 1, 3, 8, 4, 2, 5, 6, 2, 7, 3, 9, 4, 8, 1, 5, 6, 5, 6, 5, 7, 4, 3, 8, 1, 2, 6, 2, 4, 3, 7, 1, 2, 8, 1, 4, 3, 5, 6, 5, 7, 1, 4, 8, 3, 2, 6, 5, 6, 1, 7, 4, 3, 8, 2, 5, 6, 2, 1, 4, 7, 3, 5, 8, 6, 5, 6, 4, 1, 3, 2, 5, 6, 5, 6, 5, 6, 5, 4, 1, 3, 2, 6, 5, 6, 5), 
+	);
+	return $slot_machine;
+}
+
+// подсчет комбинации на линии
+function area_casino_calculate_line($line, $bet) {
+	
+       
+        	
+          
+	
+	
+	// Считаем количество джокеров
+	$jokers = array();
+	foreach ($line as $figure_index) {
+		$figure_type = area_casino_type_by_number($figure_index);
+		if ($figure_type['joker']) {
+			$jokers[] = $figure_index;
+		}
+	}
+	
+	$combinations = array();
+	$slots = array_count_values($line);
+	
+	// Расчитываем все комбинации
+	foreach ($slots as $figure_index => $figure_count) {
+		$figure_type = area_casino_type_by_number($figure_index);
+		$count = $figure_count;
+		
+		// Пропускаем фигуры без бонуса
+		if (!isset($figure_type['bonus'])) {
+			continue;
+		}
+		
+		// Количество с учетом джокеров
+		if (!$figure_type['joker']) {
+			$count += count($jokers);
+		}
+		
+		if (isset($figure_type['bonus'][$count])) {
+			$combinations[] = array(
+				'multiplier' => $figure_type['bonus'][$count],
+				// тут мы получаем массив комбинации такого вида: array('[позиция на барабане]' => '[индекс фигуры]')
+				'values' => array_intersect($line, array_merge(array($figure_index), $jokers)),
+			);
+			
+		}
+	}
+	
+	if ($combinations) {
+		common_fldsort($combinations, true, 'multiplier');
+		$combination = reset($combinations);
+		
+		return $combination;
+	}
+	
+	return false;
+}
+
+function area_casino_schedule_list($ref = false,$add=''){
+	global $db_2;
+	return common_list($db_2,TABLE_AREA_CASINO_SCHEDULE,$ref,$add,"*");
+}
+function area_casino_schedule_delete($param = false, $add = ''){
+	global $db_2;
+	common_delete($db_2, TABLE_AREA_CASINO_SCHEDULE, $param, $add);
+}
+function area_casino_schedule_save($param) {
+	global $db_2;
+	$res = common_save($db_2,TABLE_AREA_CASINO_SCHEDULE,$param,FIELD_AREA_CASINO_SCHEDULE);
+	return $res;
+}
+function area_casino_schedule_generate(){
+	global $db_2;
+	if (SETTINGS_CASINO_PERIOD_MIN == 0 || SETTINGS_CASINO_PERIOD_MAX == 0) return false;
+	$new_tasks=array();
+	$last_task = reset(area_casino_schedule_list(false, " order by date_finish desc limit 1"));
+	// если между окончанием последнего по расписанию запуска казино и концом интервала можно впихнуть ещё один запуск, значит нужно это сделать
+	if(!$last_task || ($last_task["date_finish"] < (time_current() + AREA_CASINO_SCHEDULE_INTERVAL - SETTINGS_CASINO_PERIOD_MAX))) {
+		$last_task_finished=$last_task["date_finish"]>0?$last_task["date_finish"]:time_current();
+		mt_srand(intval(microtime(true) * 100));
+		do{
+			$interval = mt_rand(SETTINGS_CASINO_PERIOD_MIN, SETTINGS_CASINO_PERIOD_MAX);
+			$new_task=array(
+		    "date_start" => $last_task_finished+$interval,
+		    "date_finish" => $last_task_finished+$interval+SETTINGS_CASINO_TIME_LIMIT
+			);
+			$last_task_finished=$new_task["date_finish"];
+			$new_tasks[]=$new_task;
+			area_casino_schedule_save($new_task);
+		} while ($last_task_finished < (time_current() + AREA_CASINO_SCHEDULE_INTERVAL));
+	}
+	return $new_tasks;
+}
+function casino_check_open(){
+    global $session_user;
+	//если казино работает не по расписанию, а вручную
+	$out=array();
+	$out["closed"] = true;
+	$out["casino_time_close"] = -1;
+	if (defined("SETTINGS_CASINO_SCHEDULE") && !SETTINGS_CASINO_SCHEDULE) {
+		if ((defined("SETTINGS_CASINO_OPEN") && SETTINGS_CASINO_OPEN)) {
+			$out["closed"] = false;
+		}elseif((defined("SETTINGS_CASINO_OPEN_ADMIN") && SETTINGS_CASINO_OPEN_ADMIN)){
+		    if(($session_user['flags'] & USER_FLAG_ADMIN)){
+                $out["closed"] = false;
+            }
+        }
+		//если работает по расписанию
+	} elseif ((defined("SETTINGS_CASINO_SCHEDULE") && SETTINGS_CASINO_SCHEDULE)) {
+		$add=sql_placeholder(' AND date_start < ? AND date_finish > ?',intval(time_current()),intval(time_current()));
+		$current_task = area_casino_schedule_list(false,$add);
+		if ($current_task) {
+			$current_task = reset($current_task);
+			$out["casino_time_close"] = $current_task["date_finish"];
+			$out["closed"] = false;
+		}
+	}
+	return $out;
+}
+
+function area_casino_exit($user=array(), $param=array()){
+    if($param['exit_cas']){
+        user_save(array(
+            'id' => $user['id'],
+            '_set' => sql_pholder(' flags2 = flags2 &~ ?#USER_FLAG2_IN_CASINO'),
+        ));
+    }
+
+    //Статистка игры xD при выходе из казино
+    require_once("lib/stat_user_casino.lib");
+    
+    $casino_money = stat_user_casino_get(array('user_id' => $user['id']));
+    if ($casino_money && ($casino_money['stake_sum'] != 0 || $casino_money['gain_sum'] != 0)) {
+        // лог-сервис -----------------------
+        logserv_log_operation(array(
+            'money_type' => MONEY_TYPE_GAME,
+            'amount' => -$casino_money['stake_sum'],
+            'comment' => sprintf(translate('Потрачено на ставки в казино (ставок: %s)'), $casino_money['stake_count']),
+        ),$user);
+        logserv_log_operation(array(
+            'money_type' => MONEY_TYPE_GAME,
+            'amount' => $casino_money['gain_sum'],
+            'comment' => translate('Выиграш в казино'),
+        ),$user);
+
+        
+
+        stat_user_casino_save(array(
+            'stake_sum' => 0,
+            'gain_sum' => 0,
+            'stake_count' => 0,
+            '_mode' => CSMODE_UPDATE,
+            '_add' => sql_pholder(' AND user_id = ?', $user['id']),
+        ));
+    }
+
+    //Для бриллиантов
+    $casino_money_gold = stat_user_casino_gold_get(array('user_id' => $user['id']));
+    if ($casino_money_gold && ($casino_money_gold['stake_sum'] != 0 || $casino_money_gold['gain_sum'] != 0)) {
+        // лог-сервис -----------------------
+        logserv_log_operation(array(
+            'money_type' => MONEY_TYPE_GOLD,
+            'amount' => -$casino_money_gold['stake_sum'],
+            'comment' => sprintf(translate('Потрачено на ставки в казино бр. (ставок: %s)'), $casino_money_gold['stake_count']),
+        ),$user);
+        logserv_log_operation(array(
+            'money_type' => MONEY_TYPE_GOLD,
+            'amount' => $casino_money_gold['gain_sum'],
+            'comment' => translate('Выиграш в казино бр.'),
+        ),$user);
+
+        //Расчет определяется от суммы выйгрыша
+     /*    if($casino_money['gain_sum']){
+            $rep = intval(($casino_money['gain_sum'] / 450) * CASINO_REP_PERCENT_GOLD);
+            if($rep > 0){
+                user_stat_update($user['id'], USER_STAT_TYPE_SKILL, USER_STAT_SKILL_REP_CASINO, $rep, USER_STAT_OP_INC);
+            }
+        } */
+
+        stat_user_casino_gold_save(array(
+            'stake_sum' => 0,
+            'gain_sum' => 0,
+            'stake_count' => 0,
+            '_mode' => CSMODE_UPDATE,
+            '_add' => sql_pholder(' AND user_id = ?', $user['id']),
+        ));
+    }
+    // ----------------------------------
+
+}

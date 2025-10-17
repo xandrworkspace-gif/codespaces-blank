@@ -1,0 +1,37 @@
+<? # $Id: MOUNT.action,v 1.7 2010-02-02 11:08:36 p.knoblokh Exp $
+
+// действие "оседлать жывотное"
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+
+$mount_id = $subject['mount_id'];
+if ($mount_id) {
+	$mount = artifact_get($mount_id);
+	if (!$mount || $mount['user_id'] != $subject['id']) {
+		$mount_id = 0;
+	}
+}
+if (!$mount_id) {
+	$out['error'] = sprintf(translate('Призовите ездовое животное чтобы оседлать.'));
+	return;
+}
+
+$object = $mount;
+$artikul = artifact_artikul_get($object['artikul_id']);
+if ($subject['level'] < $artikul['level_min']) {
+	$out['error'] = sprintf(translate('Это ездовое животное не может быть оседлано персонажем ниже %d уровня!'),$artikul['level_min']);
+	return;
+}
+if (($artikul['level_max'] >= $artikul['level_min']) && ($subject['level'] > $artikul['level_max'])) {
+	$out['error'] = sprintf(translate('Это ездовое животное не может быть оседлано персонажем выше %d уровня!'),$artikul['level_max']);
+	return;
+}
+if ($artikul['gender'] && ($subject['gender'] != $artikul['gender'])) {
+	$gender_str = array(1 => translate('мужчиной'), 2 => translate('женщиной'));
+	$out['error'] = sprintf(translate('Это ездовое животное может быть оседлано только %s!'),$gender_str[$artikul['gender']]);
+	return;
+}
+
+include('lib/action/PUT_ON.action');
+
+?>

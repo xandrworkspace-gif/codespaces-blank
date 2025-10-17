@@ -1,0 +1,460 @@
+<? # $Id: Exp $
+
+// Имена и поля таблиц
+define('TABLE_METRICS', 'metrics');
+define('FIELD_METRICS', '');
+
+// Типы записей
+define('METRIC_TYPE_AREA_VISIT',			1); // Посещаемость локаций
+define('METRIC_TYPE_BOT_FIGHT_DUEL',		2); // кол-во дуэлей с ботом
+define('METRIC_TYPE_BOT_FIGHT_NOT_DUEL',	3); // кол-во других боев, где участвовал бот
+define('METRIC_TYPE_BOT_FIGHT_DUEL_EXPENSE',4); // суммарный расход игрока на бой с ботом в дуэли
+define('METRIC_TYPE_BOT_FIGHT_DUEL_DEATH',	5); // кол-во убийств бота в дуэлях
+define('METRIC_TYPE_BOT_FIGHT_DUEL_TIME',	6); // суммарное время дуэлей с ботом
+define('METRIC_TYPE_BOT_FIGHT_USER_PROFIT',	7); // суммарное доход игрока (кол-во денег выпавшие с бота)
+
+define('METRIC_TYPE_STORE',					8); // суммарное доход игрока (кол-во денег выпавшие с бота)
+
+define('METRIC_TYPE_ARTIFACT',				9);	// сумма, потраченая на данные артефакты
+define('METRIC_TYPE_ARTIFACT_CNT',			10);	// кл-во купленных артефактов
+
+define('METRIC_TYPE_LP_VISIT',              11); // Посещаемость страничек LP
+define('METRIC_TYPE_LP_GAME',               12); // Количество кликнувших кнопку ИГРАТЬ
+define('METRIC_TYPE_LP_HALF_REGISTER',      13); // Количество зарегистрировавшихся после клика на кнопку играть
+define('METRIC_TYPE_LP_REGISTER',           14); // Количество тех кто ввел ник после регистрации
+define('METRIC_TYPE_LP_LOW_MONTH',          15); // Зарегистрированные в игре через LP и играющие менее месяца. 
+define('METRIC_TYPE_LP_MORE_MONTH',         16); // Зарегистрированные в игре через LP и играющие более месяца. 
+
+define('METRIC_TYPE_GREAT_FIGHT_WINS',      17); // Зарегистрированные в игре через LP и играющие более месяца. 
+
+define('METRIC_TYPE_CUBE_RECIPE_USE',		18); // Использовали волшебный куб
+define('METRIC_TYPE_CUBE_RECIPE_OPEN',		19); // Открыли рецепт в волшебном кубе
+
+define('METRIC_TYPE_WORK_REQUEST',			20); // Количество энергии по цене х 
+define('METRIC_TYPE_WORK_TIME',				21); // Сумарное время продажи для цены х
+define('METRIC_TYPE_WORK_SOLD',				22); // Всего продано энергии в этот день
+define('METRIC_TYPE_WORK_CNT',				23); // Сумма проданного энергии
+define('METRIC_TYPE_WORK_USERS',			24); // Количество юзеров , которые купили энергию
+
+define('METRIC_TYPE_PVP_USERS',             25); // Количество чуваков, отмеченных как пвп-шники (все дальше - ТОЛЬКО для них)
+define('METRIC_TYPE_PVP_HONOR',             26); // Полученная доблесть
+define('METRIC_TYPE_PVP_FARM_GOLD',         27); // Полученное золото c фарма
+define('METRIC_TYPE_PVP_PAYMENTS',          28); // Влитый реал
+define('METRIC_TYPE_PVP_FIGHTS',            29); // Количество пвп-боев где угодно
+define('METRIC_TYPE_PVP_FIGHTS_INSTANCE',   30); // Количество пвп-боев в инстансах
+define('METRIC_TYPE_PVP_FIGHT_EXPENSES',    31); // Расходы в пвп-боях
+
+define('METRIC_TYPE_PVP_INST_FINISH',		32); // Количество инстансов данного артикула, которое было завершено в данный день
+define('METRIC_TYPE_PVP_INST_FIGHT',		33); // Все бои в этом инсте в данный день
+
+define('METRIC_TYPE_MONEY_SUM',				34); // Сумма денег(одного типа) юзеров , которые вне морозилке
+define('METRIC_TYPE_MONEY_NOFRIDGE_CNT',	35); // Кол-во юзеров вне морозилки
+
+define('METRIC_TYPE_FARM_CNT',				36); // Кол-во ресурсов собраных за день
+define('METRIC_TYPE_CRAFT_CNT',				37); // Кол-во ресурсов скрафченых за день
+
+define('METRIC_TYPE_SLAUGHTER_FINISH',		38); // Количество боень данного артикула, которое было завершено в данный день
+define('METRIC_TYPE_SLAUGHTER_FIGHT',		39); // Все бои в этой боене в данный день
+
+define('METRIC_TYPE_ADDCELL_MONEY',		    40); // Деньги за покупку ячеек
+
+define('METRIC_TYPE_MONEY_CREDIT',		    41); // Cумму кредитов на игроках не в морозилке 
+
+
+define('METRIC_TYPE_STORE_SUM',				42); // сумма, потраченая на данные артефакты
+define('METRIC_TYPE_STORE_CNT',				43); // кл-во купленных артефактов
+
+// Типы групп метрик
+define('METRIC_TYPES_AREA',				1);	// посещаемость локаций работает напрямую, т.к. нужны максимальные а не агрегированные значения.
+define('METRIC_TYPES_BOT',				2);
+define('METRIC_TYPES_ARTIFACT',			3);
+define('METRIC_TYPES_LP',			    4);
+define('METRIC_TYPES_GREAT_FIGHT',	    5);
+define('METRIC_TYPES_CUBE',			    6);
+define('METRIC_TYPES_WORK',			    7);
+define('METRIC_TYPES_PVP',              8);
+define('METRIC_TYPES_PVP_INST',         9);
+define('METRIC_TYPES_MONEY',	       10);
+define('METRIC_TYPES_FARM',			   11);
+define('METRIC_TYPES_ADDCELL',         12);
+define('METRIC_TYPES_STORE',		   13);
+
+// Ключи для метрик
+// Значение напротив строкового ключа - количество символов,
+// которое используется под это значение (все значения пишутся в char(40))
+function metric_key_struct () {
+	return array(
+		0 => array(
+			'object_id' => 7,
+			'level' => 2,
+			'money_type' => 1,
+		),
+		METRIC_TYPE_AREA_VISIT => array(
+			'object_id' => 1,
+		),
+		METRIC_TYPE_BOT_FIGHT_DUEL => array(
+			'object_id' => 1,
+		),
+		METRIC_TYPE_BOT_FIGHT_NOT_DUEL => array(
+			'object_id' => 1,
+		),
+		METRIC_TYPE_BOT_FIGHT_DUEL_EXPENSE => array(
+			'object_id' => 1,
+		),
+		METRIC_TYPE_BOT_FIGHT_DUEL_DEATH => array(
+			'object_id' => 1,
+		),
+		METRIC_TYPE_BOT_FIGHT_DUEL_TIME => array(
+			'object_id' => 1,
+		),
+		METRIC_TYPE_BOT_FIGHT_USER_PROFIT => array(
+			'object_id' => 1,
+		),
+		METRIC_TYPE_ARTIFACT => array(
+			'object_id' => 7,
+			'level' => 2,
+			'kind' => 1,
+		),
+		METRIC_TYPE_ARTIFACT_CNT => array(
+			'object_id' => 7,
+			'level' => 2,
+			'kind' => 1,
+		),
+		METRIC_TYPE_LP_VISIT =>array(
+			'partner_id' => 10,
+			'site_id' => 20,
+			'soc_system' => 1,
+		),
+		METRIC_TYPE_LP_GAME =>array(
+			'partner_id' => 10,
+			'site_id' => 20,
+			'soc_system' => 1,
+		),
+		METRIC_TYPE_LP_HALF_REGISTER =>array(
+			'partner_id' => 10,
+			'site_id' => 20,
+			'soc_system' => 1,
+		),		
+		METRIC_TYPE_LP_REGISTER =>array(
+			'partner_id' => 10,
+			'site_id' => 20,
+			'soc_system' => 1,
+		),
+		METRIC_TYPE_LP_LOW_MONTH =>array(
+			'partner_id' => 10,
+			'site_id' => 20,
+			'soc_system' => 1,
+		),
+		METRIC_TYPE_LP_MORE_MONTH =>array(
+			'partner_id' => 10,
+			'site_id' => 20,
+			'soc_system' => 1,
+		),
+		METRIC_TYPE_CUBE_RECIPE_USE =>array(
+			'recipe_id' => 7,
+		),
+		METRIC_TYPE_CUBE_RECIPE_OPEN => array(
+			'recipe_id' => 7,
+		),		
+		METRIC_TYPE_GREAT_FIGHT_WINS =>array(
+			'kind_id' => 1,
+		),
+		METRIC_TYPE_WORK_REQUEST => array(
+			'price' => 4,
+		),
+		METRIC_TYPE_WORK_TIME => array(
+			'price' => 4,
+		),		
+		METRIC_TYPE_WORK_SOLD => array(
+			'key' => 1,
+		),
+		METRIC_TYPE_WORK_CNT => array(
+			'key' => 1,
+		),
+		METRIC_TYPE_WORK_USERS => array(
+			'key' => 1,
+		),
+		METRIC_TYPE_PVP_USERS => array(
+			'level' => 3,
+		),
+		METRIC_TYPE_PVP_HONOR => array(
+			'level' => 3,
+		),
+		METRIC_TYPE_PVP_FARM_GOLD => array(
+			'level' => 3,
+		),
+		METRIC_TYPE_PVP_PAYMENTS => array(
+			'level' => 3,
+		),
+		METRIC_TYPE_PVP_FIGHTS => array(
+			'level' => 3,
+		),
+		METRIC_TYPE_PVP_FIGHTS_INSTANCE => array(
+			'level' => 3,
+		),
+		METRIC_TYPE_PVP_FIGHT_EXPENSES => array(
+			'level' => 3,
+		),
+		METRIC_TYPE_MONEY_SUM => array(
+			'money_type' => 2,
+			'level' => 3,
+			'kind' => 3,
+		),
+		METRIC_TYPE_MONEY_NOFRIDGE_CNT => array(
+			'level' => 3,
+			'kind' => 3,
+		),
+		METRIC_TYPE_MONEY_CREDIT => array(
+			'level' => 3,
+			'kind' => 3,
+		),
+		METRIC_TYPE_PVP_INST_FINISH => array(
+			'bg_id' => 10,
+			'level' => 3,
+		),
+		METRIC_TYPE_PVP_INST_FIGHT => array(
+			'bg_id' => 10,
+			'level' => 3,
+		),
+		METRIC_TYPE_SLAUGHTER_FINISH => array(
+			'slaughter_id' => 10,
+			'level' => 3,
+		),
+		METRIC_TYPE_SLAUGHTER_FIGHT => array(
+			'slaughter_id' => 10,
+			'level' => 3,
+		),
+		METRIC_TYPE_FARM_CNT => array(
+			'prof_id' => 10,
+			'skill_cnt' => 5,
+			'artikul_id' => 11,
+		),
+		METRIC_TYPE_CRAFT_CNT => array(
+			'prof_id' => 10,
+			'skill_cnt' => 5,
+			'artikul_id' => 11,
+		),
+		METRIC_TYPE_ADDCELL_MONEY => array(
+			'level' => 3,
+			'price_type' => 3,
+		),
+		METRIC_TYPE_STORE_SUM => array(
+			'store_artikul_id' => 7,
+			'level' => 2,
+			'kind' => 1,
+		),
+		METRIC_TYPE_STORE_CNT => array(
+			'store_artikul_id' => 7,
+			'level' => 2,
+			'kind' => 1,
+		),
+	);
+}
+
+function metric_types_get() {
+	return array(
+		METRIC_TYPES_AREA => array(
+			'title' => translate('Локации'),
+			'metric' => array('metric' => METRIC_TYPE_AREA_VISIT),
+		),
+		METRIC_TYPES_ARTIFACT => array(
+			'title' => translate('Предметы'),
+			'metric' => array('amount' => METRIC_TYPE_ARTIFACT, 'cnt' => METRIC_TYPE_ARTIFACT_CNT),
+		),
+		METRIC_TYPES_BOT => array(
+			'title' => translate('Боты'),
+			'metric' => array(
+				'bot_fight_duel' => METRIC_TYPE_BOT_FIGHT_DUEL,
+				'bot_fight_duel_death' => METRIC_TYPE_BOT_FIGHT_DUEL_DEATH,
+				'bot_fight_user_profit' => METRIC_TYPE_BOT_FIGHT_USER_PROFIT,
+				'bot_fight_duel_time' => METRIC_TYPE_BOT_FIGHT_DUEL_TIME,
+				'bot_fight_duel_expense' => METRIC_TYPE_BOT_FIGHT_DUEL_EXPENSE,
+				'bot_fight_nou_duel' => METRIC_TYPE_BOT_FIGHT_NOT_DUEL,
+			),
+		),
+		METRIC_TYPES_LP => array(
+			'title' => translate('LP страницы'),
+			'metric' => array(
+				'lp_visit' => METRIC_TYPE_LP_VISIT,
+				'lp_game' => METRIC_TYPE_LP_GAME,
+				'lp_half_register' => METRIC_TYPE_LP_HALF_REGISTER,
+				'lp_register' => METRIC_TYPE_LP_REGISTER,				
+				'lp_low_month' => METRIC_TYPE_LP_LOW_MONTH,
+				'lp_more_month' => METRIC_TYPE_LP_MORE_MONTH,
+			),
+		),
+		METRIC_TYPES_CUBE => array(
+			'title' => translate('Волшебный куб'),
+			'metric' => array(
+				'recipe_use' => METRIC_TYPE_CUBE_RECIPE_USE,
+				'recipe_open' => METRIC_TYPE_CUBE_RECIPE_OPEN,
+			),
+		),	
+		METRIC_TYPES_GREAT_FIGHT => array(
+			'title' => translate('Великие битвы'),
+			'metric' => array(
+				'great_fight_wins' => METRIC_TYPE_GREAT_FIGHT_WINS,
+			),			
+		),
+		METRIC_TYPES_WORK => array(
+			'title' => translate('Труд'),
+			'metric' => array(
+				'work_request' => METRIC_TYPE_WORK_REQUEST,
+				'work_time' => METRIC_TYPE_WORK_TIME,
+				'work_sold' => METRIC_TYPE_WORK_SOLD,
+				'work_cnt' => METRIC_TYPE_WORK_CNT,
+				'work_users' => METRIC_TYPE_WORK_USERS,
+			),
+		),
+		METRIC_TYPES_PVP => array(
+			'title' => translate('ПвП-персонажи'),
+			'metric' => array(
+				'pvp_users' => METRIC_TYPE_PVP_USERS,
+				'pvp_honor' => METRIC_TYPE_PVP_HONOR,
+				'pvp_gold' => METRIC_TYPE_PVP_FARM_GOLD,
+				'pvp_payments' => METRIC_TYPE_PVP_PAYMENTS,
+				'pvp_fights' => METRIC_TYPE_PVP_FIGHTS,
+				'pvp_fights_instance' => METRIC_TYPE_PVP_FIGHTS_INSTANCE,
+				'pvp_fight_expenses' => METRIC_TYPE_PVP_FIGHT_EXPENSES,
+			),
+		),
+		METRIC_TYPES_MONEY => array(
+			'title' => translate('Деньги'),
+			'metric' => array(
+				'money_sum' => METRIC_TYPE_MONEY_SUM,
+				'money_nofridge_cnt' => METRIC_TYPE_MONEY_NOFRIDGE_CNT,
+				'credit_sum' => METRIC_TYPE_MONEY_CREDIT,
+			),
+		),
+		METRIC_TYPES_PVP_INST => array(
+			'title' => translate('Пвп-инстансы'),
+			'metric' => array(
+				'pvp_inst_finish' => METRIC_TYPE_PVP_INST_FINISH,
+				'pvp_inst_fight' => METRIC_TYPE_PVP_INST_FIGHT,
+				'slaughter_inst_fight' => METRIC_TYPE_SLAUGHTER_FIGHT,
+				'slaughter_inst_finish' => METRIC_TYPE_SLAUGHTER_FINISH,
+			),
+		),
+		METRIC_TYPES_FARM => array(
+			'title' => translate('Фарм'),
+			'metric' => array(
+				'farm_cnt' => METRIC_TYPE_FARM_CNT,
+				'craft_cnt' => METRIC_TYPE_CRAFT_CNT,
+			),
+		),
+		METRIC_TYPES_ADDCELL => array(
+			'title' => translate('Покупки ячейки'),
+			'metric' => array(
+				'addcell_money' => METRIC_TYPE_ADDCELL_MONEY,
+			),			
+		),
+		METRIC_TYPES_STORE => array(
+			'title' => translate('Магазинные продажи'),
+			'metric' => array('amount' => METRIC_TYPE_STORE_SUM, 'cnt' => METRIC_TYPE_STORE_CNT),
+		),
+	);
+}
+
+
+function metric_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_METRICS, $ref, $add);
+}
+
+function metric_list($ref=false, $add='', $field_list='*') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_METRICS, $ref, $add, $field_list);
+}
+
+function metric_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_METRICS, $param, FIELD_METRICS);
+}
+
+function metric_smart_add($value, $type, $param, $date='') {
+	global $db_diff;
+	if (!is_array($param)) $param = array('object_id' => $param);
+	$key = metric_set_key($type,$param);
+	if (!$date) $date = date('Y-m-d', time_current());
+	$db_diff->db_ExecQuery(sql_pholder('
+		INSERT INTO ?#TABLE_METRICS (type, object_key, sdate, value, ucnt) VALUES (?, ?, ?, ?, 1)
+		ON DUPLICATE KEY UPDATE value = value + ?, ucnt = ucnt + 1', $type, $key, $date, $value, $value));
+	return true;
+}
+
+function metric_group_add($type, $params, $value, $date='') {
+	$metric_types = metric_types_get();
+	if (!$metric_types[$type]) return false;
+	if (is_array($metric_types[$type]['metric'])) {
+		foreach ($metric_types[$type]['metric'] as $key=>$type) {
+			if (!isset($value[$key])) {
+				continue;
+			}
+			$val = abs($value[$key]);
+			if ($key == 'amount') $val = $val*100;
+			metric_smart_add($val,$type,$params,$date);
+		}
+	} else {
+		metric_smart_add(abs($value)*100,$metric_types[$type]['metric'],$params,$date);
+	}
+	return true;
+}
+
+function metric_group_list($group_type, $date_from, $date_to) {
+	$metric_types = metric_types_get();
+	if (!$metric_types[$group_type]) return false;
+	if (!is_array($metric_types[$group_type]['metric'])) {
+		return;
+	}
+	
+	$add = sql_pholder(' AND ? <= sdate AND sdate <= ? ', $date_from, $date_to);
+	
+	$data = metric_list(
+		array('type' => $metric_types[$group_type]['metric']),
+		$add
+	);
+	
+	$res_stats = array();
+	foreach ($data as $item) {
+		$new_stat = metric_get_key($item['type'], $item['object_key']);
+		$new_stat['value'] = $item['value'];
+		$new_stat['sdate'] = $item['sdate'];
+		$new_stat['type'] = $item['type'];
+		
+		$res_stats[] = $new_stat;
+	}
+	
+	return $res_stats;
+}
+
+function metric_set_key($type,$params=array()) {
+	$metric = metric_key_struct();
+	$key_struct = $metric[$type];
+	if(!$key_struct) $key_struct = $metric[0];
+	$key = '';
+	foreach ($key_struct as $k=>$v) {
+		if (is_string($params[$k])) {
+			$key .= sprintf('%'.$v.'s',$params[$k]);			
+		} else {
+			$key .= sprintf('%'.$v.'d',$params[$k]);
+		}	
+	}
+	return $key;
+}
+
+function metric_get_key($type,$key) {
+	$metric = metric_key_struct();
+	$key_struct = $metric[$type];
+	if(!$key_struct) $key_struct = $metric[0];
+	$param = array();
+	$start = 0;
+	foreach ($key_struct as $k=>$v) {
+		if ($k != 'partner_id'){
+			$param[$k] = intval(mb_substr($key,$start,$v));
+		} else {
+			$param[$k] = trim(mb_substr($key,$start,$v));
+		}
+		$start += $v;
+	}
+	return $param;
+}

@@ -1,0 +1,1852 @@
+<? # $Id: user_stat.lib,v 1.34 2010-03-02 13:21:53 i.hrustalev Exp $
+
+require_once('/home/admin/web/dwar.fun/public_html/lib/achievement.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/buildings.lib');
+require_once('/home/admin/web/dwar.fun/public_html/lib/metric.lib');
+
+define('TABLE_USER_STATS', 'user_stats');
+define('FIELD_USER_STATS', '');
+
+define('USER_STAT_TYPE_BOT', 1); // победы над ботами
+define('USER_STAT_TYPE_FARM', 2); // фарм артикулов
+define('USER_STAT_TYPE_RECIPE', 3); // использований рецептов
+define('USER_STAT_TYPE_ACTION', 4); // выполнение действий
+define('USER_STAT_TYPE_LOCATION', 5); // переходы в локации
+define('USER_STAT_TYPE_FIGHT', 6); // кол-во боёв
+define('USER_STAT_TYPE_QUEST', 7); // кол-во завершенных квестов
+define('USER_STAT_TYPE_BUY', 8); // кол-во покупок предмета
+define('USER_STAT_TYPE_BG', 9); // побед в bg
+define('USER_STAT_TYPE_MISC', 10); // разное
+define('USER_STAT_TYPE_BOT_FIGHT_TIME', 11); // время проведенное в бою с ботом
+define('USER_STAT_TYPE_MONEY', 12); // всё что относится к деньгам
+define('USER_STAT_TYPE_SKILL', 13); // статистика характеристик
+define('USER_STAT_TYPE_GROUP_BOT', 14); // победы над группой ботов
+define('USER_STAT_TYPE_ESTATE_BUILDING_USE', 15); // использование здания в поместье
+
+// Различные id объектов для типа MISC
+define('USER_STAT_OBJECT_STORE_PAYMENT_TOTAL', 1); // объект - общая сумма покупок в магазине
+define('USER_STAT_OBJECT_STORE_PAYMENT_MAX', 2); // объект - макс. сумма покупок в магазине
+define('USER_STAT_OBJECT_QUEST_NORMAL', 3); // объект - немногоразовые квесты
+define('USER_STAT_OBJECT_POST_SEND', 4); // объект - отправка почты
+define('USER_STAT_OBJECT_CLAN_ENTER', 5); // объект - вступление в клан
+define('USER_STAT_OBJECT_BOT_MONEY', 6); // объект - сумма, выбитая с мобов
+define('USER_STAT_OBJECT_CLAN_TIME', 7); // объект - время, проведенное в одном клане
+define('USER_STAT_OBJECT_WIN_COUNT', 8); // объект - количество побед
+define('USER_STAT_OBJECT_LOSS_COUNT', 9); // объект - кол-во поражений
+define('USER_STAT_OBJECT_ONLINE_TIME', 10); // объект - время online
+define('USER_STAT_OBJECT_MAILRU_MONEY', 11); // объект - сумма, оплаченная через ДМР
+define('USER_STAT_OBJECT_ACTION20101129', 12); // объект - сумма платежей по #59536 - Акция террабанка.
+define('USER_STAT_OBJECT_ACTION20110131', 13); // объект - сумма платежей по #90497 - Акция террабанка.
+define('USER_STAT_OBJECT_GF_WIN_AS_LEADER', 14); // объект - кол-во побед в ВБ в качестве лидера
+define('USER_STAT_OBJECT_GIFTS_SENDED', 15); // объект - сумма, оплаченная через ДМР
+define('USER_STAT_OBJECT_ACTIONQIWI', 16); // объект - сумма платежей по #99747 - Програминг: Акция киви 23.02.2012-29.02.2012
+define('USER_STAT_OBJECT_ESTATE_GAIN_EXP', 17); // объект - бонусный опыт, накопленный с помощью обелиска в поместье
+define('USER_STAT_OBJECT_ESTATE_GAIN_HONOR', 18); // объект - бонусная доблесть, накопленная с помощью обелиска в поместье
+define('USER_STAT_OBJECT_ESTATE_HEAL_TIME', 19); // объект - количество секунд травм, которые были списаны в поместье
+
+// Различные id объектов для типа SKILL
+//	Характеристики
+define('USER_STAT_SKILL_EXP', 1);
+define('USER_STAT_SKILL_HONOR', 2);
+//	Репутации
+define('USER_STAT_SKILL_GREAT_FIGHT_REP', 3);
+define('USER_STAT_SKILL_REP_CENTRIDO', 4);
+define('USER_STAT_SKILL_REP_CHAOS', 5);
+define('USER_STAT_SKILL_REP_CRYSTCAVE', 6);
+define('USER_STAT_SKILL_REP_DARTRONG', 7);
+define('USER_STAT_SKILL_REP_DJAGGER', 8);
+define('USER_STAT_SKILL_REP_ELDIV', 9);
+define('USER_STAT_SKILL_REP_FLAUND', 10);
+define('USER_STAT_SKILL_REP_GUARD', 11);
+define('USER_STAT_SKILL_REP_INKARNUM', 12);
+define('USER_STAT_SKILL_REP_KROFDOR', 13);
+define('USER_STAT_SKILL_REP_LOTOS', 14);
+define('USER_STAT_SKILL_REP_NEZHIT', 15);
+define('USER_STAT_SKILL_REP_ODELVAIS', 16);
+define('USER_STAT_SKILL_REP_RATING', 17);
+define('USER_STAT_SKILL_REP_RELICT', 18);
+define('USER_STAT_SKILL_REP_TZNANIA', 19);
+define('USER_STAT_SKILL_REP_VNOCHI', 20);
+define('USER_STAT_SKILL_REP_ZLO', 21);
+define('USER_STAT_SKILL_REP_TOMB_RAIDER', 80);        // Репутация расхитителей гробниц
+//	Влияние
+define('USER_STAT_SKILL_INFLU_BALLUOCEAN', 22);
+define('USER_STAT_SKILL_INFLU_BERON_PRER', 23);
+define('USER_STAT_SKILL_INFLU_BRENN_LUGA', 24);
+define('USER_STAT_SKILL_INFLU_CHION_GORI', 25);
+define('USER_STAT_SKILL_INFLU_DARTRONG', 26);
+define('USER_STAT_SKILL_INFLU_FEI_GO', 27);
+define('USER_STAT_SKILL_INFLU_FIGHTVOR', 28);
+define('USER_STAT_SKILL_INFLU_FIGHTWOR', 29);
+define('USER_STAT_SKILL_INFLU_GRANDFORT', 30);
+define('USER_STAT_SKILL_INFLU_KRAYZEM', 31);
+define('USER_STAT_SKILL_INFLU_LIVANTIYA', 32);
+define('USER_STAT_SKILL_INFLU_MENTALIYA', 33);
+define('USER_STAT_SKILL_INFLU_OBITEL_PRA', 34);
+define('USER_STAT_SKILL_INFLU_ODELVAIS', 35);
+define('USER_STAT_SKILL_INFLU_OGNEN', 36);
+define('USER_STAT_SKILL_INFLU_PRIGOR_HUM', 37);
+define('USER_STAT_SKILL_INFLU_PRIGOR_MAG', 38);
+define('USER_STAT_SKILL_INFLU_PRIZDAL', 39);
+define('USER_STAT_SKILL_INFLU_PROKL_POLE', 40);
+define('USER_STAT_SKILL_INFLU_SHUAR_LES', 41);
+define('USER_STAT_SKILL_INFLU_TIKHAYA_ST', 42);
+define('USER_STAT_SKILL_INFLU_TREPET', 43);
+define('USER_STAT_SKILL_INFLU_TRIVERION', 44);
+define('USER_STAT_SKILL_INFLU_UNDERWATER', 45);
+define('USER_STAT_SKILL_INFLU_VERHOVOD', 46);
+define('USER_STAT_SKILL_INFLU_ZEMLI_USOP', 47);
+define('USER_STAT_SKILL_INFLU_ZVIG_BRIST', 48);
+define('USER_STAT_SKILL_GREAT_FIGHT_WIN', 49);
+define('USER_STAT_SKILL_GREAT_FIGHT_PART', 50);
+define('USER_STAT_SKILL_REP_DOBRO', 51);
+define('USER_STAT_SKILL_REP_TOPOR', 52);
+define('USER_STAT_SKILL_REP_FORTUNA', 53);
+define('USER_STAT_SKILL_REP_GODDRAC', 54);
+define('USER_STAT_SKILL_REP_GODDEAD', 55);
+define('USER_STAT_SKILL_REP_GODLIFE', 56);
+define('USER_STAT_SKILL_KULACH_RAUND', 57);
+define('USER_STAT_SKILL_SKALP_DRAKON', 58);
+define('USER_STAT_SKILL_FS_CRIT_CNT', 59);
+define('USER_STAT_SKILL_FS_BLOCK_CNT', 60);
+define('USER_STAT_SKILL_FS_MAX_CRIT', 61);
+define('USER_STAT_SKILL_FS_DODGE_CNT', 62);
+define('USER_STAT_SKILL_FS_DEATH_CNT', 63);
+define('USER_STAT_SKILL_FS_KILL_CNT', 64);
+define('USER_STAT_SKILL_FS_HIT_CNT_SF', 65);
+define('USER_STAT_SKILL_FS_MAX_CRIT_SF', 66);
+define('USER_STAT_SKILL_FS_DODGE_CNT_SF', 67);
+define('USER_STAT_SKILL_FS_BLOCK_CNT_SF', 68);
+define('USER_STAT_SKILL_F_ENEMYKILLCNT', 69);
+define('USER_STAT_SKILL_F_KILLCNT', 70);
+
+define('USER_STAT_SKILL_FAULT_SIEGES_NUM', 71);
+
+// Влияние на островах Вечной стужи
+define('USER_STAT_SKILL_INFLU_ETR_FROST_ISL', 72);
+
+define('USER_STAT_SKILL_REP_PET', 73);
+define('USER_STAT_SKILL_REP_DREAMCATCHER', 74);
+define('USER_STAT_SKILL_REP_RUMENGILD', 75);
+define('USER_STAT_SKILL_REP_VALTEREI', 76);
+define('USER_STAT_SKILL_HONOR_CB', 77); // Доп доблесть клана, полученая в клановых битвах
+define('USER_STAT_SKILL_DELAYED_EXP', 78);
+define('USER_STAT_SKILL_INFLU_FROST_ISLAND', 79); // Влияние на Туманных островах
+define('USER_STAT_SKILL_ROCK_EDGE', 81); //Влияние на Скалистом Краю
+define('USER_STAT_SKILL_PIEDMONT_OF_VOLCANE', 82); //Влияение у Подножия Вулкана
+
+//Новые репы
+define('USER_STAT_SKILL_RER_SVJTOI', 83); //Репутация Святой реликвии
+define('USER_STAT_SKILL_RER_TAIN', 84); //Репутаций Тайн
+define('USER_STAT_SKILL_RER_GAVANI', 85); //	Репутация Монетной Гавани
+define('USER_STAT_SKILL_RER_DALI', 86); //Репутация Книжной Дали
+
+//Супер новые репы
+define('USER_STAT_SKILL_REP_CASINO', 87); //Репутация Однорукого Бандита
+
+//Новые репутации
+define('USER_STAT_SKILL_REP_CHAOT', 88); //Репутация Хаотических сражений
+define('USER_STAT_SKILL_REP_EQUAL', 89); //Репутация Воинства равных
+define('USER_STAT_SKILL_REP_CLAN', 90); //Репутация Клана
+define('USER_STAT_SKILL_REP_EVENTOR', 91); //Репутация Эвентора
+
+//Еще новее репы
+define('USER_STAT_SKILL_REP_RAS_GROB', 92); //Расхитителей гробниц
+define('USER_STAT_SKILL_REP_HRAN_MAG', 93); //Хранители магии
+define('USER_STAT_SKILL_REP_LOV_TEN', 94); //Ловцы теней
+define('USER_STAT_SKILL_REP_POK_PIT', 95); //Покровители питомцев
+define('USER_STAT_SKILL_REP_BOR_SHAAS', 96); //Борцы с Шиас
+define('USER_STAT_SKILL_REP_ZASH_TAILSME', 100); //Защитники Таильсимэ
+define('USER_STAT_SKILL_REP_TOLK_VIDEN', 101); //Толкователи Видений
+define('USER_STAT_SKILL_REP_ORDEN_TRIAD', 102); //Орден Триады
+//Блять, Игорь! Меняй в след раз айдишники... у тебя опыт ловкача, тяжа и костолома на одном айдишнике висят с репами выше..
+//я исправил
+
+//Еще новее штуки
+define('USER_STAT_SKILL_EXP_LOVK', 97); //Опыт ловкача
+define('USER_STAT_SKILL_EXP_TANK', 98); //Опыт тяжеловеса
+define('USER_STAT_SKILL_EXP_CRIT', 99); //Опыт костолома
+
+
+define('USER_STAT_SKILL_REP_SOUL_RIDER', 105); //Репутация собирателя душ
+define('USER_STAT_SKILL_REP_TAIN_EXPIRIENSE', 107); //Тайные знания
+
+
+define('USER_STAT_SKILL_REP_URCHI', 111); //Репутация дракончика Урчи
+define('USER_STAT_SKILL_QUEST_POINT', 116); //Очки судьбы необходимые для досрочного завершения квестов.
+
+
+
+//Счетчики под фишки Мишани
+define('USER_STAT_SKILL_SOBRAN_KOLLECTIONS', 115); //Собрано Коллекций
+define('USER_STAT_SKILL_SOBRAN_PET', 117); //Собрано питомцев
+define('USER_STAT_SKILL_TREN_PET', 118); //Тренировано питомцев
+define('USER_STAT_SKILL_MAKE_SOCKET', 119); // Создать сокеты
+define('USER_STAT_SKILL_ENCHANT_GEM', 120); // Вставить самоцвет
+define('USER_STAT_SKILL_ENHANT_RUNEOSNOVA', 121); // Вставлено рунических основ в предметы
+define('USER_STAT_SKILL_RUNESYMBOL_UP', 122); // Вставка и прокачка рунических символов.
+define('USER_STAT_SKILL_RUNE_UP', 123); // Вставка и прокачка рун.
+define('USER_STAT_SKILL_SPIN_SROULET', 124); // Прокрутка рулетки драконов.
+define('USER_STAT_SKILL_MAGICWAND', 125); // Использована волшебная палочка.
+define('USER_STAT_SKILL_DAYBONUS', 126); // Получен ежедневный бонус
+define('USER_STAT_SKILL_CARDGAME', 127); // Открыто карт в картах судьбы (с елема 2.0)
+define('USER_STAT_SKILL_BANDIT_777', 128); // Джекпот в одноруком бандите
+define('USER_STAT_SKILL_COUNT_SEASON', 129); // Счетчик полученных наград в сезоне
+define('USER_STAT_SKILL_COUNT_BATTLEPASS', 130); // Счетчик полученных наград в боевом пропуске
+define('USER_STAT_SKILL_COUNT_SEARCHPARTY', 131); // Счетчик поиска группы в поиске подземелий или поиске полей битв.
+define('USER_STAT_SKILL_COUNT_CLANARENA', 132); // Счетчик участника в клановой тренировочной.
+define('USER_STAT_SKILL_COUNT_CHAOTIK', 133); // Счетчик участника в хаоте.
+define('USER_STAT_SKILL_COUNT_EQARENA', 134); // Счетчик участника на арене равных.
+define('USER_STAT_SKILL_COUNT_DUELS', 135); // Счетчик участника в дуэлях.
+define('USER_STAT_SKILL_REP_IZUVER', 136); // Счетчик участника в дуэлях.
+
+
+
+
+
+// КОНЕЦ СЧЕТЧИКОВ МИШАНИ
+
+
+// Операции
+define('USER_STAT_OP_INC', 1);
+define('USER_STAT_OP_SET', 2);
+define('USER_STAT_OP_MAX', 3);
+define('USER_STAT_OP_MIN', 4);
+
+// Статусы в статистике - 0-открыто, 1-закрыто
+define('USER_STAT_STATUS_ACTIVE', 0);
+define('USER_STAT_STATUS_CLOSED', 1);
+
+global $user_stat_type_hash;
+$user_stat_type_hash = array(
+    USER_STAT_TYPE_BOT => translate('Победы над ботами'),
+    USER_STAT_TYPE_FARM => translate('Фарм артикулов'),
+    USER_STAT_TYPE_RECIPE => translate('Использование рецептов'),
+    USER_STAT_TYPE_ACTION => translate('Выполнение действий'),
+    USER_STAT_TYPE_LOCATION => translate('Переходы в локации'),
+    USER_STAT_TYPE_FIGHT => translate('Кол-во боёв'),
+    USER_STAT_TYPE_QUEST => translate('Завершенных квестов'),
+    USER_STAT_TYPE_BUY => translate('Купленных предметов'),
+    USER_STAT_TYPE_BG => translate('Побед в БГ'),
+    USER_STAT_TYPE_MISC => translate('Разное'),
+    USER_STAT_TYPE_BOT_FIGHT_TIME => translate('Мин. время в бою с ботом'),
+    USER_STAT_TYPE_MONEY => translate('Деньги'),
+    USER_STAT_TYPE_SKILL => translate('Статистика характеристики'),
+    USER_STAT_TYPE_GROUP_BOT => translate('Победы над группой ботов'),
+    USER_STAT_TYPE_ESTATE_BUILDING_USE => translate('Количество использований здания в поместье'),
+);
+
+
+define('USER_STAT_SKILL_GROUP_HONOR', 1);
+define('USER_STAT_SKILL_GROUP_SKALP', 2);
+define('USER_STAT_SKILL_GROUP_GREAT_FIGHT', 3);
+define('USER_STAT_SKILL_GROUP_REP', 4);
+define('USER_STAT_SKILL_GROUP_INFLU', 5);
+define('USER_STAT_SKILL_GROUP_FIGHT', 6);
+define('USER_STAT_SKILL_GROUP_TRENDEXP', 7);
+define('USER_STAT_SKILL_GROUP_COUNTERS', 8);
+
+global $user_stat_skill_groups;
+$user_stat_skill_groups = array(
+    USER_STAT_SKILL_GROUP_HONOR => translate('Доблесть'),
+	USER_STAT_SKILL_GROUP_COUNTERS => translate('Счетчики'), //Счетчики Мишани под его блядские задумки :D
+    USER_STAT_SKILL_GROUP_SKALP => translate('Скальпы'),
+    USER_STAT_SKILL_GROUP_GREAT_FIGHT => translate('Великие Битвы'),
+    USER_STAT_SKILL_GROUP_REP => translate('Репутации'),
+    USER_STAT_SKILL_GROUP_INFLU => translate('Влияние'),
+    USER_STAT_SKILL_GROUP_FIGHT => translate('Боевые'),
+    USER_STAT_SKILL_GROUP_TRENDEXP => translate('Опыт стиля боя'),
+);
+
+// Массив для передачи некоторых статистик в LUA по старому имени характеристики
+// Сюда должны быть записаны все статистики, которые передаются в lua пока не будет
+// реализована поддержка передачи статов со стороны LUA
+global $user_stat_skill_to_skill_id_for_lua;
+$user_stat_skill_to_skill_id_for_lua = array(
+    USER_STAT_SKILL_REP_ZLO => 'REP_ZLO',
+    USER_STAT_SKILL_REP_DOBRO => 'PER_DOBRO',
+);
+
+global $user_stat_trends;
+$user_stat_trends = array(
+    TREND_SLOPE => USER_STAT_SKILL_EXP_LOVK,
+    TREND_CRIT => USER_STAT_SKILL_EXP_CRIT,
+    TREND_TANK => USER_STAT_SKILL_EXP_TANK,
+);
+
+global $user_stat_skill_hash;
+$user_stat_skill_hash = array(
+    //	Характеристики
+	
+	
+	
+	
+    USER_STAT_SKILL_EXP => array(
+        'id' => USER_STAT_SKILL_EXP,
+        'title' => translate('Опыт'),
+        'flags' => 0
+    ),
+    USER_STAT_SKILL_HONOR => array(
+        'id' => USER_STAT_SKILL_HONOR,
+        'title' => translate('Доблесть'),
+        'flags' => 0,
+        'group_id' => USER_STAT_SKILL_GROUP_HONOR,
+    ),
+	 USER_STAT_SKILL_SOBRAN_KOLLECTIONS => array(
+        'id' => USER_STAT_SKILL_SOBRAN_KOLLECTIONS,
+        'title' => translate('Собрано коллекций'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ), 
+	USER_STAT_SKILL_QUEST_POINT => array(
+        'id' => USER_STAT_SKILL_QUEST_POINT,
+        'title' => translate('Очки Судьбы'),
+        'flags' => 0
+    ),
+	USER_STAT_SKILL_SOBRAN_PET => array(
+        'id' => USER_STAT_SKILL_SOBRAN_PET,
+        'title' => translate('Собрано питомцев'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+	USER_STAT_SKILL_TREN_PET => array(
+        'id' => USER_STAT_SKILL_TREN_PET,
+        'title' => translate('Тренировано питомцев'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+	USER_STAT_SKILL_MAKE_SOCKET => array(
+        'id' => USER_STAT_SKILL_MAKE_SOCKET,
+        'title' => translate('Количество созданных сокетов'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+USER_STAT_SKILL_ENCHANT_GEM => array(
+        'id' => USER_STAT_SKILL_ENCHANT_GEM,
+        'title' => translate('Количество инкрустированных самоцветов'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+USER_STAT_SKILL_ENHANT_RUNEOSNOVA => array(
+        'id' => USER_STAT_SKILL_ENHANT_RUNEOSNOVA,
+        'title' => translate('Количество инкрустированных рунических основ'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+USER_STAT_SKILL_RUNESYMBOL_UP => array(
+        'id' => USER_STAT_SKILL_RUNESYMBOL_UP,
+        'title' => translate('Количество взаимодействий с руническими символами'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+USER_STAT_SKILL_RUNE_UP => array(
+        'id' => USER_STAT_SKILL_RUNE_UP,
+        'title' => translate('Количество взаимодействий с рунами'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+USER_STAT_SKILL_SPIN_SROULET => array(
+        'id' => USER_STAT_SKILL_SPIN_SROULET,
+        'title' => translate('Количество игр в рулетке драконов'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+USER_STAT_SKILL_MAGICWAND => array(
+        'id' => USER_STAT_SKILL_MAGICWAND,
+        'title' => translate('Количество использований волшебной палочки'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+USER_STAT_SKILL_DAYBONUS => array(
+        'id' => USER_STAT_SKILL_DAYBONUS,
+        'title' => translate('Количество полученных ежедневных бонусов'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+USER_STAT_SKILL_CARDGAME => array(
+        'id' => USER_STAT_SKILL_CARDGAME,
+        'title' => translate('Количество открытых карт судьбы'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+USER_STAT_SKILL_BANDIT_777 => array(
+        'id' => USER_STAT_SKILL_BANDIT_777,
+        'title' => translate('Количество полученных джекпотов'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+USER_STAT_SKILL_COUNT_SEASON => array(
+        'id' => USER_STAT_SKILL_COUNT_SEASON,
+        'title' => translate('Количество полученных наград в сезоне'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+USER_STAT_SKILL_COUNT_BATTLEPASS => array(
+        'id' => USER_STAT_SKILL_COUNT_BATTLEPASS,
+        'title' => translate('Количество полученных наград в боевом пропуске'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+USER_STAT_SKILL_COUNT_SEARCHPARTY => array(
+        'id' => USER_STAT_SKILL_COUNT_SEARCHPARTY,
+        'title' => translate('Количество пройденных подземелий'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+	USER_STAT_SKILL_COUNT_CLANARENA => array(
+        'id' => USER_STAT_SKILL_COUNT_CLANARENA,
+        'title' => translate('Количество тренировок на клановой арене'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+
+	
+	
+	USER_STAT_SKILL_COUNT_CHAOTIK => array(
+        'id' => USER_STAT_SKILL_COUNT_CHAOTIK,
+        'title' => translate('Количество посещенных хаотичных битв'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+	USER_STAT_SKILL_COUNT_EQARENA => array(
+        'id' => USER_STAT_SKILL_COUNT_EQARENA,
+        'title' => translate('Количество посещений Арены равных'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+	USER_STAT_SKILL_COUNT_DUELS => array(
+        'id' => USER_STAT_SKILL_COUNT_DUELS,
+        'title' => translate('Количество посещений Дуэлей'),
+        'flags' => 0,
+		'group_id' => USER_STAT_SKILL_GROUP_COUNTERS,
+    ),
+	
+	
+    USER_STAT_SKILL_HONOR_CB => array(
+        'id' => USER_STAT_SKILL_HONOR_CB,
+        'title' => translate('Доблесть в клановых битвах'),
+        'flags' => 0,
+        'group_id' => USER_STAT_SKILL_GROUP_HONOR,
+    ),
+    USER_STAT_SKILL_KULACH_RAUND => array(
+        'id' => USER_STAT_SKILL_KULACH_RAUND,
+        'title' => translate('Побеждено противников в кулачных боях'),
+        'flags' => 0
+    ),
+    USER_STAT_SKILL_SKALP_DRAKON => array(
+        'id' => USER_STAT_SKILL_SKALP_DRAKON,
+        'title' => translate('Передано скальпов дракону'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_SKALP,
+    ),
+    //	Репутации
+    USER_STAT_SKILL_GREAT_FIGHT_REP => array(
+        'id' => USER_STAT_SKILL_GREAT_FIGHT_REP,
+        'title' => translate('Репутация участника Великих битв'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_GREAT_FIGHT_PART => array(
+        'id' => USER_STAT_SKILL_GREAT_FIGHT_PART,
+        'title' => translate('Участие в Великих битвах'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_GREAT_FIGHT,
+    ),
+    USER_STAT_SKILL_GREAT_FIGHT_WIN => array(
+        'id' => USER_STAT_SKILL_GREAT_FIGHT_WIN,
+        'title' => translate('Победы в Великих битвах'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_GREAT_FIGHT,
+    ),
+    USER_STAT_SKILL_REP_CENTRIDO => array(
+        'id' => USER_STAT_SKILL_REP_CENTRIDO,
+        'title' => translate('Добыча центридо'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_CHAOS => array(
+        'id' => USER_STAT_SKILL_REP_CHAOS,
+        'title' => translate('Репутация борца с Хаосом'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_CRYSTCAVE => array(
+        'id' => USER_STAT_SKILL_REP_CRYSTCAVE,
+        'title' => translate('Репутация подземных рыцарей'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_DARTRONG => array(
+        'id' => USER_STAT_SKILL_REP_DARTRONG,
+        'title' => translate('Репутация Дартронга'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_DJAGGER => array(
+        'id' => USER_STAT_SKILL_REP_DJAGGER,
+        'title' => translate('Репутация Джаггернаутов'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_ELDIV => array(
+        'id' => USER_STAT_SKILL_REP_ELDIV,
+        'title' => translate('Репутация Эльдивов'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+	USER_STAT_SKILL_REP_IZUVER => array(
+        'id' => USER_STAT_SKILL_REP_IZUVER,
+        'title' => translate('Репутация Изувера'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_FLAUND => array(
+        'id' => USER_STAT_SKILL_REP_FLAUND,
+        'title' => translate('Репутация Флаундинов'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_GUARD => array(
+        'id' => USER_STAT_SKILL_REP_GUARD,
+        'title' => translate('Репутация Стража'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_INKARNUM => array(
+        'id' => USER_STAT_SKILL_REP_INKARNUM,
+        'title' => translate('Добыча инкарнумов'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_KROFDOR => array(
+        'id' => USER_STAT_SKILL_REP_KROFDOR,
+        'title' => translate('Репутация Крофдоров'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_LOTOS => array(
+        'id' => USER_STAT_SKILL_REP_LOTOS,
+        'title' => translate('Репутация «Каменного лотоса»'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_NEZHIT => array(
+        'id' => USER_STAT_SKILL_REP_NEZHIT,
+        'title' => translate('Репутация охотника на нежить'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_ODELVAIS => array(
+        'id' => USER_STAT_SKILL_REP_ODELVAIS,
+        'title' => translate("Репутация О`Дельвайса"),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_RATING => array(
+        'id' => USER_STAT_SKILL_REP_RATING,
+        'title' => translate('Репутационный рейтинг'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_RELICT => array(
+        'id' => USER_STAT_SKILL_REP_RELICT,
+        'title' => translate('Репутация искателя реликтов'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_TZNANIA => array(
+        'id' => USER_STAT_SKILL_REP_TZNANIA,
+        'title' => translate('Тайные знания'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_VNOCHI => array(
+        'id' => USER_STAT_SKILL_REP_VNOCHI,
+        'title' => translate('Репутация «Крадущихся в ночи»'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_ZLO => array(
+        'id' => USER_STAT_SKILL_REP_ZLO,
+        'title' => translate('Репутация вершителя Зла'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_TRANSFER_TO_LUA,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_DOBRO => array(
+        'id' => USER_STAT_SKILL_REP_DOBRO,
+        'title' => translate('Репутация Братства Добродетели'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_TRANSFER_TO_LUA,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_TOPOR => array(
+        'id' => USER_STAT_SKILL_REP_TOPOR,
+        'title' => translate('Репутация «Красных топоров»'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_FORTUNA => array(
+        'id' => USER_STAT_SKILL_REP_FORTUNA,
+        'title' => translate('Репутация ловцов фортуны'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_GODDRAC => array(
+        'id' => USER_STAT_SKILL_REP_GODDRAC,
+        'title' => translate('Репутация великого Дракона'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_GODDEAD => array(
+        'id' => USER_STAT_SKILL_REP_GODDEAD,
+        'title' => translate('Репутация бога мертвых и проклятых'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_GODLIFE => array(
+        'id' => USER_STAT_SKILL_REP_GODLIFE,
+        'title' => translate('Репутация богини Аладеи'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_PET => array(
+        'id' => USER_STAT_SKILL_REP_PET,
+        'title' => translate('Репутация Покровителей питомцев'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_DREAMCATCHER => array(
+        'id' => USER_STAT_SKILL_REP_DREAMCATCHER,
+        'title' => translate('Репутация ловцов теней'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_RUMENGILD => array(
+        'id' => USER_STAT_SKILL_REP_RUMENGILD,
+        'title' => translate('Репутация Нандора'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_VALTEREI => array(
+        'id' => USER_STAT_SKILL_REP_VALTEREI,
+        'title' => translate('Репутация Парбата'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_TOMB_RAIDER => array(
+        'id' => USER_STAT_SKILL_REP_TOMB_RAIDER,
+        'title' => translate('Репутация Расхитителей гробниц'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_RER_TAIN => array(
+        'id' => USER_STAT_SKILL_RER_TAIN,
+        'title' => translate('Репутаций Тайн'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_RER_GAVANI => array(
+        'id' => USER_STAT_SKILL_RER_GAVANI,
+        'title' => translate('Репутация Монетной Гавани'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_RER_DALI => array(
+        'id' => USER_STAT_SKILL_RER_DALI,
+        'title' => translate('Репутация Книжной Дали'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+
+    //Новые репы
+
+    USER_STAT_SKILL_REP_EQUAL => array(
+        'id' => USER_STAT_SKILL_REP_EQUAL,
+        'title' => translate('Репутация Воинства равных'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_CLAN => array(
+        'id' => USER_STAT_SKILL_REP_CLAN,
+        'title' => translate('Репутация Клана'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_EVENTOR => array(
+        'id' => USER_STAT_SKILL_REP_EVENTOR,
+        'title' => translate('Репутация Эвентора'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+
+    USER_STAT_SKILL_REP_TOMB_RIDER => array(
+        'id' => USER_STAT_SKILL_REP_TOMB_RIDER,
+        'title' => translate('Репутация Расхитителя подземелий'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_SOUL_RIDER => array(
+        'id' => USER_STAT_SKILL_REP_SOUL_RIDER,
+        'title' => translate('Репутация собирателя душ'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+
+    USER_STAT_SKILL_REP_TAIN_EXPIRIENSE => array(
+        'id' => USER_STAT_SKILL_REP_TAIN_EXPIRIENSE,
+        'title' => translate('Тайные знания'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+
+    //Еще новее репы
+    USER_STAT_SKILL_REP_RAS_GROB => array(
+        'id' => USER_STAT_SKILL_REP_RAS_GROB,
+        'title' => translate('Репутация Расхитителей гробниц'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_HRAN_MAG => array(
+        'id' => USER_STAT_SKILL_REP_HRAN_MAG,
+        'title' => translate('Репутация Хранители магии'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_LOV_TEN => array(
+        'id' => USER_STAT_SKILL_REP_LOV_TEN,
+        'title' => translate('Репутация Ловцов теней'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_POK_PIT => array(
+        'id' => USER_STAT_SKILL_REP_POK_PIT,
+        'title' => translate('Репутация Покровителей питомцев'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_BOR_SHAAS => array(
+        'id' => USER_STAT_SKILL_REP_BOR_SHAAS,
+        'title' => translate('Репутация Борцов с Шиас'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_ZASH_TAILSME => array(
+        'id' => USER_STAT_SKILL_REP_ZASH_TAILSME,
+        'title' => translate('Репутация Защитников Таильсимэ'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_TOLK_VIDEN => array(
+        'id' => USER_STAT_SKILL_REP_TOLK_VIDEN,
+        'title' => translate('Репутация Толкователей Видений'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+    USER_STAT_SKILL_REP_ORDEN_TRIAD => array(
+        'id' => USER_STAT_SKILL_REP_ORDEN_TRIAD,
+        'title' => translate('Репутация Ордена Триады'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+
+    //Еще новее штучки
+    USER_STAT_SKILL_EXP_LOVK => array(
+        'id' => USER_STAT_SKILL_EXP_LOVK,
+        'title' => translate('Опыт ловкача'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_TRENDEXP,
+    ),
+    USER_STAT_SKILL_EXP_TANK => array(
+        'id' => USER_STAT_SKILL_EXP_TANK,
+        'title' => translate('Опыт тяжеловеса'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_TRENDEXP,
+    ),
+    USER_STAT_SKILL_EXP_CRIT => array(
+        'id' => USER_STAT_SKILL_EXP_CRIT,
+        'title' => translate('Опыт костолома'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_TRENDEXP,
+    ),
+
+
+    USER_STAT_SKILL_REP_URCHI => array(
+        'id' => USER_STAT_SKILL_REP_URCHI,
+        'title' => translate('Репутация дракончика Урчи'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_REP,
+    ),
+
+
+    //	Влияние
+    USER_STAT_SKILL_INFLU_BALLUOCEAN => array(
+        'id' => USER_STAT_SKILL_INFLU_BALLUOCEAN,
+        'title' => translate('Влияние в Баллаурском океане'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_BERON_PRER => array(
+        'id' => USER_STAT_SKILL_INFLU_BERON_PRER,
+        'title' => translate('Влияние в Беронских прериях'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_BRENN_LUGA => array(
+        'id' => USER_STAT_SKILL_INFLU_BRENN_LUGA,
+        'title' => translate('Влияние в Бренных лугах'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_CHION_GORI => array(
+        'id' => USER_STAT_SKILL_INFLU_CHION_GORI,
+        'title' => translate('Влияние в Чионьских горах'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_DARTRONG => array(
+        'id' => USER_STAT_SKILL_INFLU_DARTRONG,
+        'title' => translate('Влияние в Дартронге'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_FEI_GO => array(
+        'id' => USER_STAT_SKILL_INFLU_FEI_GO,
+        'title' => translate('Влияние на Островах Фей-Го'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_FIGHTVOR => array(
+        'id' => USER_STAT_SKILL_INFLU_FIGHTVOR,
+        'title' => translate('Влияние в Пещерах трепета'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_FIGHTWOR => array(
+        'id' => USER_STAT_SKILL_INFLU_FIGHTWOR,
+        'title' => translate('Влияние в Алевейных далях'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_GRANDFORT => array(
+        'id' => USER_STAT_SKILL_INFLU_GRANDFORT,
+        'title' => translate('Влияние в Шуарском лесу'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_KRAYZEM => array(
+        'id' => USER_STAT_SKILL_INFLU_KRAYZEM,
+        'title' => translate('Влияние на Краю земли'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_LIVANTIYA => array(
+        'id' => USER_STAT_SKILL_INFLU_LIVANTIYA,
+        'title' => translate('Влияние в Ливантии'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_MENTALIYA => array(
+        'id' => USER_STAT_SKILL_INFLU_MENTALIYA,
+        'title' => translate('Влияние в Горах Менталия'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_OBITEL_PRA => array(
+        'id' => USER_STAT_SKILL_INFLU_OBITEL_PRA,
+        'title' => translate('Влияние в Обители праха'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_ODELVAIS => array(
+        'id' => USER_STAT_SKILL_INFLU_ODELVAIS,
+        'title' => translate('Влияние в О`Дельвайсе'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_OGNEN => array(
+        'id' => USER_STAT_SKILL_INFLU_OGNEN,
+        'title' => translate('Влияние в Огненных верстах'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_PRIGOR_HUM => array(
+        'id' => USER_STAT_SKILL_INFLU_PRIGOR_HUM,
+        'title' => translate("Влияние в Пригороде О'Дельвайса"),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_PRIGOR_MAG => array(
+        'id' => USER_STAT_SKILL_INFLU_PRIGOR_MAG,
+        'title' => translate('Влияние в Пригороде Дартронга'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_PRIZDAL => array(
+        'id' => USER_STAT_SKILL_INFLU_PRIZDAL,
+        'title' => translate('Влияние в Призрачных далях'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_PROKL_POLE => array(
+        'id' => USER_STAT_SKILL_INFLU_PROKL_POLE,
+        'title' => translate('Влияние в Проклятом поле'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_SHUAR_LES => array(
+        'id' => USER_STAT_SKILL_INFLU_SHUAR_LES,
+        'title' => translate('Влияние в ГрандФорте'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_TIKHAYA_ST => array(
+        'id' => USER_STAT_SKILL_INFLU_TIKHAYA_ST,
+        'title' => translate('Влияние в Тихой степи'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_TREPET => array(
+        'id' => USER_STAT_SKILL_INFLU_TREPET,
+        'title' => translate('Влияние в Файтворе'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_TRIVERION => array(
+        'id' => USER_STAT_SKILL_INFLU_TRIVERION,
+        'title' => translate('Влияние в Триверионе'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_UNDERWATER => array(
+        'id' => USER_STAT_SKILL_INFLU_UNDERWATER,
+        'title' => translate('Влияние в Подводном мире'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_VERHOVOD => array(
+        'id' => USER_STAT_SKILL_INFLU_VERHOVOD,
+        'title' => translate('Влияние в Верховодье'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_ZEMLI_USOP => array(
+        'id' => USER_STAT_SKILL_INFLU_ZEMLI_USOP,
+        'title' => translate('Влияние в Землях усопших'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_ZVIG_BRIST => array(
+        'id' => USER_STAT_SKILL_INFLU_ZVIG_BRIST,
+        'title' => translate('Влияние в Звиглод бристе'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_ETR_FROST_ISL => array(
+        'id' => USER_STAT_SKILL_INFLU_ETR_FROST_ISL,
+        'title' => translate('Влияние на островах Вечной стужи'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_INFLU_FROST_ISLAND => array(
+        'id' => USER_STAT_SKILL_INFLU_FROST_ISLAND,
+        'title' => translate('Влияние на Туманных островах'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_ROCK_EDGE => array(
+        'id' => USER_STAT_SKILL_ROCK_EDGE,
+        'title' => translate('Влияние в Скалистом крае'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+    USER_STAT_SKILL_PIEDMONT_OF_VOLCANE => array(
+        'id' => USER_STAT_SKILL_PIEDMONT_OF_VOLCANE,
+        'title' => translate('Влияние у Подножия вулкана'),
+        'flags' => SKILL_FLAG_VISIBLE,
+        'group_id' => USER_STAT_SKILL_GROUP_INFLU,
+    ),
+
+    USER_STAT_SKILL_FS_BLOCK_CNT => array(
+        'id' => USER_STAT_SKILL_FS_BLOCK_CNT,
+        'title' => translate('Максимальное количество блоков'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_VISIBLE_EXTERN,
+        'group_id' => USER_STAT_SKILL_GROUP_FIGHT,
+    ),
+    USER_STAT_SKILL_FS_BLOCK_CNT_SF => array(
+        'id' => USER_STAT_SKILL_FS_BLOCK_CNT_SF,
+        'title' => translate('Максимальное количество ударов в блок'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_VISIBLE_EXTERN,
+        'group_id' => USER_STAT_SKILL_GROUP_FIGHT,
+    ),
+    USER_STAT_SKILL_FS_CRIT_CNT => array(
+        'id' => USER_STAT_SKILL_FS_CRIT_CNT,
+        'title' => translate('Максимальное количество критов'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_VISIBLE_EXTERN,
+        'group_id' => USER_STAT_SKILL_GROUP_FIGHT,
+    ),
+    USER_STAT_SKILL_FS_DEATH_CNT => array(
+        'id' => USER_STAT_SKILL_FS_DEATH_CNT,
+        'title' => translate('Максимальное количество смертей'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_VISIBLE_EXTERN,
+        'group_id' => USER_STAT_SKILL_GROUP_FIGHT,
+    ),
+    USER_STAT_SKILL_FS_DODGE_CNT => array(
+        'id' => USER_STAT_SKILL_FS_DODGE_CNT,
+        'title' => translate('Максимальное количество уворотов'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_VISIBLE_EXTERN,
+        'group_id' => USER_STAT_SKILL_GROUP_FIGHT,
+    ),
+    USER_STAT_SKILL_FS_DODGE_CNT_SF => array(
+        'id' => USER_STAT_SKILL_FS_DODGE_CNT_SF,
+        'title' => translate('Максимальное количество промахов'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_VISIBLE_EXTERN,
+        'group_id' => USER_STAT_SKILL_GROUP_FIGHT,
+    ),
+    USER_STAT_SKILL_FS_HIT_CNT_SF => array(
+        'id' => USER_STAT_SKILL_FS_HIT_CNT_SF,
+        'title' => translate('Максимальное количество ударов'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_VISIBLE_EXTERN,
+        'group_id' => USER_STAT_SKILL_GROUP_FIGHT,
+    ),
+    USER_STAT_SKILL_FS_KILL_CNT => array(
+        'id' => USER_STAT_SKILL_FS_KILL_CNT,
+        'title' => translate('Максимальное количество убийств'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_VISIBLE_EXTERN,
+        'group_id' => USER_STAT_SKILL_GROUP_FIGHT,
+    ),
+    USER_STAT_SKILL_FS_MAX_CRIT => array(
+        'id' => USER_STAT_SKILL_FS_MAX_CRIT,
+        'title' => translate('Максимальный крит'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_VISIBLE_EXTERN,
+        'group_id' => USER_STAT_SKILL_GROUP_FIGHT,
+    ),
+    USER_STAT_SKILL_FS_MAX_CRIT_SF => array(
+        'id' => USER_STAT_SKILL_FS_MAX_CRIT_SF,
+        'title' => translate('Максимально полученный крит'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_VISIBLE_EXTERN,
+        'group_id' => USER_STAT_SKILL_GROUP_FIGHT,
+    ),
+    USER_STAT_SKILL_F_ENEMYKILLCNT => array(
+        'id' => USER_STAT_SKILL_F_ENEMYKILLCNT,
+        'title' => translate('Количество убийств'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_VISIBLE_EXTERN,
+    ),
+    USER_STAT_SKILL_F_KILLCNT => array(
+        'id' => USER_STAT_SKILL_F_KILLCNT,
+        'title' => translate('Количество убитых врагов'),
+        'flags' => SKILL_FLAG_VISIBLE | SKILL_FLAG_VISIBLE_EXTERN,
+    ),
+
+    USER_STAT_SKILL_FAULT_SIEGES_NUM => array(
+        'id' => USER_STAT_SKILL_FAULT_SIEGES_NUM,
+        'title' => translate('Количество неудачных осад крепости'),
+        'flags' => 0,
+    ),
+    USER_STAT_SKILL_DELAYED_EXP => array(
+        'id' => USER_STAT_SKILL_DELAYED_EXP,
+        'title' => translate('Отложенный опыт'),
+        'flags' => 0
+    ),
+);
+
+global $user_stat_money_types;
+$user_stat_money_types = array(
+    USER_STAT_OBJECT_STORE_PAYMENT_TOTAL => translate('Совершить покупок на сумму %s'),
+    USER_STAT_OBJECT_STORE_PAYMENT_MAX => translate('Совершить единовременную покупку на сумму %s'),
+    USER_STAT_OBJECT_BOT_MONEY => translate('Получить сумму %s с монстров'),
+    USER_STAT_OBJECT_MAILRU_MONEY => translate('Пополнить счет средствами ДМР на сумму %s'),
+    USER_STAT_OBJECT_ACTION20101129 => translate('Положить %s во время акции 20101129 (в сотых)'),
+    USER_STAT_OBJECT_ACTION20110131 => translate('Положить %s во время акции 20101129 (в сотых)'),
+    USER_STAT_OBJECT_ACTIONQIWI => translate('Положить %s во время акции QIWI (в сотых)'),
+);
+
+$user_stat_misc_types = array(
+    USER_STAT_OBJECT_QUEST_NORMAL => translate('Пройти сколькото квестов'),
+    USER_STAT_OBJECT_POST_SEND => translate('Отправить сколькото писем'),
+    USER_STAT_OBJECT_CLAN_ENTER => translate('Вступить в клан сколькото раз/раза'),
+    USER_STAT_OBJECT_CLAN_TIME => translate('Провести сколькото в клане'),
+    USER_STAT_OBJECT_WIN_COUNT => translate('Одержать сколькото побед'),
+    USER_STAT_OBJECT_LOSS_COUNT => translate('Потерпеть сколькото поражений'),
+    USER_STAT_OBJECT_ONLINE_TIME => translate('Провести сколькото в онлайне'),
+    USER_STAT_OBJECT_GF_WIN_AS_LEADER => translate('Победить в ВБ в качестве лидера сколько-то раз'),
+    USER_STAT_OBJECT_GIFTS_SENDED => translate('Отправить подарков'),
+    USER_STAT_OBJECT_ESTATE_GAIN_EXP => translate('Бонусный опыт в поместье'),
+    USER_STAT_OBJECT_ESTATE_GAIN_HONOR => translate('Бонусная доблесть в поместье'),
+    USER_STAT_OBJECT_ESTATE_HEAL_TIME => translate('Время исцеления травм в поместье'),
+);
+
+global $achievement_fight_type_hash;
+
+/**
+ * параметр $extended определяет, получать ли подробную инфу по подкатегориям, т.е. делать ли соотв. запросы к бд
+ *
+ * Ниже находится массив $user_stat_types, в котором хранятся статистики пользователя для
+ * настроек бонусов в админке.
+ *
+ * Формат массива следующий:
+ * id        - id типа статистики, должен быть уникален.
+ * title    - название типа статистики, выводится в селекте "Тип статистики"
+ * далее следуют описание переменных, их формат сделующий:
+ *        title - название, выводится правее селекта/инпута.
+ *        type - тип элемента, может быть number|object_select|select|select_grp, что есть что см. в bonus.admin
+ *        code - параметр для type = 'object_select', т.к. юзается admin_object_select()
+ *        source - массив со значениями для типа select|select_grp
+ *        groups - массив групп для type = 'select_grp'
+ *
+ * @var array
+ */
+function user_stat_types_info($extended = false) {
+    global $achievement_fight_type_hash, $user_stat_misc_types, $user_stat_money_types, $user_stat_skill_hash, $building_types;
+    return array(
+        USER_STAT_TYPE_BOT => array(
+            'id' => USER_STAT_TYPE_BOT,
+            'title' => translate('Победы над ботами'),
+            'object_id' => array(
+                'title' => translate('Бот:'),
+                'type' => 'object_select',
+                'code' => 'bot_artikul',
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_FARM => array(
+            'id' => USER_STAT_TYPE_FARM,
+            'title' => translate('Фарм артикулов'),
+            'object_id' => array(
+                'title' => translate('Фарм:'),
+                'type' => 'object_select',
+                'code' => 'artikul',
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_RECIPE => array(
+            'id' => USER_STAT_TYPE_RECIPE,
+            'title' => translate('Использование рецептов'),
+            'object_id' => array(
+                'title' => translate('Рецепт:'),
+                'type' => 'object_select',
+                'code' => 'artikul',
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_ACTION => array(
+            'id' => USER_STAT_TYPE_ACTION,
+            'title' => translate('Выполнение действий'),
+            'object_id' => array(
+                'title' => translate('Действие:'),
+                'type' => 'object_select',
+                'code' => 'action',
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_LOCATION => array(
+            'id' => USER_STAT_TYPE_LOCATION,
+            'title' => translate('Переходы в локации'),
+            'object_id' => array(
+                'title' => translate('Локация:'),
+                'type' => 'select',
+                'source' => $extended ? area_select() : array(),
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_FIGHT => array(
+            'id' => USER_STAT_TYPE_FIGHT,
+            'title' => translate('Кол-во боёв'),
+            'object_id' => array(
+                'title' => translate('Тип боя:'),
+                'type' => 'select',
+                'source' => $achievement_fight_type_hash,
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_QUEST => array(
+            'id' => USER_STAT_TYPE_QUEST,
+            'title' => translate('Завершенных квестов'),
+            'object_id' => array(
+                'title' => translate('Квест:'),
+                'type' => 'select',
+                'source' => $extended ? get_hash(quest_list()) : array(),
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_BUY => array(
+            'id' => USER_STAT_TYPE_BUY,
+            'title' => translate('Купленных предметов'),
+            'object_id' => array(
+                'title' => translate('Артикул:'),
+                'type' => 'object_select',
+                'code' => 'artikul',
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_BG => array(
+            'id' => USER_STAT_TYPE_BG,
+            'title' => translate('Побед в БГ'),
+            'object_id' => array(
+                'title' => translate('Артикул:'),
+                'type' => 'select',
+                'source' => $extended ? get_hash(bg_list()) : array(),
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_MISC => array(
+            'id' => USER_STAT_TYPE_MISC,
+            'title' => translate('Разное'),
+            'object_id' => array(
+                'title' => translate('Тип:'),
+                'type' => 'select',
+                'source' => $user_stat_misc_types,
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_BOT_FIGHT_TIME => array(
+            'id' => USER_STAT_TYPE_BOT_FIGHT_TIME,
+            'title' => translate('Мин. время в бою с ботом'),
+            'object_id' => array(
+                'title' => translate('Бот:'),
+                'type' => 'object_select',
+                'code' => 'bot_artikul',
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_MONEY => array(
+            'id' => USER_STAT_TYPE_MONEY,
+            'title' => translate('Деньги'),
+            'object_id' => array(
+                'title' => translate('Тип:'),
+                'type' => 'select',
+                'source' => $user_stat_money_types,
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_SKILL => array(
+            'id' => USER_STAT_TYPE_SKILL,
+            'title' => translate('Статистика характеристики'),
+            'object_id' => array(
+                'title' => translate('Характеристика:'),
+                'type' => 'select_grp',
+                'source' => get_hash_grp($user_stat_skill_hash, 'group_id', 'id', 'title'),
+                'groups' => $user_stat_skill_groups,
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_GROUP_BOT => array(
+            'id' => USER_STAT_TYPE_GROUP_BOT,
+            'title' => translate('Победы над группой ботов'),
+            'object_id' => array(
+                'title' => translate('Группа ботов:'),
+                'type' => 'select',
+                'source' => $extended ? get_hash(bot_group_list()) : array(),
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+        USER_STAT_TYPE_ESTATE_BUILDING_USE => array(
+            'id' => USER_STAT_TYPE_ESTATE_BUILDING_USE,
+            'title' => translate('Использование зданий в поместье'),
+            'object_id' => array(
+                'title' => translate('Тип здания'),
+                'type' => 'select',
+                'source' => get_hash($building_types),
+            ),
+            'value' => array(
+                'title' => translate('Количество:'),
+                'type' => 'number',
+            ),
+        ),
+    );
+}
+
+function user_stat_get($ref = false, $add = '') {
+    global $db;
+    return common_get($db, TABLE_USER_STATS, $ref, $add);
+}
+
+function user_stat_list($ref = false, $add = '', $field_list = '*') {
+    global $db;
+    return common_list($db, TABLE_USER_STATS, $ref, $add, $field_list);
+}
+
+function user_stat_count($ref = false, $add = '') {
+    global $db;
+    return common_count($db, TABLE_USER_STATS, $ref, $add);
+}
+
+function user_stat_save($param) {
+    global $db;
+    return common_save($db, TABLE_USER_STATS, $param, FIELD_USER_STATS);
+}
+
+function user_stat_delete($ref, $add = '') {
+    global $db;
+    return common_delete($db, TABLE_USER_STATS, $ref, $add = '');
+}
+
+function user_stat_update($user_id, $type_id, $object_id, $value = 1, $op_type = USER_STAT_OP_INC, $param = array()) {
+    if (!$user_id || !$type_id || !$object_id) return false;
+    $status = false;
+    if (defined('GLADIATORS_SERVER') && GLADIATORS_SERVER && ($type_id == USER_STAT_TYPE_SKILL) && ($object_id == USER_STAT_SKILL_EXP)) return true;
+    $status = _user_stat_update($user_id, $type_id, $object_id, $value, $op_type, $param);
+    if (!$status) { //Непредвиденные обстоятельства ограничения опыта и доблести...
+        if ($type_id == USER_STAT_TYPE_SKILL) {
+            // приводим к целому типу любой переданное значение
+            $value = (int)$value;
+            if ($param['relative']) $op_type = USER_STAT_OP_INC;
+            $set_value_normal = '';
+            switch ($op_type) {
+                case USER_STAT_OP_SET:
+                    $set_value = sql_pholder(' ? ', $value);
+                    $set_value_normal = sql_pholder(' ? ', $value);
+                    break;
+                case USER_STAT_OP_MAX:
+                    $set_value = sql_pholder(' IF(value > ?, value, ?) ', $value, $value);
+                    $set_value_normal = sql_pholder(' IF(do_clan_value > ?, do_clan_value, ?) ', $value, $value);
+                    break;
+                case USER_STAT_OP_MIN:
+                    $set_value = sql_pholder(' IF(value < ?, value, ?) ', $value, $value);
+                    $set_value_normal = sql_pholder(' IF(do_clan_value < ?, do_clan_value, ?) ', $value, $value);
+                    break;
+                default:
+                    $set_value = sql_pholder(' (value + ?) ', $value);
+                    $set_value_normal = sql_pholder(' (do_clan_value + ?) ', $value);
+                    break;
+            }
+
+            switch ($object_id) {
+                case USER_STAT_SKILL_EXP:
+                case USER_STAT_SKILL_HONOR:
+                    $status = user_stat_save(array(
+                        '_cnt' => true,
+                        '_set' => ' do_clan_value = ' . $set_value_normal,
+                        '_add' => sprintf(sql_pholder('
+                    	AND clan_id > 0
+						AND user_id = ?
+						AND type_id = ?
+						AND object_id = ?
+						AND status != ?', $user_id, $type_id, $object_id, USER_STAT_STATUS_CLOSED)),
+                    ));
+                    user_stat_unlimit_add($user_id, $type_id, $object_id, $value);
+                    if ($status) return $status;
+                    break;
+            }
+        }
+    }
+    return $status;
+}
+
+// type: 1 - inc, 2 - set, 3 - max, 4 - min, 5 - dec
+// param['exit_nostat'] - ничего не делаем, если такой статистики нет
+function _user_stat_update($user_id, $type_id, $object_id, $value = 1, $op_type = USER_STAT_OP_INC, $param = array()) {
+    static $auth_hash = array();
+    static $user_hash = array();
+    if (!$user_id || !$type_id || !$object_id) return false;
+    $status = false;
+    if ($param['relative']) $op_type = USER_STAT_OP_INC;
+
+    if (defined('GLADIATORS_SERVER') && GLADIATORS_SERVER && ($type_id == USER_STAT_TYPE_SKILL) && ($object_id == USER_STAT_SKILL_EXP)) {
+        // На гладиаторском сервере экспу не трогаем
+        return true;
+    }
+
+    // приводим к целому типу любой переданное значение
+    $value = (int)$value;
+    // Сразу делаем update значения статистики с условием, что оно не превысит порог выдачи ачива
+    $set_value = '';
+    $set_value_normal = '';
+    switch ($op_type) {
+        case USER_STAT_OP_SET:
+            $set_value = sql_pholder(' ? ', $value);
+            $set_value_normal = sql_pholder(' ? ', $value);
+            break;
+        case USER_STAT_OP_MAX:
+            $set_value = sql_pholder(' IF(value > ?, value, ?) ', $value, $value);
+            $set_value_normal = sql_pholder(' IF(do_clan_value > ?, do_clan_value, ?) ', $value, $value);
+            break;
+        case USER_STAT_OP_MIN:
+            $set_value = sql_pholder(' IF(value < ?, value, ?) ', $value, $value);
+            $set_value_normal = sql_pholder(' IF(do_clan_value < ?, do_clan_value, ?) ', $value, $value);
+            break;
+        default:
+            $set_value = sql_pholder(' (value + ?) ', $value);
+            $set_value_normal = sql_pholder(' (do_clan_value + ?) ', $value);
+            break;
+    }
+
+    // всякая странная кухня с исключительными случаями
+    if ($type_id == USER_STAT_TYPE_SKILL) {
+        switch ($object_id) {
+            case USER_STAT_SKILL_EXP:
+                chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user_id, array('func' => "updateSwf({'lvl':''})"));
+                $auth = cache_fetch($auth_hash, $user_id, 'auth_get');
+                if ($auth['gflags'] & GAUTH_FLAG_NO_EXP) {
+                    return false;
+                }
+                if (SERVER_ID == $auth['server_id']) {
+                    if (defined('EXP_LIMIT') && EXP_LIMIT) {
+                        $set_value = sprintf(' IF(%s > %d, %d, %s) ', $set_value, EXP_LIMIT, EXP_LIMIT, $set_value);
+                    }
+                } else {
+                    $object_id = USER_STAT_SKILL_DELAYED_EXP;
+                }
+                break;
+            case USER_STAT_SKILL_GREAT_FIGHT_REP:
+                $set_value = sprintf(' IF(%s > %d, %d, %s) ', $set_value, MAX_SKILL_GREAT_FIGHT_REP, MAX_SKILL_GREAT_FIGHT_REP, $set_value);
+                break;
+            case USER_STAT_SKILL_HONOR:
+                chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user_id, array('func' => "updateSwf({'lvl':''})"));
+                if ($op_type != USER_STAT_OP_INC) break;
+                if (NODE_PUSH(null, $user_id)) {
+                    $profile_pvp = skill_object_get(OBJECT_CLASS_USER, $user_id, array('skill_id' => 'PROFILE_PVP'));
+                    NODE_POP();
+                }
+                $user = cache_fetch($user_hash, $user_id, 'user_get');
+                if ($profile_pvp && ($profile_pvp['value'] > 50)) metric_group_add(METRIC_TYPES_PVP, array('level' => $user['level']), array('pvp_honor' => $value));
+
+                if (defined('HONOR_LIMIT') && HONOR_LIMIT) {
+                    $set_value = sprintf(' IF(%s > %d, %d, %s) ', $set_value, HONOR_LIMIT, HONOR_LIMIT, $set_value);
+                }
+                break;
+        }
+    }
+
+    $status = user_stat_save(array(
+        '_cnt' => true,
+        '_set' => ' value = ' . $set_value,
+        '_add' => sprintf(sql_pholder('
+			AND user_id = ?
+			AND type_id = ?
+			AND object_id = ?
+			AND status != ?
+			AND %s < next_value ', $user_id, $type_id, $object_id, USER_STAT_STATUS_CLOSED), $set_value),
+    ));
+
+    $user = user_get($user_id);
+
+    if ($status && $type_id == USER_STAT_TYPE_SKILL) user_ref_triggered($user, USER_REF_TRIGGER_SKILL_STAT, $value, $object_id);
+
+    // Если удалось сделать update, значит ачивы выдавать не надо и проверять ничего не надо
+    if ($status) return $status;
+
+    // Тут есть ещё вероятность, что мы не в той ноде пытались апдейт сделать
+    // Залочим пользователя, чтобы он в этот момент никуда не переехал и очистим кэш ноды
+    //session_lock($user_id);
+    global $_node_cache;
+    if ($_node_cache[$user_id]) unset($_node_cache[$user_id]);
+    if (!NODE_PUSH(false, $user_id)) {
+        //session_unlock($user_id);
+        return false;
+    }
+    $status = user_stat_save(array(
+        '_cnt' => true,
+        '_set' => ' value = ' . $set_value,
+        '_add' => sprintf(sql_pholder('
+			AND user_id = ?
+			AND type_id = ?
+			AND object_id = ?
+			AND status != ?
+			AND %s < next_value ', $user_id, $type_id, $object_id, USER_STAT_STATUS_CLOSED), $set_value),
+    ));
+
+    if ($status && $type_id == USER_STAT_TYPE_SKILL) user_ref_triggered($user, USER_REF_TRIGGER_SKILL_STAT, $value, $object_id);
+
+    if ($status) {
+        NODE_POP();
+        //session_unlock($user_id);
+        return $status;
+    }
+    // Не удалось сделать update, значит нужно запускать шарманку сложной проверки на выдачу ачива или заведение статистики
+    // т. е. или статистики нет или пора выдать ачив
+    $stat = user_stat_get(array('user_id' => $user_id, 'type_id' => $type_id, 'object_id' => $object_id));
+    if ($stat['status'] == USER_STAT_STATUS_CLOSED) {
+        NODE_POP();
+        //session_unlock($user_id);
+        return false; // Статистика закрыта
+    }
+    if (!$stat) {
+        if ($param['exit_nostat']) {
+            NODE_POP();
+            //session_unlock($user_id);
+            return false;
+        }
+        // notice: Это необходимо чтобы получить клан
+        $user = cache_fetch($user_hash, $user_id, 'user_get');
+        // всякая странная кухня с исключительными случаями
+        if ($type_id == USER_STAT_TYPE_SKILL) {
+            switch ($object_id) {
+                case USER_STAT_SKILL_EXP:
+                    if (!(defined('EXP_LIMIT') && EXP_LIMIT)) break;
+                    $auth = cache_fetch($auth_hash, $user_id, 'auth_get');
+                    if (SERVER_ID == $auth['server_id']) $value = ($value > EXP_LIMIT ? EXP_LIMIT : $value);
+                    break;
+                case USER_STAT_SKILL_HONOR:
+                    if (!(defined('HONOR_LIMIT') && HONOR_LIMIT)) break;
+                    $auth = cache_fetch($auth_hash, $user_id, 'auth_get');
+                    if (SERVER_ID == $auth['server_id']) $value = ($value > HONOR_LIMIT ? HONOR_LIMIT : $value);
+                    break;
+                case USER_STAT_SKILL_GREAT_FIGHT_REP:
+                    $value = ($value > MAX_SKILL_GREAT_FIGHT_REP ? MAX_SKILL_GREAT_FIGHT_REP : $value);
+                    break;
+            }
+        }
+
+        $stat = array(
+            'user_id' => $user_id,
+            'type_id' => $type_id,
+            'object_id' => $object_id,
+            'value' => $value,
+            'clan_id' => intval($user['clan_id']),
+        );
+
+        $status = user_stat_save($stat);
+        user_achievement_check($user_id, $type_id, $object_id, $stat['value']);
+
+    } else {
+        switch ($op_type) {
+            case USER_STAT_OP_SET:
+                $stat['value'] = $value;
+                break;
+            case USER_STAT_OP_MAX:
+                $stat['value'] = ($stat['value'] > $value ? $stat['value'] : $value);
+                break;
+            case USER_STAT_OP_MIN:
+                $stat['value'] = ($stat['value'] < $value ? $stat['value'] : $value);
+                break;
+            default:
+                $stat['value'] += $value;
+                break;
+        }
+        // всякая странная кухня с исключительными случаями
+        if ($type_id == USER_STAT_TYPE_SKILL) {
+            switch ($object_id) {
+                case USER_STAT_SKILL_EXP:
+                    if (!(defined('EXP_LIMIT') && EXP_LIMIT)) break;
+                    $auth = cache_fetch($auth_hash, $user_id, 'auth_get');
+                    if (SERVER_ID == $auth['server_id']) $stat['value'] = ($stat['value'] > EXP_LIMIT ? EXP_LIMIT : $stat['value']);
+                    break;
+                case USER_STAT_SKILL_HONOR:
+                    if (!(defined('HONOR_LIMIT') && HONOR_LIMIT)) break;
+                    $auth = cache_fetch($auth_hash, $user_id, 'auth_get');
+                    if (SERVER_ID == $auth['server_id']) $stat['value'] = ($stat['value'] > HONOR_LIMIT ? HONOR_LIMIT : $stat['value']);
+                    break;
+                case USER_STAT_SKILL_GREAT_FIGHT_REP:
+                    $stat['value'] = ($stat['value'] > MAX_SKILL_GREAT_FIGHT_REP ? MAX_SKILL_GREAT_FIGHT_REP : $stat['value']);
+                    break;
+            }
+        }
+        $status = user_stat_save(array(
+            '_cnt' => true,
+            '_set' => ' value = ' . $stat['value'],
+            '_add' => sql_pholder(' AND user_id = ? AND type_id = ? AND object_id = ? ', $user_id, $type_id, $object_id),
+        ));
+
+        if ($stat['next_value']) {
+            if ($stat['value'] >= $stat['next_value']) {
+                user_achievement_check($user_id, $type_id, $object_id, $stat['value']);
+            }
+        } else {
+            user_achievement_check($user_id, $type_id, $object_id, $stat['value']);
+        }
+    }
+    NODE_POP();
+
+    if ($status && $type_id == USER_STAT_TYPE_SKILL) user_ref_triggered($user, USER_REF_TRIGGER_SKILL_STAT, $value, $object_id);
+
+    //session_unlock($user_id);
+    return $status;
+}
+
+// вынесено в отдельную функцию для расширяемости
+function user_stat_compare($user_stat, $achievement_item) {
+    $ret = false;
+    if ($achievement_item['cond'] == ACH_COND_LESS) $ret = ($user_stat['value'] < $achievement_item['value']); elseif ($achievement_item['cond'] == ACH_COND_EQUAL) $ret = ($user_stat['value'] == $achievement_item['value']); else $ret = ($user_stat['value'] >= $achievement_item['value']);
+    // Закрываем статистику
+    $achievement = achievement_get($achievement_item['achievement_id']);
+    if ($ret && ($achievement['flags'] & ACH_FLAG_CLOSE) && !($achievement['flags'] & ACH_FLAG_ADMIN_ONLY)) {
+        user_stat_save(array(
+            'status' => USER_STAT_STATUS_CLOSED,
+            '_add' => sql_pholder('
+				AND user_id = ?
+				AND type_id = ?
+				AND object_id = ?
+				', $user_stat['user_id'], $user_stat['type_id'], $user_stat['object_id']),
+        ));
+    }
+    return $ret;
+}
+
+function user_stat_get_description(&$item) {
+    global $user_stat_skill_hash;
+    $descr_str = '';
+    switch ($item['type_id']) {
+        case USER_STAT_TYPE_RECIPE:
+            $artikul = artifact_artikul_get(intval($item['object_id']));
+            $descr_str = sprintf('%s', _artifact_artikul_title($artikul));
+            break;
+        case USER_STAT_TYPE_FARM:
+            $artikul = artifact_artikul_get(intval($item['object_id']));
+            $descr_str = sprintf('%s', _artifact_artikul_title($artikul));
+            break;
+        case USER_STAT_TYPE_ACTION:
+            $action = action_get(intval($item['object_id']));
+            $descr_str = sprintf('%s', $action['title']);
+            break;
+        case USER_STAT_TYPE_LOCATION:
+            $descr_str = sprintf('%s', implode(' / ', get_hash(array_reverse(area_chain(intval($item['object_id']))))));
+            break;
+        case USER_STAT_TYPE_BOT: // атака бота
+            $artikul = bot_artikul_get(intval($item['object_id']));
+            $descr_str = sprintf('%s', _bot_artikul_title($artikul));
+            break;
+        case USER_STAT_TYPE_BOT_FIGHT_TIME: // время в бою с ботом
+            $artikul = bot_artikul_get(intval($item['object_id']));
+            $descr_str = sprintf('%s', _bot_artikul_title($artikul));
+            break;
+        case USER_STAT_TYPE_FIGHT:
+            global $achievement_fight_type_hash;
+            $descr_str = sprintf(translate('тип битвы "%s"'), $achievement_fight_type_hash[intval($item['object_id'])]);
+            break;
+        case USER_STAT_TYPE_QUEST:
+            $quest = quest_get(intval($item['object_id']));
+            $descr_str = sprintf('"%s"', $quest['title']);
+            break;
+        case USER_STAT_TYPE_BUY:
+            $artikul = artifact_artikul_get(intval($item['object_id']));
+            $descr_str = sprintf('%s', _artifact_artikul_title($artikul));
+            break;
+        case USER_STAT_TYPE_BG:
+            $artikul = bg_get(intval($item['object_id']));
+            $descr_str = sprintf('%s', $artikul['title']);
+            break;
+        case USER_STAT_TYPE_MISC:
+            $descr_str = user_stat_misc_description($item['object_id'], $item['value']);
+            break;
+        case USER_STAT_TYPE_MONEY:
+            $descr_str = user_stat_money_description($item['object_id'], $item['value']);
+            break;
+        case USER_STAT_TYPE_SKILL:
+            $descr_str = $user_stat_skill_hash[$item['object_id']] ? $user_stat_skill_hash[$item['object_id']]['title'] : translate('неизвестная характеристика');
+            break;
+        case USER_STAT_TYPE_GROUP_BOT:
+            $group = bot_group_get(intval($item['object_id']));
+            $descr_str = sprintf('%s', $group['title']);
+            break;
+        case USER_STAT_TYPE_ESTATE_BUILDING_USE:
+            global $building_types;
+            $descr_str = $building_types[$item['object_id']]['title'];
+            break;
+        default:
+            $descr_str = sprintf(translate('неизвестный тип элемента "%s"'), $item['type_id']);
+            break;
+    }
+    return $descr_str;
+}
+
+function user_stat_misc_description($object_id, $value, $cond = null) {
+    global $condition_hash;
+    if (isset($cond)) {
+        $cond_str = $condition_hash[$cond] ? $condition_hash[$cond] : '';
+    }
+    switch ($object_id) {
+        case USER_STAT_OBJECT_QUEST_NORMAL:
+            $descr_str = sprintf(translate('Пройти %d квестов'), $value);
+            break;
+        case USER_STAT_OBJECT_POST_SEND:
+            $descr_str = sprintf(translate('Отправить %d писем'), $value);
+            break;
+        case USER_STAT_OBJECT_CLAN_ENTER:
+            $descr_str = sprintf(translate('Вступить в клан %d раз/раза'), $value);
+            break;
+        case USER_STAT_OBJECT_CLAN_TIME:
+            $descr_str = sprintf(translate('Провести %s в клане'), html_period_str($value));
+            break;
+        case USER_STAT_OBJECT_WIN_COUNT:
+            $descr_str = sprintf(translate('Одержать %s побед'), $value);
+            break;
+        case USER_STAT_OBJECT_LOSS_COUNT:
+            $descr_str = sprintf(translate('Потерпеть %s поражений'), $value);
+            break;
+        case USER_STAT_OBJECT_ONLINE_TIME:
+            $descr_str = sprintf(translate('Провести %s в онлайне'), html_period_str($value));
+            break;
+        case USER_STAT_OBJECT_GF_WIN_AS_LEADER:
+            $descr_str = sprintf(translate('Победить в ВБ в качестве лидера %d раз/раза'), $value);
+            break;
+        case USER_STAT_OBJECT_GIFTS_SENDED:
+            $descr_str = sprintf(translate('Подарить %s подарков'), $value);
+            break;
+        case USER_STAT_OBJECT_ESTATE_GAIN_EXP:
+            $descr_str = sprintf(translate('Накопить %s бонусного опыта в поместье'), $value);
+            break;
+        case USER_STAT_OBJECT_ESTATE_GAIN_HONOR:
+            $descr_str = sprintf(translate('Накопить %s бонусной доблести в поместье'), $value);
+            break;
+        case USER_STAT_OBJECT_ESTATE_HEAL_TIME:
+            $descr_str = sprintf(translate('Исцелить %s времени травм в поместье'), html_period_str($value));
+            break;
+        default:
+            $descr_str = sprintf(translate('Неизвестный тип %s'), $value);
+            break;
+    }
+    return $descr_str;
+}
+
+function user_stat_money_description($object_id, $value) {
+    // бабло надо делить на 100
+    $value /= 100;
+    switch ($object_id) {
+        case USER_STAT_OBJECT_STORE_PAYMENT_TOTAL:
+            $descr_str = sprintf(translate('Совершить покупок на сумму %s'), html_money_str(MONEY_TYPE_GAME, $value));
+            break;
+        case USER_STAT_OBJECT_STORE_PAYMENT_MAX:
+            $descr_str = sprintf(translate('Совершить единовременную покупку на сумму %s'), html_money_str(MONEY_TYPE_GAME, $value));
+            break;
+        case USER_STAT_OBJECT_BOT_MONEY:
+            $descr_str = sprintf(translate('Получить сумму %s с монстров'), html_money_str(MONEY_TYPE_GAME, $value));
+            break;
+        case USER_STAT_OBJECT_MAILRU_MONEY:
+            $descr_str = sprintf(translate('Пополнить счет средствами ДМР на сумму %s'), $value);
+            break;
+        case USER_STAT_OBJECT_ACTION20101129:
+            $descr_str = sprintf(translate('Положить %s во время акции 20101129'), html_money_str(MONEY_TYPE_GOLD, $value));
+            break;
+        case USER_STAT_OBJECT_ACTION20110131:
+            $descr_str = sprintf(translate('Положить %s во время акции 20110131'), html_money_str(MONEY_TYPE_GOLD, $value));
+            break;
+        case USER_STAT_OBJECT_ACTIONQIWI:
+            $descr_str = sprintf(translate('Положить %s во время акции QIWI'), html_money_str(MONEY_TYPE_GOLD, $value));
+            break;
+        default:
+            $descr_str = sprintf(translate('Неизвестный тип %s'), $value);
+            break;
+    }
+    return $descr_str;
+}
+
+function user_stat_skill_description($object_id, $value, $cond) {
+    global $condition_hash, $user_stat_skill_hash;
+    $cond_str = $condition_hash[$cond] ? $condition_hash[$cond] : '';
+    switch ($object_id) {
+        case USER_STAT_SKILL_ENEMY_KILL_CNT:
+            $descr_str = sprintf(translate('Убить врагов - %s %d'), $cond_str, $value);
+            break;
+        case USER_STAT_SKILL_FR_DUEL_WIN_CNT:
+            $descr_str = sprintf(translate('Выиграть дуэлей - %s %d'), $cond_str, $value);
+            break;
+        default:
+            if ($user_stat_skill_hash[$object_id]) {
+                $descr_str = sprintf(translate('Получить %s %d (%s)'), $cond_str, $value, $user_stat_skill_hash[$object_id]['title']);
+            } else {
+                $descr_str = sprintf(translate('Неизвестный тип %s'), $value);
+            }
+            break;
+    }
+    return $descr_str;
+}
+
+function user_stat_estate_building_use_description($object_id, $value, $cond) {
+    global $condition_hash, $building_types;
+    $cond_str = $condition_hash[$cond] ? $condition_hash[$cond] : '';
+    return sprintf(translate('Количество использований здания "%s" %s %d'), $building_types[$object_id]['title'], $cond_str, $value);
+}
+
+function user_stat_skill_get($user_id, $stat_skill_ids) {
+    if (!$user_id || !$stat_skill_ids) return false;
+    $user_skill_stats = get_hash(user_stat_list(array(
+        'user_id' => $user_id,
+        'type_id' => USER_STAT_TYPE_SKILL,
+        'object_id' => $stat_skill_ids
+    )), 'object_id', 'value');
+    return $user_skill_stats;
+}
+
+/////////////////////////////////////////////////////////
+
+define('TABLE_USER_STAT_UNLIMIT_LIST', 'user_stat_unlimit');
+
+function user_stat_unlimit_get($ref = false, $add = '') {
+    global $db_4;
+    return common_get($db_4, TABLE_USER_STAT_UNLIMIT_LIST, $ref, $add);
+}
+
+function user_stat_unlimit_list($ref = false, $add = '') {
+    global $db_4;
+    return common_list($db_4, TABLE_USER_STAT_UNLIMIT_LIST, $ref, $add);
+}
+
+function user_stat_unlimit_save($param) {
+    global $db_4;
+    return common_save($db_4, TABLE_USER_STAT_UNLIMIT_LIST, $param);
+}
+
+function user_stat_unlimit_delete($ref, $add = '') {
+    global $db_4;
+    return common_delete($db_4, TABLE_USER_STAT_UNLIMIT_LIST, $ref, $add);
+}
+
+function user_stat_unlimit_count($ref) {
+    global $db_4;
+    return common_count($db_4, TABLE_USER_STAT_UNLIMIT_LIST, $ref);
+}
+
+function user_stat_unlimit_add($user_id, $type_id, $object_id, $value = 0) {
+    if (!$user_id || !$type_id || !$object_id || $value == 0) return false;
+    $user_stat_unlimit = user_stat_unlimit_get(array(
+        'user_id' => $user_id,
+        'type_id' => $type_id,
+        'object_id' => $object_id
+    ));
+    if ($user_stat_unlimit) {
+        return user_stat_unlimit_save(array(
+            'id' => $user_stat_unlimit['id'],
+            '_set' => sql_pholder(' value = value + ?', $value),
+        ));
+    } else {
+        return user_stat_unlimit_save(array(
+            'user_id' => $user_id,
+            'type_id' => $type_id,
+            'object_id' => $object_id,
+            'value' => $value,
+        ));
+    }
+}
+
+?>

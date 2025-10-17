@@ -1,0 +1,832 @@
+<? # $Id: auction.lib,v 1.4 2010-02-02 11:08:36 p.knoblokh Exp $
+
+// Имена и поля таблиц
+define('TABLE_AUCTION_LOTS','auction_lots');
+define('FIELD_AUCTION_LOTS','');
+define('TABLE_AUCTION_BIDS','auction_bids');
+define('FIELD_AUCTION_BIDS','');
+define('TABLE_AUCTION_GROUPS','auction_groups');
+define('FIELD_AUCTION_GROUPS','');
+global $db_auction_request; $db_auction_request = &$db_4;
+define('TABLE_AUCTION_REQUESTS','auction_requests');
+define('FIELD_AUCTION_REQUESTS','');
+
+define('AUCTION_USER_BONUS_ACTION_SELL', 1);
+define('AUCTION_USER_BONUS_ACTION_BUY', 2);
+
+$auction_user_bonus_info = array(
+	AUCTION_USER_BONUS_ACTION_SELL => 'AUCTION_SELL_ITEM_BONUS_ID',
+	AUCTION_USER_BONUS_ACTION_BUY => 'AUCTION_BUY_ITEM_BONUS_ID',
+);
+$auction_user_bonus_count_info = array(
+	AUCTION_USER_BONUS_ACTION_SELL => 'AUCTION_SELL_ITEM_BONUS_CNT',
+	AUCTION_USER_BONUS_ACTION_BUY => 'AUCTION_BUY_ITEM_BONUS_CNT',
+);
+
+define('TABLE_AUCTION_USER_BONUS_STAT', 'auction_user_bonus_stat');
+
+
+define('AUCTION_LOT_MAX', 10);
+define('AUCTION_BID_STEP', 1.05); // 5% шаг повышения ставки
+define('AUCTION_MIN_LOT_PRICE', 0.21); // чтобы -5% нормально считались
+define('AUCTION_COMMISSION_END', 0.01); 
+define('AUCTION_CANCEL_MIN_PRICE', 0.10); // отмена лота стоит минимум 10 меди
+define('AUCTION_CANCEL_MIN_PRICE_SILVER', 0.01); //отмена лота не за золото
+define('AUCTION_SUPER_NALOG', 0.20); // стоит выделить заявку
+
+define('AUCTION_OPCODE_BID_REVERT', 1);
+define('AUCTION_OPCODE_BUYOUT', 2);
+define('AUCTION_OPCODE_PAYMENT', 3);
+define('AUCTION_OPCODE_CANCEL', 4);
+define('AUCTION_REQUEST_OPCODE_SELL_ALL', 5); // Биржа: продано все
+define('AUCTION_REQUEST_OPCODE_SELL_NOT_ALL', 6); // Биржа: продано не все
+define('AUCTION_REQUEST_OPCODE_DONT_SELL', 7); // Биржа: ничего не было продано
+define('AUCTION_REQUEST_OPCODE_CANCEL', 8); // Биржа: отмена запроса
+
+define('AUCTION_CANCEL_CTIME_LIMIT', 60*5);
+
+define('AUCTION_REQUEST_MAX_COUNT', 3); // Максимальное кол-во одновременно поданных заявок на Бирже
+define('AUCTION_MIN_REQUEST_COST', 0.21); // Минимальная стоимость за единицу товара
+define('AUCTION_MIN_REQUEST_COST_SILVER', 0.01); // Минимальная стоимость за единицу товара
+define('AUCTION_REQUEST_COMMISSION', 1.00); // money_type - MONEY_TYPE_GAME
+define('AUCTION_REQUEST_COMMISSION_SILVER', 0.01); // money_type - MONEY_TYPE_GAME
+define('AUCTION_REQUEST_SELL_COMMISSION', 0.01); // Комиссия при продаже артефактов (% от получаемых средств)
+define('AUCTION_REQUEST_MAX_AMOUNT', 30000); // Максимальное кол-во запрошенных артефактов
+
+define('AUCTION_FLAG2_USER_BLIND',	0x0001); //Пользователь невидим на аукционе
+define('AUCTION_FLAG2_USER_SUPER',	0x0002); //Выделение заявки на аукционе
+
+require_once("lib/trade_log.lib");
+
+global $lot_duration_hash;
+$lot_duration_hash = array(
+	2 => array('id' => 2, 'title' => translate('2 часа'), 'rate' => 1.0, 'rate_silver' => 0.01, 'time_left' => translate('Мало') ),
+	8 => array('id' => 8, 'title' => translate('8 часов'), 'rate' => 1.11, 'rate_silver' => 0.03, 'time_left' => translate('Средне')),
+	24 => array('id' => 24, 'title' => translate('24 часа'), 'rate' => 1.4, 'rate_silver' => 0.07, 'time_left' => translate('Сутки')),
+	168 => array('id' => 168, 'title' => translate('Неделя'), 'rate' => 2.1, 'rate_silver' => 0.19, 'time_left' => translate('Неделя')),
+	720 => array('id' => 720, 'title' => translate('Месяц'), 'rate' => 7.6, 'rate_silver' => 0.74, 'time_left' => translate('Месяц')),
+	
+);
+
+global $auction_areas;
+$auction_areas = array(
+	KIND_HUMAN => array(137,197,695),
+	KIND_MAGMAR => array(138,200,684),
+);
+
+global $auction_artifact_not_available_flags;
+$auction_artifact_not_available_flags = ARTIFACT_FLAG_NODROP | ARTIFACT_FLAG_NOGIVE | ARTIFACT_FLAG_CLAN_THING | ARTIFACT_FLAG_NOSELL | ARTIFACT_FLAG_NOAUCTION | ARTIFACT_FLAG_CHANGE | ARTIFACT_FLAG_HIDDEN;
+
+function auction_lot_get($ref=false, $add='') {
+	global $db_4;
+	return common_get($db_4,TABLE_AUCTION_LOTS,$ref,$add);
+}
+
+function auction_lot_list($ref=false, $add='', $field_list='*') {
+	global $db_4;
+	return common_list($db_4,TABLE_AUCTION_LOTS,$ref,$add,$field_list);
+}
+
+function auction_lot_count($ref=false, $add='') {
+	global $db_4;
+	return common_count($db_4,TABLE_AUCTION_LOTS,$ref,$add);
+}
+
+function auction_lot_save($param) {
+	global $db_4;
+	return common_save($db_4,TABLE_AUCTION_LOTS,$param,FIELD_AUCTION_LOTS);
+}
+
+function auction_lot_delete($ref) {
+	global $db_4;
+	$status = common_delete($db_4,TABLE_AUCTION_LOTS,$ref);
+	if ($status) auction_bid_delete(array('lot_id' => $ref));
+	return $status;
+}
+
+function auction_lot_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('AUCTION_LOT_'.intval($ref),$timewait,$timelock);
+}
+
+function auction_lot_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('AUCTION_LOT_'.intval($ref));
+}
+
+
+function auction_lot_update_time() {
+	global $db_4;
+	$result = common_table_status($db_4, TABLE_AUCTION_LOTS, 'UNIX_TIMESTAMP(UPDATE_TIME) AS update_time, UNIX_TIMESTAMP() AS server_time');
+	return array(
+		'update_time' => $result['update_time'], 
+		'no_cache' => ($result['update_time'] >= $result['server_time']-3)
+	);
+}
+
+////////////////////////////////////
+
+function auction_bid_get($ref=false, $add='') {
+	global $db_4;
+	return common_get($db_4,TABLE_AUCTION_BIDS,$ref,$add);
+}
+
+function auction_bid_list($ref=false, $add='') {
+	global $db_4;
+	return common_list($db_4,TABLE_AUCTION_BIDS,$ref,$add);
+}
+
+function auction_bid_count($ref=false, $add='') {
+	global $db_4;
+	return common_count($db_4,TABLE_AUCTION_BIDS,$ref,$add);
+}
+
+function auction_bid_save($param) {
+	global $db_4;
+	return common_save($db_4,TABLE_AUCTION_BIDS,$param,FIELD_AUCTION_BIDS);
+}
+
+function auction_bid_delete($ref) {
+	global $db_4;
+	return common_delete($db_4,TABLE_AUCTION_BIDS,$ref);
+}
+
+//////////////////////////////////
+
+function auction_group_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_AUCTION_GROUPS,$ref,$add);
+}
+
+function auction_group_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_AUCTION_GROUPS,$ref,$add);
+}
+
+function auction_group_count($ref=false, $add='') {
+	global $db;
+	return common_count($db,TABLE_AUCTION_GROUPS,$ref,$add);
+}
+
+function auction_group_save($param) {
+	global $db;
+	return common_save($db,TABLE_AUCTION_GROUPS,$param,FIELD_AUCTION_GROUPS);
+}
+
+function auction_group_delete($ref) {
+	global $db;
+	return common_delete($db,TABLE_AUCTION_GROUPS,$ref);;
+}
+
+//////////////////////////////////
+
+function auction_commission_start($artifact_price, $duration) {
+	global $lot_duration_hash;
+	$rate = $lot_duration_hash[$duration]['rate'];
+	return pow(0.5, log($artifact_price,10)+2)*$artifact_price * $rate;
+}
+
+function auction_commission_start_silver($artifact_price, $duration) {
+    global $lot_duration_hash;
+    $rate = $lot_duration_hash[$duration]['rate'];
+    return round($rate / 100, 2);
+}
+
+function auction_commission_end($total_price) {
+	return money_floatval($total_price * AUCTION_COMMISSION_END);
+}
+
+
+// округляем ставки вида 99.99 до 100.00, чтобы не мозолили глаза
+function auction_get_next_bid($x) {
+	$x = $x * AUCTION_BID_STEP;
+	if (abs(round(round($x) - round($x,2),2)) <= 0.01) $x = round($x);
+	return round($x,2);
+}
+
+function auction_message_send($opcode, $to_id, $money=0.00, $artifact_id=false, $artifact_num=0, $force_param=array(), $lot=array()) {
+	require_once('lib/area_post.lib');
+	$param = array(
+		'from_id' => 0,
+		'to_id' => $to_id,
+		'unread' => 1,
+		'type_id' => MSG_TYPE_SYS_NORMAL,
+		//'area_id' => $area_id,
+		'stime' => time_current(),
+		'rtime' => time_current() + area_post_message_ttl(MSG_TYPE_SYS_NORMAL, true),
+		'flags' => POST_MSG_FLAG_ALLOW_HTML,
+	);
+	$from_user_id = isset($force_param['from_id']) ? $force_param['from_id'] : $param['from_id'];
+	$from_user_id = $from_user_id ? $from_user_id : $to_id;
+	$note = $force_param['note'];
+	unset($force_param['note']);
+
+	switch ($opcode) {
+	case AUCTION_OPCODE_BID_REVERT:
+		$param['money'] = money_floatval($money);
+		$param['money_type'] = ($lot['price_type'] ? $lot['price_type'] : MONEY_TYPE_GAME);
+		$param['subject'] = translate('Аукцион: возврат ставки');
+		$param['text'] = sprintf(translate('*** Ваша ставка на аукционе перебита другим игроком. Ваша ставка возвращается ***'));
+		break;
+	case AUCTION_OPCODE_BUYOUT:
+		$param['artifact_id'] = $artifact_id;
+		$param['n'] = $artifact_num;
+		$param['subject'] = translate('Аукцион: покупка');
+		$param['text'] = sprintf(translate('*** Вы купили лот на аукционе ***'));
+		break;
+	case AUCTION_OPCODE_CANCEL:
+		$param['artifact_id'] = $artifact_id;
+		$param['n'] = $artifact_num;
+		$param['subject'] = translate('Аукцион: отмена лота');
+		$param['text'] = sprintf(translate('*** Вы отменили лот на аукционе ***'));
+		$param['flags'] |= POST_MSG_FLAG_NOLOG;
+		break;
+	case AUCTION_OPCODE_PAYMENT:
+		$param['money'] = money_floatval($money);
+		$param['money_type'] = ($lot['price_type'] ? $lot['price_type'] : MONEY_TYPE_GAME);
+		$param['subject'] = translate('Аукцион: лот выкуплен');
+		$param['text'] = sprintf(translate('*** Ваш лот на аукционе был выкуплен ***'));
+		break;
+	case AUCTION_REQUEST_OPCODE_SELL_ALL:
+		$param['artifact_id'] = $artifact_id;
+		$param['n'] = $artifact_num;
+		$param['subject'] = translate('Биржа: заявка полностью выкуплена');
+		$param['text'] = '';
+		break;
+	case AUCTION_REQUEST_OPCODE_SELL_NOT_ALL:
+		$param['artifact_id'] = $artifact_id;
+		$param['n'] = $artifact_num;
+		$param['money'] = money_floatval($money);
+		$param['money_type'] = ($lot['price_type'] ? $lot['price_type'] : MONEY_TYPE_GAME);
+		$param['subject'] = translate('Биржа: заявка выкуплена частично');
+		$param['text'] = '';
+		break;
+	case AUCTION_REQUEST_OPCODE_DONT_SELL:
+		$param['money'] = money_floatval($money);
+		$param['money_type'] = ($lot['price_type'] ? $lot['price_type'] : MONEY_TYPE_GAME);
+		$param['subject'] = translate('Биржа: заявка не выкуплена');
+		$param['text'] = '';
+		break;
+	case AUCTION_REQUEST_OPCODE_CANCEL:
+		$param['artifact_id'] = $artifact_id;
+		$param['n'] = $artifact_num;
+		$param['money'] = money_floatval($money);
+		$param['money_type'] = ($lot['price_type'] ? $lot['price_type'] : MONEY_TYPE_GAME);
+		$param['subject'] = translate('Биржа: отмена заявки');
+		$param['text'] = '';
+		break;
+	}
+	if ($force_param) {
+		$force_param['flags'] = intval($force_param['flags']) | intval($param['flags']);
+		$param = array_merge($param, $force_param);
+	}
+	$success = area_post_message_save($param);
+	area_post_user_send_chat_notify($param['to_id']);
+	if (!($param['flags'] & POST_MSG_FLAG_NOLOG) && $success && $from_user_id) {
+		$comment = area_post_logserv_note($param);
+		if ($note)
+			$comment .= "\n".$note;
+		// лог-сервис -----------------------
+		logserv_log_action(array(
+			'act_code' => 1100,	// Отправка почты
+			'comment' => $comment,
+		), $from_user_id);
+		// ----------------------------------
+	}
+	return $success;
+}
+
+
+// выполнение ставки
+// подразумевает - возврат денег от предыдущей ставки системным письмом
+//$view - дает возможность обойти огранки по расе
+function auction_bid(&$lot, &$user, $user_bid, $view = false) {
+	$view = false; //Т.к только выкуп!
+	$out = array(
+		'status' => 0,
+		'error' => translate('Невозможно выполнить операцию с лотом!'),
+	);
+	if (!$lot || !$user || ($user_bid <= 0)) return $out;
+
+	$user_bid = money_floatval($user_bid);
+	$bid = money_floatval($lot['bid']);
+	$buyout = money_floatval($lot['buyout']);
+	$next_min_bid = money_floatval(auction_get_next_bid($bid));
+	if (($buyout > 0) && ($user_bid >= $buyout)) {
+		$out['error'] = translate('Слишком высокая ставка!');
+		return $out;
+	}
+	if ($lot['user_id'] == $user['id']) {
+		$out['error'] = translate('Нельзя устанавливать ставку на собственный лот!');
+		return $out;
+	}
+	$lot_user = user_get($lot['user_id']);
+	if (!$lot_user) {
+        $out['error'] = translate('Нельзя повысить ставку на лот этого пользователя!');
+		return $out;
+	}
+	if ($lot['bid_user_id'] && ($lot['bid_user_id'] == $user['id'])) {
+		$out['error'] = translate('Нельзя повышать свою собственную ставку!');
+		return $out;
+	}
+	if ($user_bid < $next_min_bid) {
+		$out['error'] = translate('Слишком низкая ставка!');
+		return $out;
+	}
+	if ($user_bid > user_get_money_amount($lot['price_type'],$user['id'])) {
+		$out['error'] = translate('У Вас недостаточно денег!');
+		return $out;
+	}
+	if (!user_make_payment($lot['price_type'],$user['id'],-($user_bid), sprintf(translate('Ставка на аукционе. Лот ID=%d'),$lot['id']))) {
+		$out['error'] = translate('Ошибка при внесении ставки!');
+		return $out;
+	}
+
+	$param = array(
+		'id' => $lot['id'],
+		'bid' => $user_bid,
+		'bid_user_id' => $user['id'],
+		'bid_user_nick' => $user['nick'],
+	);
+	$res = auction_lot_save($param);
+	if (!$res) {
+		$out['error'] = translate('Не удалось внести ставку!');
+		return $out;
+	}
+	if ($lot['bid_user_id'] && $bid) {
+		$msg = sprintf(translate('*** Ваша ставка на аукционе за предмет %s, %s шт перебита другим игроком. Аукцион возвращает Вашу ставку ***'), $lot['title'], $lot['n']);
+		$auction_bid = auction_bid_get(array('user_id' => $lot['bid_user_id'], 'lot_id' => $lot['id'],));
+		$note = sprintf(translate('На основании ставки от %s'), date('Y-m-d H:i:s', $auction_bid['stime']));
+		auction_message_send(AUCTION_OPCODE_BID_REVERT, $lot['bid_user_id'], $bid, false, 0, array('text' => $msg, 'note' => $note), $lot);
+		chat_msg_send_system(sprintf(translate('Ваша ставка на предмет %s, %s шт перебита другим персонажем. Ваши деньги возвращены Вам почтой.'), $lot['title'], $lot['n']),CHAT_CHF_USER,$lot['bid_user_id']);
+	}
+	$out['status'] = 1;
+	return $out;
+}
+
+//$view - дает возможность обойти огранки по расе
+function auction_buyout(&$lot, &$user, $view = false) {
+	$out = array(
+		'status' => 0,
+		'error' => translate('Невозможно выполнить операцию с лотом!'),
+	);
+	if (!$lot || !$user) return $out;
+
+	$bid = money_floatval($lot['bid']);
+	$buyout = money_floatval($lot['buyout']);
+	if ($buyout <= 0) {
+		$out['error'] = translate('У этого лота нет максимальной цены!');
+		return $out;
+	}
+	if ($lot['user_id'] == $user['id']) {
+		$out['error'] = translate('Нельзя выкупать собственный лот!');
+		return $out;
+	}
+	$lot_user = user_get($lot['user_id']);
+	if (!$lot_user || (!$view ? $lot_user['kind'] != $user['kind'] : false)) {
+		$out['error'] = translate('Нельзя выкупить у этого пользователя!');
+		return $out;
+	}
+	$artifact = artifact_get_safe($lot['artifact_id']);
+	if (!$artifact || ($artifact['owner_id'] != $lot['user_id'])) { // wft! этот артефакт уже не принадлежит владельцу лота или "не живой"
+		$out['error'] = translate('Невозможно выкупить лот!');
+		return $out;
+	}
+	if ($buyout > user_get_money_amount(($lot['price_type'] ? $lot['price_type'] : MONEY_TYPE_GAME),$user['id'])) {
+		$out['error'] = translate('У Вас недостаточно денег!');
+		return $out;
+	}
+	if (!user_make_payment(($lot['price_type'] ? $lot['price_type'] : MONEY_TYPE_GAME),$user['id'],-($buyout), sprintf(translate('Выкуп вещи на аукционе. Лот ID=%d'),$lot['id']))) {
+		$out['error'] = translate('Ошибка при покупке!');
+		return $out;
+	}
+	if ($lot['bid_user_id'] && $bid) {
+		$msg = sprintf(translate('*** Ваша ставка на аукционе за предмет %s, %s шт перебита другим игроком. Аукцион возвращает Вашу ставку ***'), $lot['title'], $lot['n']);
+		$auction_bid = auction_bid_get(array('user_id' => $lot['bid_user_id'], 'lot_id' => $lot['id'],));
+		$note = sprintf(translate('На основании ставки от %s'), date('Y-m-d H:i:s', $auction_bid['stime']));
+		auction_message_send(AUCTION_OPCODE_BID_REVERT, $lot['bid_user_id'], $bid, false, 0, array('text' => $msg, 'note' => $note), $lot);
+		chat_msg_send_system(sprintf(translate('Ваша ставка на предмет %s, %s шт перебита другим персонажем. Ваши деньги возвращены Вам почтой.'), $lot['title'], $lot['n']),CHAT_CHF_USER,$lot['bid_user_id']);
+	}
+	$msg = sprintf(translate('*** Вы выкупили %s, %s шт на аукционе. ***'), $lot['title'], $lot['n']);
+	auction_message_send(AUCTION_OPCODE_BUYOUT, $user['id'], 0, $lot['artifact_id'], $lot['n'], array('text' => $msg, 'from_id' => $lot['user_id']), $lot);
+	$commission = money_floatval(auction_commission_end($buyout));
+	$msg = sprintf(translate('*** Ваш лот с предметом %s, %s шт был выкуплен на аукционе игроком %s. ***'), $lot['title'], $lot['n'], $user['nick']);
+	if ($commission > 0) {
+		$msg .= '<br><br>'.sprintf(translate('Сумма сделки составила - %s<br>Налог за удачную сделку составил - %s<br>Сумма к получению - %s'), html_money_str(($lot['price_type'] ? $lot['price_type'] : MONEY_TYPE_GAME), $buyout), html_money_str(($lot['price_type'] ? $lot['price_type'] : MONEY_TYPE_GAME), $commission), html_money_str(($lot['price_type'] ? $lot['price_type'] : MONEY_TYPE_GAME), $buyout - floatval($commission)));
+		$buyout -= floatval($commission);
+	}
+	auction_message_send(AUCTION_OPCODE_PAYMENT, $lot['user_id'], $buyout, false, 0, array('text' => $msg, 'from_id' => $user['id']), $lot);
+
+	auction_log($user,$lot,$buyout);
+	auction_lot_delete($lot['id']);
+	$out['status'] = 1;
+	return $out;
+}
+
+function auction_cancel(&$lot, &$user) {
+	$out = array(
+		'status' => 0,
+		'error' => translate('Невозможно выполнить операцию с лотом!'),
+	);
+	if (!$lot || !$user) return $out;
+
+	$artifact = artifact_get_safe($lot['artifact_id']);
+	
+	if (!$artifact || ($artifact['owner_id'] != $lot['user_id'])) { // wft! этот артефакт уже не принадлежит владельцу лота или "не живой"
+		$out['error'] = translate('Невозможно отменить лот!');
+		return $out;
+	}
+	$artikul = artifact_artikul_get($artifact['artikul_id']);
+	$commission = max(auction_commission_end($lot['bid_user_id'] ? $lot['bid'] : $artikul['price']*$lot['n']), AUCTION_CANCEL_MIN_PRICE);
+    if($lot['price_type'] != MONEY_TYPE_GAME) $commission = max(auction_commission_end($lot['bid_user_id'] ? $lot['bid'] : $artikul['price']*$lot['n']), AUCTION_CANCEL_MIN_PRICE_SILVER);
+
+    if ($commission > user_get_money_amount(($lot['price_type'] ? $lot['price_type'] : MONEY_TYPE_GAME),$user['id'])) {
+		$out['error'] = translate('У Вас недостаточно денег!');
+		return $out;
+	}
+	$operations = array(MONEY_STAT_OPERATION_LOST,MONEY_STAT_OPERATION_PURE_LOST);
+	if (!user_make_payment(($lot['price_type'] ? $lot['price_type'] : MONEY_TYPE_GAME),$user['id'],-($commission), sprintf(translate('Отмена лота на аукционе. Лот ID=%d'),$lot['id']), false, $operations)) {
+		$out['error'] = translate('Ошибка при оплате!');
+		return $out;
+	}
+	if ($lot['bid_user_id'] && floatval($lot['bid'])) {
+		$msg = sprintf(translate('*** Торги за предмет %s, %s шт отменены по желанию продавца. Аукцион возвращает Вашу ставку ***'), $lot['title'], $lot['n']);
+		$auction_bid = auction_bid_get(array('user_id' => $lot['bid_user_id'], 'lot_id' => $lot['id'],));
+		$note = sprintf(translate('На основании ставки от %s'), date('Y-m-d H:i:s', $auction_bid['stime']));
+		auction_message_send(AUCTION_OPCODE_BID_REVERT, $lot['bid_user_id'], $lot['bid'], false, 0, array('text' => $msg, 'note' => $note), $lot);
+	}
+
+	$msg = sprintf(translate('*** Вы отменили лот с предметом %s, %s шт на аукционе. ***'), $lot['title'], $lot['n']);
+	auction_message_send(AUCTION_OPCODE_CANCEL, $user['id'], 0, $lot['artifact_id'], $lot['n'], array('text' => $msg), $lot);
+
+	$out['status'] = 1;
+	$out['commission'] = $commission;
+	auction_lot_delete($lot['id']);
+	return $out;
+}
+
+function auction_group_select(&$group_list, $artifact_kind_hash=false) {
+	if (!$artifact_kind_hash) {
+		$artifact_kind_hash = make_hash(artifact_kind_list(false,' AND visible=1'));
+	}
+	$out = array();
+	foreach ($group_list as $group) {
+		$artifact_kind_ids = explode(',',$group['artifact_kind_ids']);
+		$out['g'.$group['id'].'_'.$group['artifact_kind_ids']] = $group['title'];
+		foreach ($artifact_kind_ids as $kind) {
+			if (!isset($artifact_kind_hash[$kind]))
+				continue;
+			$out['g'.$group['id'].'_'.$kind] = '&nbsp;&nbsp;&nbsp;&nbsp;'.$artifact_kind_hash[$kind]['title'];
+		}
+	}
+	return $out;
+}
+
+// функция отката лота (конфискат)
+function auction_eliminate(&$lot) {
+	if (!$lot) return false;
+	if ($lot['bid_user_id']) {
+		user_make_payment(MONEY_TYPE_GAME,$lot['bid_user_id'],$lot['bid'],translate('Откат лота на аукционе'));
+		chat_msg_send_system(sprintf(translate('По торгам за предмет %s, %s шт с вашей ставкой произведен откат. Деньги возвращены.'),$lot['title'],$lot['n']),CHAT_CHF_USER,$lot['bid_user_id']);
+	}
+	auction_lot_delete($lot['id']);
+	return true;
+}
+
+function auction_log(&$buyer,&$lot,$price) {
+	require_once('lib/artifact.lib');
+	$seller = user_get($lot['user_id']);
+	if (!$lot['artifact_id']) error_log("Broken lot: ".$lot['artifact_id']);
+	$artifact = artifact_get_safe($lot['artifact_id']);
+	if (!$artifact) error_log("Lot without artifact: ".$lot['id']);
+	return logfile(SERVER_ROOT.PATH_LOGS.'auction_statistic.log',implode("\t",array(
+		time_current(),
+		$artifact['artikul_id'],
+		$artifact['durability_max'],
+		$artifact['durability'],
+		$lot['n'],
+		$price,
+		$seller['id'],
+		$seller['level'],
+		$seller['money'],
+		$seller['money_silver'],
+		$seller['money_gold'],
+		$seller['kind'],
+		$seller['gender'],
+		$buyer['id'],
+		$buyer['level'],
+		$buyer['money'],
+		$buyer['money_silver'],
+		$buyer['money_gold'],
+		$buyer['kind'],
+		$buyer['gender'],
+	)));
+}
+
+function auction_request_get($ref=false, $add='') {
+	global $db_auction_request;
+	return common_get($db_auction_request,TABLE_AUCTION_REQUESTS,$ref,$add);
+}
+
+function auction_request_list($ref=false, $add='', $field_list='*') {
+	global $db_auction_request;
+	return common_list($db_auction_request,TABLE_AUCTION_REQUESTS,$ref,$add,$field_list);
+}
+
+function auction_request_count($ref=false, $add='') {
+	global $db_auction_request;
+	return common_count($db_auction_request,TABLE_AUCTION_REQUESTS,$ref,$add);
+}
+
+function auction_request_save($param) {
+	global $db_auction_request;
+	return common_save($db_auction_request,TABLE_AUCTION_REQUESTS,$param,FIELD_AUCTION_REQUESTS);
+}
+
+function auction_request_delete($ref) {
+	global $db_auction_request;
+	$status = common_delete($db_auction_request,TABLE_AUCTION_REQUESTS,$ref);
+	return $status;
+}
+
+function auction_request_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('AUCTION_REQUEST_'.intval($ref), $timewait, $timelock);
+}
+
+function auction_request_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('AUCTION_REQUEST_'.intval($ref));
+}
+
+
+function auction_request_update_time() {
+	global $db_auction_request;
+	$result = common_table_status($db_auction_request, TABLE_AUCTION_REQUESTS, 'UNIX_TIMESTAMP(UPDATE_TIME) AS update_time, UNIX_TIMESTAMP() AS server_time');
+	return array(
+		'update_time' => $result['update_time'],
+		'no_cache' => ($result['update_time'] >= $result['server_time'] - 3),
+	);
+}
+
+function auction_request_cancel(&$request, &$user) {
+	$out = array(
+		'status' => 0,
+		'error' => translate('Невозможно выполнить операцию с лотом!'),
+	);
+	if (!$request || !$user) return $out;
+
+	if ($request['artifact_id']) {
+		$artifact = artifact_get_safe($request['artifact_id']);
+		if (!$artifact || ($artifact['owner_id'] != $request['user_id'])) { // WTF! этот артефакт уже не принадлежит владельцу лота или "не живой"
+			$out['error'] = translate('Невозможно отменить заявку!');
+			return $out;
+		}
+	}
+
+	auction_request_delete($request['id']);
+
+	$msg = sprintf(translate('*** Вы отменили заявку на предмет %s, %s шт на бирже. ***'), $request['title'], $request['n_max']);
+	$money = $request['n'] * $request['cost'];
+	auction_message_send(AUCTION_REQUEST_OPCODE_CANCEL, $request['user_id'], $money, $request['artifact_id'], $request['n_max'] - $request['n'], array('text' => $msg), $request);
+
+	$out['status'] = 1;
+	auction_request_log($request);
+	return $out;
+}
+
+function auction_request_sell(&$request, &$user, &$amount) {
+	global $area_id, $auction_artifact_not_available_flags;
+	$out = array(
+		'status' => 0,
+		'error' => translate('Невозможно выполнить операцию с лотом!'),
+	);
+	if (!$request || !$user) return $out;
+	
+	$artikul = artifact_artikul_get($request['artikul_id']);
+	if (!$artikul)
+		return $out;
+	
+	$add = sql_pholder(' AND NOT (flags & ?) AND (time_expire = 0 OR time_expire > ?)
+			ORDER BY time_expire DESC', $auction_artifact_not_available_flags, time_current() + 3*24*3600);
+	$exclude_artifacts_with_notes = array();
+	do {
+		$add1 = $exclude_artifacts_with_notes ? $add.sql_pholder(' AND id NOT IN (?@) ', $exclude_artifacts_with_notes) : $add;
+		$artifact = artifact_get(array(
+				'artikul_id' => $request['artikul_id'],
+				'user_id' => $user['id'],
+				'area_id' => 0,
+				'clan_id' => 0,
+				'slot_id' => '',
+				'durability' => $artikul['durability'],
+				'durability_max' => $artikul['durability_max'],
+				), $add1, ARTIFACT_STORAGE_TYPE_USER);
+		if (!$artifact)
+			break;
+		$artifact_note = artifact_note_get(false, $artifact['id']);
+		if (!$artifact_note)
+			break;
+		$exclude_artifacts_with_notes[] = $artifact['id'];
+	} while (true);
+	$add2 = sql_pholder(' AND (time_expire = 0 OR time_expire > ?) ORDER BY time_expire DESC', time_current());
+	$artifact = $artifact ? $artifact : artifact_get(array(
+			'artikul_id' => $request['artikul_id'],
+			'user_id' => $user['id'],
+			'area_id' => 0,
+			'clan_id' => 0,
+			'slot_id' => '',
+			), $add2, ARTIFACT_STORAGE_TYPE_USER);
+	if (!$artifact) {
+		$out['error'] = translate('У вас нет необходимого артефакта в рюкзаке!');
+		return $out;
+	}
+	if (!$artikul['cnt'])
+		$amount = 1;
+	$amount = min($amount, $request['n']);
+	$artifact['cnt'] = max($artifact['cnt'], 1);
+	if ($artifact['cnt'] < $amount) {
+		$out['error'] = translate('У вас недостаточно артефактов в рюкзаке!');
+		return $out;
+	}
+	if ($artifact['time_expire'] && ($artifact['time_expire'] < time_current() + 3*24*3600)) {
+		$out['error'] = translate('Нельзя продать вещь со сроком жизни менее трех дней!');
+		return $out;
+	}
+	if ($artifact['durability'] != $artikul['durability'] || $artifact['durability_max'] != $artikul['durability_max']) {
+		$out['error'] = translate('Продавать по заявке можно только предметы с максимальной прочностью!');
+		return $out;
+	}
+	if ($artifact['flags'] & $auction_artifact_not_available_flags) {
+		$out['error'] = translate('Нельзя продавать непередаваемые предметы!');
+		return $out;
+	}
+	// Проверяем отсутствие гравировки на оружии (ENGRAVE)
+	$artifact_note = artifact_note_get(false, $artifact['id']);
+	if ($artifact_note) {
+		$out['error'] = translate('Нельзя продать оружие с гравировкой!');
+		return $out;
+	}
+	$old_artifact_id = $request['artifact_id'] ? $request['artifact_id'] : false;
+	$old_artifact = $old_artifact_id ? artifact_get_safe($old_artifact_id) : false;
+	if ($old_artifact)
+		$area_id = $old_artifact['area_id'];
+	$artifact_id = artifact_move($artifact['id'], $amount, $request['user_id'], $area_id, false, array(), ARTIFACT_STORAGE_TYPE_USER, false, false, $old_artifact_id);
+	if (!$artifact_id) {
+		$out['error'] = translate('Ошибка при попытке отправить артефакт!');
+		return $out;
+	}
+	$get = floor($request['cost'] * $amount * 100) / 100;
+	$comment = sprintf(translate('Продажа артефактов по заявке на бирже ID=%d'), $request['id']);
+	if (!user_make_payment(($request['price_type'] ? $request['price_type'] : MONEY_TYPE_GAME), $user['id'], $get, $comment)) {
+		artifact_move($artifact_id, $amount, $user['id']);
+		$out['error'] = translate('Ошибка при получении вознаграждения!');
+		return $out;
+	}
+	$commission = max(0.01, floor($get * AUCTION_REQUEST_SELL_COMMISSION * 100) / 100);
+	if($request['price_type'] != MONEY_TYPE_GAME) $commission = 0.01;
+	$comment = sprintf(translate('Комиссия за продажу артефактов по заявке на бирже ID=%d'), $request['id']);
+	$operations = array(MONEY_STAT_OPERATION_LOST, MONEY_STAT_OPERATION_PURE_LOST);
+	if (!user_make_payment(($request['price_type'] ? $request['price_type'] : MONEY_TYPE_GAME), $user['id'], -$commission, $comment, false, $operations)) {
+		artifact_move($artifact_id, $amount, $user['id']);
+		$out['error'] = translate('Ошибка при снятии комиссии!');
+		return $out;
+	}
+	
+	$out['status'] = 1;
+	$out['get'] = $get - $commission;
+	$request['artifact_id'] = $artifact_id;
+	if ($amount >= $request['n']) {
+		$msg = sprintf(translate('*** Вам продали %s, %d шт. на бирже. ***'), $request['title'], $request['n_max']);
+		auction_message_send(AUCTION_REQUEST_OPCODE_SELL_ALL, $request['user_id'], 0, $artifact_id, $request['n_max'], array('text' => $msg), $request);
+		auction_request_delete($request['id']);
+		auction_request_log($request);
+
+        trade_log_add(TRADE_LOG_REQUEST, array(
+            'user_id' => $user['id'],
+            'to_user_id' => $request['user_id'],
+            'data' => array(
+                'art_transfer' => array(
+                    array(
+                        'id' => $request['artifact_id'],
+                        'aid' => $request['artikul_id'],
+                        'cnt' => $amount,
+                    ),
+                ),
+            ),
+        ));
+
+	} else {
+		auction_request_save(array(
+				'id' => $request['id'],
+				'_set' => sql_pholder(' n = n - ?, n_sold = n_sold + ?, money = money - cost ', $amount, $amount),
+				'artifact_id' => $artifact_id,
+				));
+
+        trade_log_add(TRADE_LOG_REQUEST, array(
+            'user_id' => $user['id'],
+            'to_user_id' => $request['user_id'],
+            'data' => array(
+                'art_transfer' => array(
+                    array(
+                        'id' => $request['artifact_id'],
+                        'aid' => $request['artikul_id'],
+                        'cnt' => $amount,
+                    ),
+                ),
+            ),
+        ));
+	}
+	return $out;
+}
+
+function auction_request_log($request) {
+	require_once('lib/artifact.lib');
+	$user = user_get($request['user_id']);
+	$artifact = $request['artifact_id'] ? artifact_get_safe($request['artifact_id']) : false;
+	return logfile(SERVER_ROOT.PATH_LOGS.'auction_request_statistic.log',implode("\t",array(
+		time_current(),
+		$request['id'],
+		$user['id'],
+		$user['nick'],
+		$artifact['id'],
+		$artifact['artikul_id'],
+		$artifact['durability_max'],
+		$artifact['durability'],
+		$request['n'],
+		$request['n_max'],
+		$request['cost'],
+	)));
+}
+
+////////////////////
+
+
+////////////////////////////////////
+
+function auction_user_bonus_stat_get($ref=false, $add='') {
+	global $db_path;
+	return common_get($db_path,TABLE_AUCTION_USER_BONUS_STAT,$ref,$add);
+}
+
+function auction_user_bonus_stat_list($ref=false, $add='') {
+	global $db_path;
+	return common_list($db_path,TABLE_AUCTION_USER_BONUS_STAT,$ref,$add);
+}
+
+function auction_user_bonus_stat_count($ref=false, $add='') {
+	global $db_path;
+	return common_count($db_path,TABLE_AUCTION_USER_BONUS_STAT,$ref,$add);
+}
+
+function auction_user_bonus_stat_save($param) {
+	global $db_path;
+	return common_save($db_path,TABLE_AUCTION_USER_BONUS_STAT,$param);
+}
+
+function auction_user_bonus_stat_delete($ref) {
+	global $db_path;
+	return common_delete($db_path,TABLE_AUCTION_USER_BONUS_STAT,$ref);
+}
+
+function auction_user_bonus_cron() {
+	auction_user_bonus_stat_save(array(
+		'_add' => sql_pholder(' AND dtime < ?', time_current()),
+		'_set' => sql_pholder(' cnt = 0, dtime = ?', (mktime(23, 59, 59) + 1)),
+	));
+}
+
+function auction_user_bonus_apply($user_id, $action = AUCTION_USER_BONUS_ACTION_SELL) {
+	global $auction_user_bonus_info, $auction_user_bonus_count_info;
+	$auction_user_bonus = auction_user_bonus_stat_get(array('user_id' => $user_id, 'type' => $action));
+
+	$const = intval(constant($auction_user_bonus_count_info[$action]));
+	if(!$const) return;
+
+	$apply = false;
+
+	if($auction_user_bonus) {
+		if($auction_user_bonus['cnt'] >= $const) return;
+		if(auction_user_bonus_stat_save(array(
+			'id' => $auction_user_bonus['id'],
+			'_set' => sql_pholder(' cnt = cnt + 1'),
+		))) $apply = true;
+	}else{
+		if(auction_user_bonus_stat_save(array(
+			'user_id' => $user_id,
+			'type' => $action,
+			'cnt' => 1,
+			'dtime' => (mktime(23, 59, 59) + 1),
+		))) $apply = true;
+	}
+	$bonus_id = intval(constant($auction_user_bonus_info[$action]));
+	if($bonus_id && $apply) {
+		$user = user_get($user_id);
+		bonus_apply($user, $bonus_id);
+	}
+}
+
+?>

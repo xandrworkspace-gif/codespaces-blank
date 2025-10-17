@@ -1,0 +1,130 @@
+<?php
+
+define('TABLE_DOMINANCE_STAT_LIST','dominance_stat');
+define('FIELD_DOMINANCE_STAT_LIST','');
+
+$dominance_struct = array(
+    4 => array(
+        'rank' => 4,
+        'award' => array(
+            'money_type' => MONEY_TYPE_GOLD,
+            'money' => 10,
+        ),
+        'rank_out' => 0,
+    ),
+    5 => array(
+        'rank' => 5,
+        'award' => array(
+            'money_type' => MONEY_TYPE_GOLD,
+            'money' => 25,
+        ),
+        'rank_out' => 0,
+    ),
+    6 => array(
+        'rank' => 6,
+        'award' => array(
+            'money_type' => MONEY_TYPE_GOLD,
+            'money' => 50,
+        ),
+        'rank_out' => 0,
+    ),
+	7 => array(
+        'rank' => 7,
+        'award' => array(
+            'money_type' => MONEY_TYPE_GOLD,
+            'money' => 75,
+        ),
+        'rank_out' => 0,
+    ),
+	8 => array(
+        'rank' => 8,
+        'award' => array(
+            'money_type' => MONEY_TYPE_GOLD,
+            'money' => 100,
+        ),
+        'rank_out' => 0,
+    ),
+);
+
+function dominance_stat_get($ref=false, $add='') {
+    global $db_path;
+    return  common_get($db_path,TABLE_DOMINANCE_STAT_LIST,$ref,$add);
+}
+
+function dominance_stat_list($ref=false, $add='') {
+    global $db_path;
+    return common_list($db_path,TABLE_DOMINANCE_STAT_LIST,$ref,$add);
+}
+
+function dominance_stat_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_DOMINANCE_STAT_LIST, $ref, $add);
+}
+
+function dominance_stat_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_DOMINANCE_STAT_LIST,$param,FIELD_DOMINANCE_STAT_LIST);
+}
+
+function dominance_stat_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_DOMINANCE_STAT_LIST,$ref);
+    return true;
+}
+
+//Функция статистики господств
+function dominance_stat_update($user_id, $dominance, $honor = 0){
+    $dominance_stat = dominance_stat_get(array(
+        'user_id' => $user_id,
+        'dominance' => $dominance,
+    ));
+    if($dominance_stat){
+        dominance_stat_save(array(
+            'id' => $dominance_stat['id'],
+            '_set' => sql_pholder(' cnt = cnt + 1, ctime = ?, honor = honor + ?', time_current(),$honor),
+        ));
+    }else{
+        dominance_stat_save(array(
+            'user_id' => $user_id,
+            'dominance' => $dominance,
+            'cnt' => 1,
+            'ctime' => time_current(),
+            'honor' => $honor,
+        ));
+    }
+}
+
+//Сделать метод который будет повышать званку! Если есть господство!... Сделаю сука
+
+function dominance_rank_update($session_user = array()){
+    if(!$session_user['id']) return false;
+    if(!$session_user['dominance']) return false;
+    global $rank_info;
+
+    $user_stat = user_stat_get(array(
+        'user_id' => $session_user['id'],
+        'type_id' => USER_STAT_TYPE_SKILL,
+        'object_id' => USER_STAT_SKILL_HONOR,
+    ));
+
+    $rank_get = 0;
+    foreach ($rank_info as $rank_id=>$rank){
+        if($user_stat['value'] >= $rank['honor']){
+            $rank_get = $rank_id;
+        }else{break;}
+    }
+
+    if($rank_get > $session_user['dominance']){
+        $rank_get = $session_user['dominance'] - 1; //Слепой?
+    }
+
+    if($rank_get > $session_user['rank'] && $rank_get <= $session_user['dominance']){
+        //Обновление званки хуянки
+        user_save(array(
+            'id' => $session_user['id'],
+            'rank' => $rank_get,
+        ));
+        chat_msg_send_system('Вы достигли звания <b>"'.$rank_info[$rank_get]['title'].'"</b>', CHAT_CHF_USER, $session_user['id']);
+    }
+}

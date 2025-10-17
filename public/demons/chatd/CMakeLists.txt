@@ -1,0 +1,7 @@
+PROJECT(chatd)
+SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
+ADD_EXECUTABLE(chatd src/cdaio.cpp src/cdaio.h src/cdcollection.cpp src/cdcollection.h src/cdcommon.cpp src/cdcommon.h src/cddebug.cpp src/cddebug.h src/cdentry.cpp src/cdentry.h src/cdgc.cpp src/cdgc.h src/cdgreeter.cpp src/cdgreeter.h src/cdlock.cpp src/cdlock.h src/cdobjdefs.cpp src/cdobjdefs.h src/cdstoragemgr.cpp src/cdstoragemgr.h src/cdworker.cpp src/cdworker.h src/cdwriteback.cpp src/cdwriteback.h src/chatd.cpp src/chatd.h)
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wunused")
+SOURCE_GROUP(Sources FILES src/cdaio.cpp src/cdaio.h src/cdcollection.cpp src/cdcollection.h src/cdcommon.cpp src/cdcommon.h src/cddebug.cpp src/cddebug.h src/cdentry.cpp src/cdentry.h src/cdgc.cpp src/cdgc.h src/cdgreeter.cpp src/cdgreeter.h src/cdlock.cpp src/cdlock.h src/cdobjdefs.cpp src/cdobjdefs.h src/cdstoragemgr.cpp src/cdstoragemgr.h src/cdworker.cpp src/cdworker.h src/cdwriteback.cpp src/cdwriteback.h src/chatd.cpp src/chatd.h)
+TARGET_LINK_LIBRARIES(chatd pthread)
+INCLUDE_DIRECTORIES(src)

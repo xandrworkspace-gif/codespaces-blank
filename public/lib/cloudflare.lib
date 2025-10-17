@@ -1,0 +1,182 @@
+<?php
+
+define('SEC_OFF','essentially_off');
+define('SEC_LOW','low');
+define('SEC_MEDIUM','medium');
+define('SEC_HIGHT','high');
+define('SEC_ATTACK','under_attack');
+
+$security_levels = array(
+	SEC_OFF => "Защита отключена",
+	SEC_LOW => "Слабая",
+	SEC_MEDIUM => "Средняя",
+	SEC_HIGHT => "Сильная",
+	SEC_ATTACK => "Атака",
+);
+
+$dev_value = array(
+	"off" => "Отключен",
+	"on" => "Включен",
+);
+
+$cloudflare_zones = array(
+	1 => 'elizium.online',
+);
+
+$cloudflare_zones_api = array(
+	1 => '76e1cc58c95616d025e9ca520b747338',
+);
+
+/**
+ * Made by RashFlash
+ * Dec 10th 2015
+ */
+class cloudflare_api {
+    //Timeout for the API requests in seconds
+    const TIMEOUT = 15;
+    //Interval values for Stats
+    const INTERVAL_365_DAYS = 10;
+    const INTERVAL_30_DAYS = 20;
+    const INTERVAL_7_DAYS = 30;
+    const INTERVAL_DAY = 40;
+    const INTERVAL_24_HOURS = 100;
+    const INTERVAL_12_HOURS = 110;
+    const INTERVAL_6_HOURS = 120;
+	
+	private $email="babanin1994@gmail.com";
+	private $api="995fb93cc22a071d264a9f7b65b73cd7f1780";
+    private $zone_id="76e1cc58c95616d025e9ca520b747338";
+
+	public function setZoneID($id){
+		global $cloudflare_zones_api;
+		$this->zone_id = $cloudflare_zones_api[$id];
+	}
+	
+    public function getUserDetail() {
+        $result=$this->curlGetRequest("https://api.cloudflare.com/client/v4/user");        
+        return $result;
+    }
+    
+    public function purgeFiles($files) {
+        $json=  json_encode(array(
+            'files'=>$files
+        ));
+        
+        $result=$this->curlDeleteRequest("https://api.cloudflare.com/client/v4/zones/$this->zone_id/purge_cache", $json);
+        return $result;
+    }
+    
+    public function purgeAll() {
+        $json=  json_encode(array(
+            'purge_everything'=>true
+        ));
+        
+        $result=$this->curlDeleteRequest("https://api.cloudflare.com/client/v4/zones/$this->zone_id/purge_cache",$json);
+        return $result;
+    }
+    
+    public function getZonesList($domain) {
+        $result=$this->curlGetRequest("https://api.cloudflare.com/client/v4/zones?name=$domain");
+        return $result;
+    }
+    
+	public function getSequrityLevel() {
+        $result=$this->curlGetRequest("https://api.cloudflare.com/client/v4/zones/$this->zone_id/settings/security_level");        
+        return $result;
+    }
+	
+	public function setSequrityLevel($level) {
+        $json=  json_encode(array(
+            'value'=>$level
+        ));
+        
+        $result=$this->curlPatchRequest("https://api.cloudflare.com/client/v4/zones/$this->zone_id/settings/security_level", $json);
+        return $result;
+    }
+	
+	public function getDevMode(){
+		$result=$this->curlGetRequest("https://api.cloudflare.com/client/v4/zones/$this->zone_id/settings/development_mode");        
+        return $result;
+	}
+	
+	public function setDevMode($val) {
+        $json=  json_encode(array(
+            'value'=>$val
+        ));
+        
+        $result=$this->curlPatchRequest("https://api.cloudflare.com/client/v4/zones/$this->zone_id/settings/development_mode", $json);
+        return $result;
+    }
+	
+	/*
+	
+	curl -X PATCH "https://api.cloudflare.com/client/v4/zones/023e105f4ecef8ad9ca31a8372d0c353/settings/security_level" \
+     -H "X-Auth-Email: user@example.com" \
+     -H "X-Auth-Key: c2547eb745079dac9320b638f5e225cf483cc5cfdda41" \
+     -H "Content-Type: application/json" \
+     --data '{"value":"medium"}'
+	
+	*/
+
+    public function curlGetRequest($url) {
+		$email = $this->email;
+		$api_key = $this->api;
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_VERBOSE, 1);
+
+        $headers = array(
+            'X-Auth-Email: ' . $email,
+            'X-Auth-Key: ' . $api_key,
+            'Content-Type: application/json',
+        );
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+        $result = curl_exec($ch);
+        curl_close($ch);
+        return json_decode($result);
+    }
+	
+	 public function curlPatchRequest($url,$json) {
+        $email = $this->email;
+		$api_key = $this->api;
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PATCH");
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $headers = array(
+            'X-Auth-Email: ' . $email,
+            'X-Auth-Key: ' . $api_key,
+            'Content-Type: application/json'
+        );
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+        $result = curl_exec($ch);
+        curl_close($ch);
+        return json_decode($result);
+    }
+    
+    public function curlDeleteRequest($url,$json) {
+        $email = $this->email;
+		$api_key = $this->api;
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "DELETE");
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $headers = array(
+            'X-Auth-Email: ' . $email,
+            'X-Auth-Key: ' . $api_key,
+            'Content-Type: application/json'
+        );
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+        $result = curl_exec($ch);
+        curl_close($ch);
+        return json_decode($result);
+    }
+}

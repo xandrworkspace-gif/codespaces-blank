@@ -1,0 +1,33 @@
+<? # $Id: gag.lib,v 1.0 2012-07-24 09:50:10 i.polyakov Exp $
+
+// Имена и поля таблиц
+define('TABLE_GAG_USERS','gag_users');
+define('FIELD_GAG_USERS','gag_gave_user_id,user_id,reason,ctime,ftime,duration,reason_str');
+
+define('GAG_RELAPSE_PERIOD', 24 * 3600); // Время в секундах, в течении которого повторный кляп
+										// (после завершения действия последнего) считается рецидивом #107017
+
+function gag_user_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2, TABLE_GAG_USERS, $ref, $add);
+}
+
+function gag_user_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2, TABLE_GAG_USERS, $ref, $add, $field_list);
+}
+
+function gag_user_count($ref=false, $add='') {
+	global $db_2, $db_2;
+	return common_count($db_2, TABLE_GAG_USERS, $ref, $add);
+}
+
+function gag_user_save($param) {
+	global $db_2;
+	return common_save($db_2, TABLE_GAG_USERS, $param, FIELD_GAG_USERS);
+}
+
+function gag_user_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2, TABLE_GAG_USERS, $ref, $add);
+}

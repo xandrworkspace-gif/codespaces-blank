@@ -1,0 +1,79 @@
+<?
+// действие "использовать рунную печать"
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['fight_id'] || $subject['trade_sess_id']) {
+    $out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+    return;
+}
+
+if(!$subject['companion_id']){
+    $out['error'] = translate('У вас нет тени!');
+    return;
+}
+$companion = common_object_get(OBJECT_CLASS_COMPANION, $subject['companion_id']);
+if(!$companion){
+    $out['error'] = translate('У вас нет тени!');
+    return;
+}
+
+$artifact_artikul = artifact_artikul_get($object['artikul_id']);
+if(!$artifact_artikul){
+    $out['error'] = translate('Действие невозможно!');
+    return;
+}
+
+global $companion_rune_seal_hash, $companion_rune_quality;
+
+if(!$artifact_artikul['param1']){
+    $out['error'] = translate('Рунная печать неисправна!');
+    return;
+}
+
+if(!$companion_rune_seal_hash[$artifact_artikul['param1']]){
+    $out['error'] = translate('Данную рунную печать использовать невозможно!');
+    return;
+}
+
+$rune_seal_info = $companion_rune_seal_hash[$artifact_artikul['param1']];
+
+if(!$rune_seal_info){
+    $out['error'] = translate('Данную рунную печать использовать невозможно!');
+    return;
+}
+
+if(!$companion_rune_quality[$artifact_artikul['quality']]){
+    $out['error'] = translate('Данную рунную печать использовать невозможно!');
+    return;
+}
+$max_cnt = 0;
+if($rune_seal_info['type'] == 1) $max_cnt = $companion_rune_quality[$artifact_artikul['quality']];
+else if($rune_seal_info['type'] == 2) $max_cnt = 1;
+if($max_cnt <= 0){
+    $out['error'] = translate('Данную рунную печать использовать невозможно!');
+    return;
+}
+
+//Предварительная проверка
+$rune_seal_hash = make_hash(companion_rune_seal_list($companion['id']), 'skill_id');
+if(!$rune_seal_hash[$rune_seal_info['skill_id_c']]){ //Если это новый рунный печать, то проверяем возможность становления
+    //Узнал тут что Печать каждого вида можно ставить не более чем 1 раз за каждый уровень тени от 7-го и выше. значит
+    if(count($rune_seal_hash) > ($companion['level'] - 7)){
+        $out['error'] = translate('Следующий вид рунной печати вы сможете наложить только на следующем уровне тени!');
+        return;
+    }
+}
+
+//Проверим рунные печати
+$skill_check = skill_object_get(OBJECT_CLASS_COMPANION, $subject['companion_id'], array('skill_id' => $rune_seal_info['skill_id_c']));
+$cnt = intval($skill_check['value']);
+
+if($cnt >= $max_cnt){
+    $out['error'] = translate('Достигнут предел усиления данной рунной печатью!');
+    return;
+}
+
+skill_object_set_value(OBJECT_CLASS_COMPANION, $companion['id'], $rune_seal_info['skill_id_c'], 1, array('relative' => true));
+
+$out['status'] = ACTION_STATUS_OK;

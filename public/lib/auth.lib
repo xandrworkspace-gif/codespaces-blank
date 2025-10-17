@@ -1,0 +1,205 @@
+<? # $Id: auth.lib,v 1.29 2010-02-19 14:15:46 v.krutov Exp $
+
+// Имена и поля таблиц
+define('TABLE_AUTH','auth');
+define('FIELD_AUTH','uid, email, t_email, passwd, time_registered, time_login, time_logout, nick, blocked, last_ip, last_cid, m_login_time, auth_flags, session_time, fb_id, ingame_time, akey_fail_last_time, akey_fail_amt, partner_user_id, server_id, original_user_id, current_server_id, partner_pid, ch_pass_hash, fail_login_cnt, fail_login_last_time, accept_text, accept_time, gflags');
+define('TABLE_AUTH_BIND','auth_bind');
+define('FIELD_AUTH_BIND','');
+define('TABLE_AUTH_RESTORE_PASSWORD','auth_restore_password');
+define('FIELD_AUTH_RESTORE_PASSWORD','');
+define('TABLE_XTOKEN','xtoken');
+define('FIELD_XTOKEN','');
+
+// Флаги
+define('AUTH_FLAG_INCOME',         0x00000001);	// Был приход реальных денег
+define('AUTH_FLAG_FROZEN',         0x00000002);	// Находится в холодильнике
+define('AUTH_FLAG_PLAYIT',         0x00000004);	// Аккаунт c playit.ru
+//define('AUTH_FLAG_MOBILE',       0x00000008);	// Мобильный пользователь, может авторизоваться только с мобильного телефона
+define('AUTH_FLAG_RAMBLER',        0x00000010);	// Пользователь партнера Rambler
+define('AUTH_FLAG_MAILRU',         0x00000020);	// Пользователь партнера Mail.ru
+define('AUTH_FLAG_WONIU',          0x00000040);	// Пользователь партнера woniu.com
+define('AUTH_FLAG_FB',             0x00000080);	// Пользователь партнера facebook.com
+define('AUTH_FLAG_FROMPARTNER',    0x00000100);	// Пришел по рекламме через партнерку
+define('AUTH_FLAG_GAMESPACE',      0x00000200);	// Пользователь партнера gamespace.pl
+define('AUTH_FLAG_ICQ',            0x00000400);	// Пользователь партнера ICQ
+define('AUTH_FLAG_TRANSFERING',    0x00000800);	// Пользователь ожидает возвращение в родной мир
+define('AUTH_FLAG_BIGPOINT',       0x00002000);	// Пользователь партнера bigpoint.com
+define('AUTH_FLAG_SOCUSER',		   0x00004000); // Пользователь зарегестрировался при помощи соц сети
+define('AUTH_FLAG_NOSPAM',	       0x00008000);	// Пользователь отписался от рассылок
+define('AUTH_FLAG_NOTIFICATION',   0x00010000);	// Незаконченная регистрация, отправить уведомление
+define('AUTH_FLAG_DELETED',        0x00020000);	// Пользователь удален
+define('AUTH_FLAG_UNSUBSCRIBE',    0x00040000);	// Пользователь отказался от рассылки
+define('AUTH_FLAG_ISCLIENT',       0x00080000); // Пользователь ходит в игру через клиент
+define('AUTH_FLAG_AERIA',          0x00100000);	// Пользователь партнера aeriagames.com
+define('AUTH_FLAG_SOCIAL',         0x00200000);	// Пользователь ассоциирован с соц-сетью
+define('AUTH_FLAG_PRO7',           0x00400000);	// Пользователь партнера prosiebengames.de
+define('AUTH_FLAG_PRO7_DB',        0x00800000);	// Пользователь согласен передавать свои данные в PRO7
+define('AUTH_FLAG_PASSCHANJENOW',  0x01000000);	// Пользователь должен сменить свой пароль
+define('AUTH_FLAG_ACCEPT',         0x02000000);	// Пользователь подтвердил E-mail
+
+define('FAIL_LOGIN_CNT_MAX', 10); //Максимальное кол-во неудачных попыток авторизации
+define('FAIL_LOGIN_RESTRICT_TIME', 60*60*24*1); // пока блокируем злодея на 1 день
+
+define('GAUTH_FLAG_NO_EXP',     0x00000001); //Не получать опыт
+define('GAUTH_FLAG_NO_HONOR',   0x00000002); //Не получать доблесть
+
+// источники привязок авторизации по ключу
+$auth_bind_src = array(
+	0 => array('pkey' => 'pub/netville.pub'),
+);
+
+
+function auth_get($ref=false, $add='') {
+	global $db_auth;
+	return common_get($db_auth,TABLE_AUTH,$ref,$add,'uid');
+}
+
+function auth_list($add='', $ref=false, $fields='*') {
+	global $db_auth;
+	return common_list($db_auth,TABLE_AUTH,$ref,$add,$fields);
+}
+
+function auth_count($ref=false, $add='') {
+	global $db_auth;
+	return common_count($db_auth,TABLE_AUTH,$ref,$add);
+}
+
+function auth_save($param) {
+	global $db_auth;
+	return common_save($db_auth,TABLE_AUTH,$param,FIELD_AUTH,'uid');
+}
+
+function auth_delete($ref=false, $add='') {
+	global $db_auth;
+	return common_delete($db_auth,TABLE_AUTH,$ref,$add,'uid');
+}
+
+function auth_bind_get($ref=false, $add='') {
+	global $db_auth;
+	return common_get($db_auth,TABLE_AUTH_BIND,$ref,$add,'uid');
+}
+
+function auth_bind_list($ref=false, $add='') {
+	global $db_auth;
+	return common_list($db_auth,TABLE_AUTH_BIND,$ref,$add);
+}
+
+function auth_bind_save($param) {
+	global $db_auth;
+	return common_save($db_auth,TABLE_AUTH_BIND,$param,FIELD_AUTH_BIND,'uid');
+}
+
+function auth_bind_delete($ref=false, $add='') {
+	global $db_auth;
+	return common_delete($db_auth,TABLE_AUTH_BIND,$ref,$add,'uid');
+}
+
+function auth_restore_password_get($ref=false, $add='') {
+	global $db_auth;
+	return common_get($db_auth,TABLE_AUTH_RESTORE_PASSWORD,$ref,$add);
+}
+
+function auth_restore_password_list($add='', $ref=false, $fields='*') {
+	global $db_auth;
+	return common_list($db_auth,TABLE_AUTH_RESTORE_PASSWORD,$ref,$add,$fields);
+}
+
+function auth_restore_password_count($ref=false, $add='') {
+	global $db_auth;
+	return common_count($db_auth,TABLE_AUTH_RESTORE_PASSWORD,$ref,$add);
+}
+
+function auth_restore_password_save($param) {
+	global $db_auth;
+	return common_save($db_auth,TABLE_AUTH_RESTORE_PASSWORD,$param,FIELD_AUTH_RESTORE_PASSWORD);
+}
+
+function auth_restore_password_delete($ref=false, $add='') {
+	global $db_auth;
+	return common_delete($db_auth,TABLE_AUTH_RESTORE_PASSWORD,$ref,$add);
+}
+
+function xtoken_get($ref=false, $add='') {
+	global $db_auth;
+	return common_get($db_auth,TABLE_XTOKEN,$ref,$add,'uid');
+}
+
+function xtoken_list($add='', $ref=false, $fields='*') {
+	global $db_auth;
+	return common_list($db_auth,TABLE_XTOKEN,$ref,$add,$fields);
+}
+
+function xtoken_count($ref=false, $add='') {
+	global $db_auth;
+	return common_count($db_auth,TABLE_XTOKEN,$ref,$add);
+}
+
+function xtoken_save($param) {
+	global $db_auth;
+	return common_save($db_auth,TABLE_XTOKEN,$param,FIELD_XTOKEN,'uid');
+}
+
+function xtoken_delete($ref=false, $add='') {
+	global $db_auth;
+	return common_delete($db_auth,TABLE_XTOKEN,$ref,$add,'uid');
+}
+
+// ===============================================================================================================
+
+function auth_is_email_correct($email) {
+	return preg_match('/@(mail|inbox|list|bk)\.ru$/',$email);
+}
+
+function auth_akey(&$auth, $akey=null, $server_url=false) {
+	$_akey = md5(AKEY_SECRET.($server_url ? $server_url : SERVER_URL).'-'.$auth['uid'].'-'.$auth['nick'].'-'.$auth['time_registered'].'-'.$auth['time_login'].'-'.date("Y-m",time()));
+	return isset($akey) ? $_akey == $akey : $_akey;
+}
+
+function auth_bind_check_data($src, &$data) {
+	global $auth_bind_src;
+	$s = $auth_bind_src[$src];
+	if (!$s) return false;
+	$status = false;
+	if ($s['pkey']) {
+		$pkeyid = openssl_get_publickey(file_get_contents($s['pkey']));
+		if (!$pkeyid) {
+			error_log("openssl_get_publickey() failed");
+			return false;
+		}
+		$str = $data['reg_id'].'|'.$data['reg_nick'].'|'.$data['reg_date'].'|'.$data['reg_ip'];
+		$ret = openssl_verify($str,base64_decode($data['reg_sign']),$pkeyid);
+		openssl_free_key($pkeyid);
+		$status = ($ret == 1);
+	}
+	return $status;
+}
+function auth_unsubscribe_mail($mail){
+	$auth = auth_get(array("email"=>$mail));
+	if ($auth) {
+		return auth_save(array(
+		"uid" => $auth["uid"],
+		"_set" => sql_pholder(" auth_flags=auth_flags|? ",AUTH_FLAG_NOSPAM)
+	));
+	} else return false;
+	
+}
+
+// Генерация хэша пароля
+function auth_generate_password_hash($password, $need_first_hash = true) {
+	$salt = md5(uniqid()); 
+	return auth_password_hash($password, $salt, $need_first_hash);
+}
+
+// Проверка правильности ввода пароля
+// $hash - пароль в базе
+function auth_check_password_hash($hash, $password) {
+	$salt = mb_substr($hash, 0, 32);
+	return ($hash && auth_password_hash($password, $salt) == $hash); 
+}
+
+// Формирование хэша пароля с "солью"
+function auth_password_hash($password, $salt, $need_first_hash = true) {
+	$hash = md5($salt.'_SUPER_RANDOM_PHRASE_ELEMENTS_'.($need_first_hash ? md5($password) : $password));
+	return $salt.$hash;
+}
+?>

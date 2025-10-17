@@ -1,0 +1,68 @@
+<?
+//Библиотека заверения сделок
+
+//TODO:Сделать!
+
+define('TABLE_ATTESTATION_DEAL_LIST', 'attestation_deal');
+define('FIELD_ATTESTATION_DEAL_LIST', '');
+
+/*
+ * Структура подтверждения сделки:
+ * Тип сделки
+ * Пользователь дающий
+ * Пользователь принимающий
+ * Вложенные артефакты
+ * Условия окончания сделки
+ * Кто одобрил
+ * Кто проверил
+ * Статус
+ * */
+
+define('ATT_DEAL_METHOD_TRADE', 1); //Торговля
+define('ATT_DEAL_METHOD_POST', 2); //Почта
+
+$att_deal_method_hash = array(
+    ATT_DEAL_METHOD_TRADE => 'Торговля',
+    ATT_DEAL_METHOD_POST => 'Почта',
+);
+
+define('ATT_DEAL_TYPE_EXCHANGE', 1); //Обмен
+define('ATT_DEAL_TYPE_TRADE', 2); //Продажа
+define('ATT_DEAL_TYPE_GIFT', 3); //Подарок
+define('ATT_DEAL_TYPE_CREDIT', 4); //Кредит
+
+$att_deal_type_hash = array(
+    ATT_DEAL_TYPE_EXCHANGE => 'Обмен',
+    ATT_DEAL_TYPE_TRADE => 'Продажа',
+    ATT_DEAL_TYPE_GIFT => 'Подарок',
+    ATT_DEAL_TYPE_CREDIT => 'Кредит',
+);
+
+#Работа с базой данных заявок
+function attestation_deal_get($ref=false, $add='') {
+    global $db_path;
+    $arena_user = common_get($db_path,TABLE_ATTESTATION_DEAL_LIST,$ref,$add);
+    return $arena_user;
+}
+
+function attestation_deal_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_ATTESTATION_DEAL_LIST,$ref,$add,$field_list);
+}
+
+function attestation_deal_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_ATTESTATION_DEAL_LIST, $ref, $add);
+}
+
+function attestation_deal_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_ATTESTATION_DEAL_LIST,$param,FIELD_ATTESTATION_DEAL_LIST);
+}
+
+function attestation_deal_delete($ref, $add = '') {
+    global $db_path;
+    if (!$ref && !$add) return false;
+    common_delete($db_path,TABLE_ATTESTATION_DEAL_LIST,$ref,$add);
+    return true;
+}

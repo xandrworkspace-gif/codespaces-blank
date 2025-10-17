@@ -1,0 +1,990 @@
+<?php
+
+//константытаблиц в constant.inc для связи с объектами
+
+define('TABLE_COMPANION_SPELL', 'user_companion_spells');
+define('FIELD_COMPANION_SPELL', '');
+
+define('COMPANION_MONEY_ARTIFACT_ID', 8866); //Сумеречная монета
+define('COMPANION_ATK_ARTIFACT_ID', 8867); //Сумеречные кристаллы
+
+define('COMPANION_ARTIKUL_BOT_ID', 1220); //Технический артикул бота для тени
+
+define('COMPANION_LVL_UPDATE_CNT', 10);
+
+//Ограничение на кол-во рунных печатей в зависимости от цвета рунной печати
+$companion_rune_quality = array(
+    1 => 5,
+    2 => 9,
+    3 => 12,
+    4 => 14,
+);
+//Таблица с данными для РУННЫЕ ПЕЧАТИ задаются в param1 артикулов рунных печатей
+$companion_rune_seal_hash = array(
+    1 => array(
+        'title' => 'Сила',
+        'skill_id' => 'STR',
+        'value' => 25,
+        'skill_id_c' => 'R_S_1', //Скиллы для тени, для подсчета рунных печатей
+        'type' => 1, //Тип влияет на выбор максимального кол-ва
+    ),
+    2 => array(
+        'title' => 'Живучесть',
+        'skill_id' => 'VIT',
+        'value' => 25,
+        'skill_id_c' => 'R_S_2',
+        'type' => 1,
+    ),
+    3 => array(
+        'title' => 'Интеллект',
+        'skill_id' => 'INTELL',
+        'value' => 5,
+        'skill_id_c' => 'R_S_3',
+        'type' => 1,
+    ),
+    4 => array(
+        'title' => 'Ловкость',
+        'skill_id' => 'DEX',
+        'value' => 5,
+        'skill_id_c' => 'R_S_4',
+        'type' => 1,
+    ),
+    5 => array(
+        'title' => 'Защита',
+        'skill_id' => 'ENDUR',
+        'value' => 5,
+        'skill_id_c' => 'R_S_5',
+        'type' => 1,
+    ),
+    6 => array(
+        'title' => 'Интуиция',
+        'skill_id' => 'INT',
+        'value' => 5,
+        'skill_id_c' => 'R_S_6',
+        'type' => 1,
+    ),
+    7 => array(
+        'title' => 'Инициатива',
+        'skill_id' => 'INICIATIV',
+        'value' => 5,
+        'skill_id_c' => 'R_S_7',
+        'type' => 1,
+    ),
+    8 => array(
+        'title' => 'Стойкость',
+        'skill_id' => 'STOIKOST',
+        'value' => 35,
+        'skill_id_c' => 'R_S_8',
+        'type' => 1,
+    ),
+    9 => array(
+        'title' => 'Печать умений',
+        'skill_id' => '',
+        'value' => 1,
+        'skill_id_c' => 'R_S_9',
+        'type' => 2,
+    ),
+);
+
+//Достать скиллы кол-ва рунных печатей по тени
+function companion_rune_seal_list($companion_id = false){
+    global $companion_rune_seal_hash;
+    if(!$companion_id) return false;
+    $skill_ids_c = array();
+    foreach ($companion_rune_seal_hash as $k=>$v){
+        $skill_ids_c[$v['skill_id_c']] = $v['skill_id_c'];
+    }
+    return companion_skills_list(array('companion_id' => $companion_id, 'skill_id' => $skill_ids_c));
+}
+
+//Таблица опыта тени
+$companion_exp_hash = array(
+    7 => 0,
+    8 => 10000, //10000
+    9 => 27000, //17000
+    10 => 47000, //20000
+    11 => 75000, //28000
+    12 => 115000, //40000
+    13 => 175000, //60000
+    14 => 250000, //75000
+    15 => 335000, //85000
+    16 => 435000, //100000
+    17 => 550000, //115000
+    18 => 675000, //125000
+    /*19 => 0,
+    20 => 0,*/ //н/д
+);
+
+$companion_exp_money_hash = array(
+    7 => 0,
+    8 => 80,
+    9 => 90,
+    10 => 100,
+    11 => 110,
+    12 => 120,
+    13 => 130,
+    14 => 140,
+    15 => 150,
+    16 => 160,
+    17 => 170,
+    18 => 180,
+);
+
+//Таблица доблести тени
+$companion_honor_hash = array(
+    0 => 0,
+    1 => 1000,     //1000
+    2 => 2000,     //1000
+    3 => 4000,     //2000
+    4 => 7000,     //3000
+    5 => 11000,     //4000
+    6 => 25000,     //14000
+    7 => 45000,     //20000
+    8 => 75000,     //30000
+    9 => 125000,     //50000
+    10 => 195000,     //70000
+    11 => 295000,     //100000
+    12 => 435000,     //140000
+    13 => 625000,     //190000
+    14 => 875000,     //250000
+    15 => 1155000,     //280000
+    16 => 1495000,     //340000
+    17 => 1945000,     //450000
+    18 => 2545000,     //600000
+    19 => 3325000,     //780000
+);
+
+$companion_honor_money_hash = array(
+    0 => 0,
+    1 => 10,
+    2 => 20,
+    3 => 30,
+    4 => 40,
+    5 => 50,
+    6 => 60,
+    7 => 70,
+    8 => 80,
+    9 => 90,
+    10 => 100,
+    11 => 110,
+    12 => 120,
+    13 => 130,
+    14 => 140,
+    15 => 150,
+    16 => 160,
+    17 => 170,
+    18 => 180,
+    19 => 190,
+);
+
+// действие SHADOW_DISE - разрешённые цвета вещей (серый, зелёный, синий)
+//Разрешенные слоты для дробления
+$disenchant_shadow = array(
+    'LEG' => 1,
+    'ARMOR' => 1,
+    'RHAND' => 2,
+    'LHAND' => 2,
+    'BODY' => 3,
+    'FOOT' => 3,
+    'GLOVE' => 4,
+    'SHOULDER' => 4,
+    'HEAD' => 5,
+    //'ACC_1' => 6, //Плащ
+    //'ACC_2' => 6,
+    //'ACC_3' => 6,
+    //'ACC_4' => 6
+);
+
+$disenchant_shadow_cnt = array(
+    1 => array(
+        0 => array('min' => 1, 'max' => 2),
+        1 => array('min' => 2, 'max' => 3),
+        2 => array('min' => 2, 'max' => 4),
+        3 => array('min' => 2, 'max' => 5),
+        4 => array('min' => 3, 'max' => 5),
+    ),
+    2 => array(
+        0 => array('min' => 1, 'max' => 2),
+        1 => array('min' => 2, 'max' => 3),
+        2 => array('min' => 2, 'max' => 4),
+        3 => array('min' => 2, 'max' => 5),
+        4 => array('min' => 3, 'max' => 5),
+    ),
+    3 => array(
+        0 => array('min' => 1, 'max' => 2),
+        1 => array('min' => 2, 'max' => 3),
+        2 => array('min' => 2, 'max' => 4),
+        3 => array('min' => 2, 'max' => 5),
+        4 => array('min' => 3, 'max' => 5),
+    ),
+    4 => array(
+        0 => array('min' => 1, 'max' => 2),
+        1 => array('min' => 2, 'max' => 3),
+        2 => array('min' => 2, 'max' => 4),
+        3 => array('min' => 2, 'max' => 5),
+        4 => array('min' => 3, 'max' => 5),
+    ),
+    5 => array(
+        0 => array('min' => 1, 'max' => 2),
+        1 => array('min' => 2, 'max' => 3),
+        2 => array('min' => 2, 'max' => 4),
+        3 => array('min' => 2, 'max' => 5),
+        4 => array('min' => 3, 'max' => 5),
+    ),
+    6 => array(
+        0 => array('min' => 1, 'max' => 2),
+        1 => array('min' => 2, 'max' => 3),
+        2 => array('min' => 2, 'max' => 4),
+        3 => array('min' => 2, 'max' => 5),
+        4 => array('min' => 3, 'max' => 5),
+    ),
+);
+
+$companion_slots = array(
+    'RHAND',
+    'LHAND',
+    'BODY',
+    'ARMOR',
+    'SHOULDER',
+    'HEAD',
+    'GLOVE',
+    'LEG',
+    'FOOT',
+    'ACC_1',
+    'ACC_2',
+    'ACC_3',
+    'ACC_4'
+);
+
+$companion_slots_hash = array(
+    'RHAND' => 'Правая рука',
+    'LHAND' => 'Левая рука',
+    'BODY' => 'Тело',
+    'ARMOR' => '	Броня',
+    'SHOULDER' => 'Наплечники',
+    'HEAD' => 'Голова',
+    'GLOVE' => 'Перчатки',
+    'LEG' => 'Штаны',
+    'FOOT' => 'Обувь',
+    'ACC_1' => 'Балахон тени',
+    'ACC_2' => 'Кольцо',
+    'ACC_3' => 'Амулет',
+    'ACC_4' => 'Браслет'
+);
+
+function companion_get_slot_num_max($companion_id, $slot_id = 'EFFECT') {
+    if (!$companion_id) return false;
+    switch ($slot_id) {
+        case 'ACC':
+            return 4;
+        case 'SPELL':
+            if(!$companion_id) return 0;
+            $companion = common_object_get(OBJECT_CLASS_COMPANION, $companion_id);
+            if(!$companion) return 0;
+            $slot_cnt = 0;
+            if($companion['level'] >= 7) $slot_cnt++;
+            if($companion['level'] >= 12) $slot_cnt++;
+            if($companion['rank'] >= 5) $slot_cnt++;
+            if($companion['rank'] >= 8) $slot_cnt++;
+            if($companion['rank'] >= 13) $slot_cnt++;
+            if($companion['rank'] >= 16) $slot_cnt++;
+            if($companion['rank'] >= 19) $slot_cnt++;
+            return $slot_cnt;
+            break;
+        default:
+            return 1;
+    }
+    return 0;
+}
+
+function companion_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_COMPANION,$ref,$add);
+}
+
+function companion_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_COMPANION,$ref,$add,$field_list);
+}
+
+function companion_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_COMPANION, $ref, $add);
+}
+
+function companion_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_COMPANION,$param,FIELD_COMPANION);
+}
+
+function companion_delete($ref) {
+    global $db_2;
+    if (!$ref) return false;
+    common_delete($db_2,TABLE_COMPANION,$ref);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function companion_skills_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_COMPANION_SKILLS,$ref,$add);
+}
+
+function companion_skills_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_COMPANION_SKILLS,$ref,$add,$field_list);
+}
+
+function companion_skills_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_COMPANION_SKILLS, $ref, $add);
+}
+
+function companion_skills_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_COMPANION_SKILLS,$param,FIELD_COMPANION_SKILLS);
+}
+
+function companion_skills_delete($ref) {
+    global $db_2;
+    if (!$ref) return false;
+    common_delete($db_2,TABLE_COMPANION_SKILLS,$ref);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function companion_spell_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_COMPANION_SPELL,$ref,$add);
+}
+
+function companion_spell_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_COMPANION_SPELL,$ref,$add,$field_list);
+}
+
+function companion_spell_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_COMPANION_SPELL, $ref, $add);
+}
+
+function companion_spell_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_COMPANION_SPELL,$param,FIELD_COMPANION_SPELL);
+}
+
+function companion_spell_delete($ref) {
+    global $db_2;
+    if (!$ref) return false;
+    common_delete($db_2,TABLE_COMPANION_SPELL,$ref);
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//Создание тени игроку!
+function companion_user_create($session_user=array()){
+    global $companion_exp_hash;
+    if(!$session_user) return false;
+    if(!$session_user['id']) return false;
+    if($session_user['companion_id']) return false;
+    if(companion_user_get($session_user['id'])) return false;
+    $companion_id = common_object_save(OBJECT_CLASS_COMPANION, false, array(
+        'user_id' => $session_user['id'],
+        'level' => ($session_user['level'] > 7 ? ($session_user['level'] - 1) : 7), //Тень автоматически получает уровень на 1 меньше чем твой.
+        'rank' => 0,
+    ));
+    skill_object_set_value(OBJECT_CLASS_COMPANION, $companion_id, 'EXP', $companion_exp_hash[($session_user['level'] > 7 ? ($session_user['level'] - 1) : 7)], array('relative' => true));
+    if($companion_id){
+        user_save(array(
+            'id' => $session_user['id'],
+            'companion_id' => $companion_id,
+        ));
+        return true;
+    }
+    return false;
+}
+
+function companion_user_get($user_id = false){
+    if(!$user_id) return false;
+    return companion_get(array('user_id' => $user_id));
+}
+
+function companion_get_exp($ten_id = false){
+    if(!$ten_id) return false;
+    return skill_object_get(OBJECT_CLASS_COMPANION, $ten_id, array('skill_id' => 'EXP'));
+}
+
+function companion_get_honor($ten_id = false){
+    if(!$ten_id) return false;
+    return skill_object_get(OBJECT_CLASS_COMPANION, $ten_id, array('skill_id' => 'HONOR'));
+}
+
+function companion_add_exp($ten_id = false, $exp = 0){
+    global $companion_exp_hash;
+    if(!$ten_id) return false;
+    $companion = common_object_get(OBJECT_CLASS_COMPANION, $ten_id);
+    if(!$companion) return false;
+    $lvl = intval($companion['level']);
+    $need_to_up_level = $companion_exp_hash[$lvl + 1];
+    if(!$need_to_up_level) return false;
+    $skill_exp = skill_object_get(OBJECT_CLASS_COMPANION, $companion, array('skill_id' => 'EXP'));
+    $current_exp = intval($skill_exp['value']);
+
+    if($current_exp == $need_to_up_level) return false; //Тут узнал что повышаются при помощи кнопки повысить уровень после полного заполнения опыта
+    if(($current_exp + $exp) > $need_to_up_level){
+        //LEVEL UP
+        //Последствия плохо информированного человека
+        /*
+        if(skill_object_set_value(OBJECT_CLASS_COMPANION, $companion, 'EXP', $exp, array('relative' => true))){
+            common_object_save(OBJECT_CLASS_COMPANION, $companion, array(
+                '_set' => ' level = level + 1',
+            ));
+        }
+        */
+        skill_object_set_value(OBJECT_CLASS_COMPANION, $companion['id'], 'EXP', $need_to_up_level);
+        return true;
+    }
+    return skill_object_set_value(OBJECT_CLASS_COMPANION, $companion['id'], 'EXP', $exp, array('relative' => true));
+}
+
+function companion_add_honor($ten_id = false, $honor = 0, $session_user = array()){
+    global $companion_honor_hash;
+    if(!$ten_id) return false;
+    $companion = common_object_get(OBJECT_CLASS_COMPANION, $ten_id);
+    if(!$companion) return false;
+    $user = ($session_user ? $session_user : user_get($companion['user_id']));
+    if($companion['level'] < ($user['level'] - 2)) return false; //Важно! Тень не будет получать доблесть, если ее уровень ниже вашего более чем на 2.
+
+    $rank = intval($companion['rank']);
+    $need_to_up_level = $companion_honor_hash[$rank + 1];
+    if(!$need_to_up_level) return false;
+    $skill_honor = skill_object_get(OBJECT_CLASS_COMPANION, $companion, array('skill_id' => 'HONOR'));
+    $current_honor = intval($skill_honor['value']);
+    if($current_honor == $need_to_up_level) return false; //Повторяем тоже самое
+    if(($current_honor + $honor) > $need_to_up_level){
+        //LEVEL UP
+        /*
+        if(skill_object_set_value(OBJECT_CLASS_COMPANION, $companion, 'HONOR', $honor, array('relative' => true))){
+            common_object_save(OBJECT_CLASS_COMPANION, $companion, array(
+                '_set' => ' rank = rank + 1',
+            ));
+        }*/
+        skill_object_set_value(OBJECT_CLASS_COMPANION, $companion['id'], 'HONOR', $need_to_up_level);
+        return true;
+    }
+    return skill_object_set_value(OBJECT_CLASS_COMPANION, $companion['id'], 'HONOR', $honor, array('relative' => true));
+}
+
+function companion_get_native_skill_info($level) {
+    $native_skill_info = array(
+        7 => array(
+            'DEX'     => 18,
+            'ENDUR'   => 18,
+            'INT'     => 18,
+            'STR'     => 18,
+            'VIT'     => 18,
+        ),
+        8 => array(
+            'DEX'     => 21,
+            'ENDUR'   => 21,
+            'INT'     => 22,
+            'STR'     => 21,
+            'VIT'     => 22,
+        ),
+        9 => array(
+            'DEX'     => 26,
+            'ENDUR'   => 26,
+            'INT'     => 26,
+            'STR'     => 26,
+            'VIT'     => 25,
+        ),
+        10 => array(
+            'DEX'     => 31,
+            'ENDUR'   => 31,
+            'INT'     => 31,
+            'STR'     => 31,
+            'VIT'     => 31,
+        ),
+        11 => array(
+            'DEX'     => 37,
+            'ENDUR'   => 37,
+            'INT'     => 37,
+            'INTELL'  => 47,
+            'MAGCRIT' => 3,
+            'STR'     => 37,
+            'VIT'     => 37,
+            'WISDOM'  => 47,
+        ),
+        12 => array(
+            'DEX'     => 37,
+            'ENDUR'   => 37,
+            'INT'     => 37,
+            'INTELL'  => 52,
+            'MAGCRIT' => 3,
+            'STR'     => 37,
+            'VIT'     => 37,
+            'WISDOM'  => 52,
+        ),
+        13 => array(
+            'DEX'     => 37,
+            'ENDUR'   => 37,
+            'INT'     => 37,
+            'INTELL'  => 57,
+            'MAGCRIT' => 3,
+            'STR'     => 37,
+            'VIT'     => 37,
+            'WISDOM'  => 57,
+        ),
+        14 => array(
+            'DEX'     => 37,
+            'ENDUR'   => 37,
+            'INT'     => 37,
+            'INTELL'  => 62,
+            'MAGCRIT' => 3,
+            'STR'     => 37,
+            'VIT'     => 37,
+            'WISDOM'  => 62,
+        ),
+        15 => array(
+            'DEX'     => 37,
+            'ENDUR'   => 37,
+            'INT'     => 37,
+            'INTELL'  => 68,
+            'MAGCRIT' => 3,
+            'STR'     => 37,
+            'VIT'     => 37,
+            'WISDOM'  => 68,
+        ),
+        16 => array(
+            'DEX'     => 37,
+            'ENDUR'   => 37,
+            'INT'     => 37,
+            'INTELL'  => 75,
+            'MAGCRIT' => 3,
+            'STR'     => 37,
+            'VIT'     => 37,
+            'WISDOM'  => 75,
+        ),
+        17 => array(
+            'DEX'     => 37,
+            'ENDUR'   => 37,
+            'INT'     => 37,
+            'INTELL'  => 82,
+            'MAGCRIT' => 3,
+            'STR'     => 37,
+            'VIT'     => 37,
+            'WISDOM'  => 82,
+        ),
+        18 => array(
+            'DEX'     => 37,
+            'ENDUR'   => 37,
+            'INT'     => 37,
+            'INTELL'  => 90,
+            'MAGCRIT' => 3,
+            'STR'     => 37,
+            'VIT'     => 37,
+            'WISDOM'  => 90,
+        ),
+        19 => array(
+            'DEX'     => 37,
+            'ENDUR'   => 37,
+            'INT'     => 37,
+            'INTELL'  => 99,
+            'MAGCRIT' => 3,
+            'STR'     => 37,
+            'VIT'     => 37,
+            'WISDOM'  => 99,
+        ),
+        20 => array(
+            'DEX'     => 37,
+            'ENDUR'   => 37,
+            'INT'     => 37,
+            'INTELL'  => 109,
+            'MAGCRIT' => 3,
+            'STR'     => 37,
+            'VIT'     => 37,
+            'WISDOM'  => 109,
+        ),
+    );
+
+    if (!isset($native_skill_info[$level])) {
+        if ($level != 0) error_log(sprintf('[companion_get_native_skill_info] Trying to access undefined Level [%s]', $level));
+        return array();
+    }
+
+    return $native_skill_info[$level];
+}
+
+// Возвращает хэш скиллов тени с учетом надетых вещей
+function companion_get_skill_info($companion_id, $skill_id=false, $with_artifacts=true, $extended=false) {
+    global $companion_slots_hash, $companion_rune_seal_hash;
+
+    if (!$companion_id) return false;
+    $companion = common_object_get(OBJECT_CLASS_COMPANION, $companion_id);
+    if (!$companion) return false;
+
+    $query_add = '';
+    if ($skill_id) {
+        if (!is_array($skill_id)) $skill_id = array($skill_id);
+        if (in_array('HP',$skill_id)) $skill_id = array_unique(array_merge($skill_id,array('HPMAX','HP_T0','HP_T1')));
+        if (in_array('HPMAX',$skill_id)) $skill_id = array_unique(array_merge($skill_id,array('VIT','XHPMAX')));
+        if (in_array('MP',$skill_id)) $skill_id = array_unique(array_merge($skill_id,array('MPMAX','MP_T0','MP_T1')));
+        if (in_array('MPMAX',$skill_id)) $skill_id = array_unique(array_merge($skill_id,array('INTELL','XMPMAX')));
+        $query_add .= sql_pholder(" AND skill_id IN (?@)",$skill_id);
+    }
+    $art = true;
+    $skill_hash = make_hash(skill_object_list(OBJECT_CLASS_COMPANION,$companion,$query_add),'skill_id');
+
+    $skill_hash['LEVEL'] = array(
+        'skill_id' => 'LEVEL',
+        'value' => $companion['level'],
+    );
+
+    // Применяем нативные скиллы
+    $native_skills = companion_get_native_skill_info($companion['level']);
+    foreach ($native_skills as $id => $value) {
+        if (!isset($skill_hash[$id])) {
+            $skill_hash[$id] = array(
+                'skill_id' => $id,
+                'value' => $value,
+                'companion_id' => $companion_id,
+            );
+        } else {
+            $skill_hash[$id]['value'] += $value;
+        }
+    }
+
+    //Применяем рунные печати
+    foreach ($companion_rune_seal_hash as $rune_seal){
+        if($skill_hash[$rune_seal['skill_id_c']]){
+            if (!isset($skill_hash[$rune_seal['skill_id']])) {
+                $skill_hash[$rune_seal['skill_id']] = array(
+                    'skill_id' => $rune_seal['skill_id'],
+                    'value' => $rune_seal['value'],
+                    'companion_id' => $companion_id,
+                );
+            } else {
+                $skill_hash[$rune_seal['skill_id']]['value'] += ($rune_seal['value'] * $skill_hash[$rune_seal['skill_id_c']]['value']);
+            }
+        }
+    }
+
+    $skill_self_hash = $skill_hash;
+    $skill_art_hash = array();
+    $skill_inj_hash = array();
+
+    if ($with_artifacts) {    // учитываем надетые предметы
+        $artifacts = user_get_artifact_list($companion['user_id'], null, false, false, array('companion_item' => PARAM_COMP_ITEMS_ONLY, 'companion_slot' => '*'));
+        $trends = array();
+        $artifact_sets = array();
+        $set_quality = array();
+        $enchant_artikul_ids = array();
+        $enchant_list = array();
+        $oprava_artikul_ids = array();
+        $oprava_list = array();
+        $artifact_artikul_ids = array();
+        foreach ($artifacts as $artifact) {
+            if ($artifact['enchant_id']) $enchant_artikul_ids[$artifact['enchant_id']] += 1;
+            if ($artifact['oprava_id']) $oprava_artikul_ids[$artifact['oprava_id']] += 1;
+            $artifact_artikul_ids[$artifact['artikul_id']] = 1;
+        }
+
+        if ($enchant_artikul_ids) {
+            $enchant_artikul_hash = artifact_artikul_list(array('id' => array_keys($enchant_artikul_ids)));
+            foreach ($enchant_artikul_hash as $artikul) $enchant_list = array_merge($enchant_list, array_fill(0,$enchant_artikul_ids[$artikul['id']], $artikul));
+        }
+        if ($oprava_artikul_ids) {
+            $oprava_artikul_hash = artifact_artikul_list(array('id' => array_keys($oprava_artikul_ids)));
+            foreach ($oprava_artikul_hash as $artikul) $enchant_list = array_merge($enchant_list, array_fill(0,$oprava_artikul_ids[$artikul['id']], $artikul));
+        }
+
+        if ($artifact_artikul_ids) {
+            $artifact_artikul_hash = make_hash(artifact_artikul_list(array('id' => array_keys($artifact_artikul_ids)), '', 'id, quality, trend, set_id'));
+        }
+        $artifact_type_list = array(
+            OBJECT_CLASS_ARTIFACT => &$artifacts,
+            OBJECT_CLASS_ARTIFACT_ARTIKUL => &$enchant_list,
+        );
+        foreach ($artifact_type_list as $object_class => $artifact_list) {
+            foreach ($artifact_list as $k=>$artifact) $artifact_list[$k]['object_class'] = $object_class;
+            skill_objects_list($artifact_list,$query_add);
+            foreach ($artifact_list as $artifact) {
+                //Скиллы с сокетов
+                $artifact_socket_skills = socket_skills_get($artifact);
+                if($artifact_socket_skills){
+                    foreach ($artifact_socket_skills as $sock_skills){
+                        $skill_hash[$sock_skills['skill_id']]['skill_id'] = $sock_skills['skill_id'];
+                        $skill_hash[$sock_skills['skill_id']]['value'] += $sock_skills['value'];
+                        $skill_art_hash[$sock_skills['skill_id']]['skill_id'] = $sock_skills['skill_id'];
+                        $skill_art_hash[$sock_skills['skill_id']]['value'] += $sock_skills['value'];
+                    }
+                }
+
+//				$artifact_skill_list = skill_object_list($object_class,$artifact,$query_add);
+                if (count($artifact['artifact_skills'])) foreach ($artifact['artifact_skills'] as $artifact_skill) {
+                    $skill_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                    $skill_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                    if ($artifact['type_id'] != ARTIFACT_TYPE_ID_INJURY) {
+                        $skill_art_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                        $skill_art_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                    } else {
+                        $skill_inj_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                        $skill_inj_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                    }
+                }
+                $artikul = ($artifact['object_class'] == OBJECT_CLASS_ARTIFACT) ? $artifact_artikul_hash[$artifact['artikul_id']] : $artifact;
+                if (in_array($artifact['slot_id_c'],array_keys($companion_slots_hash)) && $artikul['trend']){
+                    if(!$artifact['oprava_id'] && !$artikul['type_id'] == ARTIFACT_TYPE_ID_OPRAVA){
+                        $trends[] = $artikul['trend'];
+                    }
+                }
+                if ($artikul['set_id']) {
+                    $artifact_sets[$artikul['set_id']]++;
+                    $set_quality[$artikul['set_id']] = $artikul['quality'];
+                }
+            }
+        }
+
+        $trends = array_unique($trends);
+        if ((count($trends) > 1) && in_array(-1, $trends)) {
+            sort($trends);
+            array_shift($trends);
+        }
+        $art = ((count($trends) == 1) && $trends[0] || !$trends);
+        $set_info = array();
+        foreach ($artifact_sets as $set_id => $set_count) {
+            if ($set_count < ARTIFACT_SET_MINCOUNT) {
+                continue;
+            }
+            $artifact_set = artifact_set_get($set_id);
+            $bonus_artikul_id = 0;
+            for ($i = $set_count; $i>= ARTIFACT_SET_MINCOUNT; $i--) {
+                $bonus_artikul_id = $artifact_set[sprintf("bonus%d", $i)];
+                if ($bonus_artikul_id) {
+                    break;
+                }
+            }
+            if ($bonus_artikul_id) {
+                $set_info[$set_id] = $artifact_set;
+                $set_info[$set_id]['quality']= $set_quality[$set_id];
+                $artifact_skill_list = skill_object_list(OBJECT_CLASS_ARTIFACT_ARTIKUL,$bonus_artikul_id);
+                foreach ($artifact_skill_list as $artifact_skill) {
+                    $skill_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                    $skill_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+
+                    $skill_art_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                    $skill_art_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+
+                    $set_info[$set_id]['skills'][$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                    $set_info[$set_id]['skills'][$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                }
+            }
+        }
+    }
+    // Вычисляем расчетные характеристики
+    if (!$skill_id || in_array('HPMAX',$skill_id)) { // HPMAX
+        $_level = floor($companion['level'] * (100 + $skill_hash['LEVEL']['value']) / 100);
+        $skill_hash['HPMAX']['value'] = max(user_get_hpmax($_level,$skill_hash['VIT']['value'],$art) + intval($skill_hash['XHPMAX']['value']), 1);
+        $skill_hash['HPMAX']['skill_id'] = 'HPMAX';
+    }
+    if (!$skill_id || in_array('HP',$skill_id)) { // HP
+        $hp_t0 = intval($skill_hash['HP_T0']['value']);
+        $hp_t1 = intval($skill_hash['HP_T1']['value']);
+        $d = ($hp_t0 >= $hp_t1 ? 1: (time_current() - $hp_t0) / ($hp_t1 - $hp_t0));
+        $d = min(max($d,0),1);
+        $skill_hash['HP']['value'] = intval($skill_hash['HPMAX']['value'] * $d);
+        $skill_hash['HP']['skill_id'] = 'HP';
+    }
+    if (!$skill_id || in_array('MPMAX',$skill_id)) { // MPMAX
+        $skill_hash['MPMAX']['value'] = intval($skill_hash['INTELL']['value']) + intval($skill_hash['XMPMAX']['value']);
+        $skill_hash['MPMAX']['skill_id'] = 'MPMAX';
+    }
+    if (!$skill_id || in_array('MP',$skill_id)) { // MP
+        $mp_t0 = intval($skill_hash['MP_T0']['value']);
+        $mp_t1 = intval($skill_hash['MP_T1']['value']);
+        $d = ($mp_t0 >= $mp_t1 ? 1: (time_current() - $mp_t0) / ($mp_t1 - $mp_t0));
+        $d = min(max($d,0),1);
+        $skill_hash['MP']['value'] = intval($skill_hash['MPMAX']['value'] * $d);
+        $skill_hash['MP']['skill_id'] = 'MP';
+    }
+    if ($extended) {
+        $skill_ids = array_keys($skill_hash);
+        if ($skill_ids) {
+            $skill_list = skill_list(false,sql_pholder(" AND id IN (?@)",$skill_ids));
+            foreach($skill_list as $skill) {
+                $skill_hash[$skill['id']] = array_merge($skill_hash[$skill['id']],$skill);
+            }
+            uasort($skill_hash, create_function('$a,$b', 'return strcmp($a["title"],$b["title"]);'));
+        }
+    }
+    return array(
+        'skills' => &$skill_hash,
+        'skills_self' => &$skill_self_hash,
+        'skills_art' => &$skill_art_hash,
+        'skills_inj' => &$skill_inj_hash,
+        'artifacts' => &$artifacts,
+        'set_info' => $set_info,
+        'art' => $art,
+    );
+}
+
+//Вызов тени в бой!
+function companion_to_fight($session_user = array(), $param = array()){
+    $out = array('status' => -1,);
+    if (!$session_user['fight_id']){
+        $out['error'] = 'Вы не находитесь в бою!';
+        return $out;
+    }
+    require_once("lib/fight.lib");
+
+    $fight_user = fight_user_get(array('fight_id' => $session_user['fight_id'], 'user_id' => $session_user['id']));
+    if (!$fight_user){
+        $out['error'] = 'Вы не находитесь в бою!';
+        return $out;
+    }
+
+    if(!$session_user['companion_id'] || !$session_user){
+        $out['error'] = 'Не найдена тень!';
+        return $out;
+    }
+    $companion = common_object_get(OBJECT_CLASS_COMPANION, $session_user['companion_id']);
+    if(!$companion){
+        $out['error'] = 'Не найдена тень!';
+        return $out;
+    }
+
+    $fight_companion = fight_user_get(array('fight_id' => $session_user['fight_id'], 'companion_id' => $companion['id']));
+    if($fight_companion){
+        $out['error'] = 'Тень уже находится в этом бою!';
+        return $out;
+    }
+
+    //Проверка наличности возможности вызова?
+    $artifact_amount = artifact_amount(COMPANION_ATK_ARTIFACT_ID, $session_user['id']);
+    $need_cnt = ($companion['level'] * 1);
+    if($need_cnt > $artifact_amount){
+        $out['error'] = 'Недостаточно сумеречных монет для вызова тени в бой!';
+        return $out;
+    }
+    if(!artifact_remove(COMPANION_ATK_ARTIFACT_ID, $need_cnt, $session_user['id'])){
+        $out['error'] = 'Ошибка! Сумеречные монеты не списаны за вызов тени в бой!';
+        return $out;
+    }
+
+    //Вызов тени в бой
+    $bot_artikul = bot_artikul_get(COMPANION_ARTIKUL_BOT_ID);
+    if (!$bot_artikul) {
+        $out['error'] = 'Ошибка! Тень не найдена!';
+        return $out;
+    }
+
+    $fight = fight_get($session_user['fight_id']);
+    $area=area_get($session_user['area_id']);
+
+    if (!$session_user['instance_id'] && ($fight['level'])) {
+        if (!($area['flags'] & AREA_FLAG_ALLOW_MOROC) && !($bot_artikul['flags'] & BOT_FLAG_ALLOW_GREAT_BATTLE)){
+            $out['error'] = 'Призывать тень запрещенно в текущем бою!';
+            return $out;
+        }
+    }
+
+    $bot_id = bot_create(COMPANION_ARTIKUL_BOT_ID,1,($session_user['instance_id'] ? 0 : $session_user['area_id']), $session_user['instance_id'],array(
+        'companion_id' => $companion['id'],
+        'level' => $companion['level'],
+        'nick' => 'Тень - '.$session_user['nick'],
+        'hunt' => 0,
+        'flags' => BOT_FLAG_TEMP
+    ));
+    if (!$bot_id) return false;
+    $bot = bot_get($bot_id);
+
+    // запоминаем кто призвал бота
+    $param['bot_params'][$bot_id]['activator_class'] = $session_user['object_class'];
+    $param['bot_params'][$bot_id]['activator_id'] = $session_user['id'];
+
+    $param['shadow'] = $companion;
+    $param['activator_id'] = $session_user['id']; //OR $fight_user['id'] but not for me
+
+    $status = false;
+    if ($session_user['instance_id'] ? instance_lock($session_user['instance_id']) : 1) {
+        $fight = fight_get($session_user['fight_id']);
+        $status = fight_join($fight,$bot,($param['invert_companion_team'] ? ($fight_user['team'] == 1 ? 2 : 1) : $fight_user['team']),$param);
+        if ($session_user['instance_id']) instance_unlock($session_user['instance_id']);
+    }
+    if (!$status) bot_delete($bot['id']);
+
+    if($status) {
+        //Сохраним кол-во призывов!
+        skill_object_set_value(OBJECT_CLASS_COMPANION, $companion['id'], 'SHADOW_CALL', 1, array('relative' => true));
+        $out['status'] = 100;
+        return $out;
+    }else{
+        $out['error'] = 'Не удалось призвать тень в бой!';
+        return $out;
+    }
+}
+
+function companion_get_cfg($companion = array()) {
+    global $_part_match;
+
+    if (!$companion || !is_array($companion))
+        return false;
+
+    $layers = array();
+
+    $user = user_get($companion['user_id']);
+
+    //Тень будет выглядеть как игрок, но вещи будут свои!
+
+    foreach ($_part_match as $k=>$v) $layers[0][$v] = ($v != FS_PPT_HD2) && ($v <= FS_PPT_LL3) ? $user['cfg_pbody'] : 0;
+    $layers[0][FS_PPT_HD1] = $user['cfg_phead'];
+    $layers[1][FS_PPT_HD1] = $user['cfg_phair'];
+
+    $companion_artifact_list = user_get_artifact_list($user['id'], false, false, false, array('companion_item' => PARAM_COMP_ITEMS_ONLY, 'companion_slot' => '*'));
+    $artikul_ids = array();
+    foreach($companion_artifact_list as $artifact) {
+        $artikul_ids[] = $artifact['artikul_id'];
+    }
+    $artifact_artikul_list = ($artikul_ids) ? artifact_artikul_list(array('id' => $artikul_ids)) : array();
+    foreach ($artifact_artikul_list as $artifact_artikul) {
+        if (!$artifact_artikul['f_pack'] || ($artifact_artikul['slot_id'] == 'MOUNT')) continue;
+        if ($artifact_artikul['flags'] & ARTIFACT_FLAG_WEAPON) $weapon_mask |= $artifact_artikul['f_cfg'] & (ARTIFACT_PPT_RW | ARTIFACT_PPT_LW | ARTIFACT_PPT_MW);
+        foreach ($_part_match as $k=>$v) {
+            if (!($artifact_artikul['f_cfg'] & $k)) continue;
+            if ($layers[$artifact_artikul['f_layer']][$v] && !($artifact_artikul['flags'] & ARTIFACT_FLAG_LAYERPRIO)) continue;
+            $layers[$artifact_artikul['f_layer']][$v] = $artifact_artikul['f_pack'];
+        }
+    }
+    if ($layers[2][FS_PPT_HD1] || $layers[2][FS_PPT_HD2]) $layers[1][FS_PPT_HD1] = 0;
+    $slot_artifacts = make_hash($artifact_artikul_list,'slot_id',true);
+    foreach (array_keys($slot_artifacts) as $slot_id) {
+        $artikul_id = $slot_artifacts[$slot_id][0]['artikul_id'];
+        $slot_artifacts[$slot_id][0]['f_cfg'] = $artifact_artikul_list[$artikul_id]['f_cfg'];
+    }
+    $parts = array();
+    foreach ($_part_match as $k=>$v) {
+        $parts[] = $layers[0][$v];
+        $parts[] = $layers[1][$v];
+        $parts[] = $layers[2][$v];
+    }
+    $skeleton = 0;
+    $skeleton =
+        ($slot_artifacts['MOUNT'] ? 9 :
+            (($weapon_mask & ARTIFACT_PPT_RW) && ($weapon_mask & ARTIFACT_PPT_LW) ? 4:	// две руки с оружием
+                ($weapon_mask & ARTIFACT_PPT_MW ? 3:	// двуручное оружие
+                    ($weapon_mask & ARTIFACT_PPT_RW ? 1:	// правое оружие
+                        ($weapon_mask & ARTIFACT_PPT_LW ? 5:	// левое оружие
+                            2)))));	// нет оружия
+
+    $ret = array(
+        'skeleton' => $skeleton,
+        'layers' => &$layers,
+        'parts' => &$parts,
+        'artifacts' => array(),
+        'slot_artifacts' => &$slot_artifacts,
+    );
+    return $ret;
+}

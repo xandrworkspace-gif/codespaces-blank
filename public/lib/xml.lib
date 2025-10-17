@@ -1,0 +1,44 @@
+<? # $Id: xml.lib 15.03.2010 14:04:35 i.hrustalev $
+
+function xml_render_attributes($element) {
+	$xml = '';
+	if (!$element['attributes'] || !is_array($element['attributes'])) {
+		return $xml;
+	}
+
+	foreach ($element['attributes'] as $name => $value) {
+		$xml .= ' '.$name.'="'.$value.'"';
+	}
+
+	return $xml;
+}
+
+function xml_new($name, $content ='') {
+	return array(
+		'name' => $name,
+		'attributes' => array(),
+		'children' => array(),
+		'content' => $content,
+	);
+}
+
+function xml_render($element) {
+	$xml = '';
+	if (!$element['name']) {
+		return $xml;
+	}
+
+	$xml .= '<'.$element['name'].xml_render_attributes($element).'>';
+	if ($element['children']) {
+		foreach ($element['children'] as $child) {
+			$xml .= xml_render($child);
+		}
+
+	} elseif (isset($element['content'])) {
+		$xml .= $element['content'];
+	}
+
+	$xml .= '</'.$element['name'].'>';
+	return $xml;
+}
+?>

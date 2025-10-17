@@ -1,0 +1,232 @@
+<? # $Id: mobile.lib,v 1.16 2008-12-16 11:08:02 s.panferov Exp $
+
+define('MOF_USER', 'id, nick, area_id, level, gender, kind, rank, money, money_silver, money_gold, area_ftime, profession, gag_time, gag_reason_str');
+define('MOF_AREA', 'id, parent_id, code, swf, picture_bg, freeze_time, title');
+define('MOF_STORE_ARTIFACT_TYPE', 'id, title');
+define('MOF_STORE_ARTIKUL', 'artikul_id, title, picture, price, gender, level_min, level_max, durability, durability_max, cnt, type_id, kind_id, description');
+define('MOF_STORE_CART_ITEM', 'id, title, price, amount');
+define('MOF_FIGHT_USER', 'id, user_id, user_level, user_kind, bot_id, bot_artikul_id, team, party_id, data, flags');
+
+function mobile_common_show_error($error=false) {
+	global $RESPONSE;
+	if ($_REQUEST['msg']) $RESPONSE['message'] = $_REQUEST['msg']; //$_REQUEST['msg_title']);
+	if (!$error) $error = $_REQUEST['error'];
+	$error = trim($error);
+	if ($error) $RESPONSE['error'] = $error;
+	return;
+}
+
+function path_explode($path) {
+	return explode('/', str_replace('\\', '/',$path));
+}
+
+// относительное имя модуля, который дёрнул функцию
+// out: user_info.php, area/area_bank.area, etc
+function get_module_name($level=1) {
+	$trace = debug_backtrace();
+	if (count($trace) < $level) return '';
+	$t = $trace[$level];
+	$t = array_diff_assoc(path_explode($t['file']), path_explode(__FILE__));
+	$module_name = implode('/', $t);
+	return $module_name;
+}
+
+function xmlspecialchars($data) {
+	return str_replace(array('&nbsp;','&','<','>', '"'), array(' ','&amp;','&lt;','&gt;',"&quot;"), $data);
+}
+
+class XMLElement {
+	var $name;
+	var $attr;
+	var $data;
+	var $child_list = array();
+
+	function &XMLElement($tag_name='item', $attr=array(), $data=false) {
+		if (is_array($data)) {
+			vardump('XMLDocument->constructor: error - invalid data!');
+			vardump($data);
+			return false;
+		}
+		$this->name = $tag_name;
+		$this->attr = $attr;
+		$this->data = $data;
+	}
+
+	function &add($tag_name='item', $attr=array(), $data=false) {
+		$new = new XMLElement($tag_name, $attr, $data);
+		if ($this->data) {
+			vardump('XMLDocument->add: error - invalid element type!');
+			vardump($parent);
+			return false;
+		}
+		$count = array_push($this->child_list, $new);
+		return $this->child_list[$count-1];
+	}
+
+	function &add_recursive($tag_name, $data) {
+		$attr = array();
+		if (!is_array($data)) {
+			vardump('XMLDocument->add_recursive: error - invalid data for element='.$tag_name.'!');
+			return false;
+		}
+		foreach ($data as $k=>$v) {
+			if (!is_array($v)) {
+				if (is_numeric($k)) $data[$k] = array('item' => $v);
+				else $attr[$k] = $v;
+			}
+		}
+		$new = &new XMLElement($tag_name, $attr);
+		foreach ($data as $k=>$v) {
+			if (is_array($v)) {
+				$new->add_recursive(is_numeric($k) ? 'item' : $k, $v);
+			}
+		}
+		$count = array_push($this->child_list, $new);
+		return $this->child_list[$count-1];
+	}
+
+	function get_xml($level=0) {
+		$delim = ($level ? str_repeat("\t", $level) : '');
+		$at = '';
+		if ($this->attr) {
+			foreach ($this->attr as $k=>$v) {
+				$t[] = $k.'="'.xmlspecialchars($v).'"';
+			}
+			$t = ' '.implode(' ', $t);
+		}
+		$xml = "\n".$delim.'<'.$this->name.$t.'>';
+		$xml .= ($this->data) ? $this->data : '';
+		foreach($this->child_list as $child) {
+			$xml .= $child->get_xml($level+1);
+		}
+		return $xml.(($this->child_list) ? "\n".$delim : '').'</'.$this->name.'>';
+	}
+}
+/*
+function &xml_object_town(&$xml_element, &$object) {
+	$area_info = area_get_location_info($object);
+	$area = &$area_info['area'];
+	$location = &$area_info['location'];
+	$attr = array(
+		'title' => $location['title'],
+		'code' => $location['code'],
+		'bg' => file_url(PATH_SWF_AREAS.$location['swf']),
+		'ftime_max' => $area['freeze_time'],
+	);
+	return $xml_element->add('town', $attr);
+}*/
+
+function &xml_object_area_link_list(&$xml_element, $user, $session) {
+	$items = area_conf_link_list($user, $session);
+	foreach ($items as $item) {
+		$xml_element->add('item', $item);
+	}
+	
+//	vardump($items);
+/*
+	global $session_user, $area_cachs;
+	$link_list = area_link_list($area_id,false," AND active=1",true);
+	common_fldsort($link_list,false,'f_id');
+	foreach ($link_list as $link) {
+		if (($link['flags'] & AREA_LINK_FLAG_NO_GHOST) && ($session_user['flags'] & USER_FLAG_GHOST)) continue;
+		$item = array();
+		if ($link['to_id']) {
+			if (!$link['bot_group_id'] && $link['kind'] && ($link['kind'] != $session_user['kind'])) continue;
+			$item['type'] = 'area';
+			$item['id'] = $link['to_id'];
+			$area = cache_fetch($area_cachs, $link['to_id'], 'area_get');
+			$item['code'] = $area['code'];
+			$item['href'] = '/'.action_run_request(array(
+				'code' => 'COME_IN',
+				'area_id' => $link['to_id'],
+				'url_success' => 'area.php',
+				'url_error' => 'area.php',
+			));
+			if ($link['code']) $item['code'] = $link['code'];
+		} else if ($link['bot_group_id']) {
+			$item['type'] = 'bot';
+			$item['href'] = '/'.action_run_request(array(
+				'code' => 'ATTACK_BOT',
+				'in[group_id]' => $link['bot_group_id'],
+				'url_success' => common_fight_php(),
+				'url_error' => 'area.php',
+			));
+		} else if ($link['action_id']) {
+			if ($link['kind'] && ($link['kind'] != $session_user['kind'])) continue;
+			$item['type'] = 'action';
+			$item['href'] = '/'.action_run_request(array(
+				'object_class' => OBJECT_CLASS_AREA,
+				'object_id' => $session_user['area_id'],
+				'action_id' => $link['action_id'],
+				'url_success' => 'area.php',
+				'url_error' => 'area.php',
+			));
+		} else if ($link['inst_artikul_id']) {
+			if ($link['kind'] && ($link['kind'] != $session_user['kind'])) continue;
+			$item['type'] = 'instance';
+			$item['href'] = '/'.secure_url($key,'instance.php?action=enter&ref='.$link['id']);
+		} else if ($link['flags'] & AREA_LINK_FLAG_NPC) {
+			if ($link['kind'] && ($link['kind'] != $session_user['kind'])) continue;
+			$item['type'] = 'npc';
+			$item['href'] = '/'.secure_url($key,'npc.php?action=enter&ref='.$link['id']);
+		}
+		if ($link['title']) $item['name'] = $link['title'];
+		if ($link['flags'] & AREA_LINK_FLAG_CONFIRM) $item['confirm'] = 1;
+		$items[] = $item;
+		$xml_element->add('item', $item);
+	}
+    */
+	return null;
+}
+
+
+function mobile_send_response() {
+	global $RESPONSE, $error, $response_sender, $area, $session_user, $session;
+
+	mobile_common_show_error($error);
+	unset($error,$_REQUEST['error']);
+
+	$root = &new XMLElement('response');
+	$system = &$root->add('system');
+	$system->add('server_time', false, time_current());
+	$system->add('sender', false, $response_sender);	
+
+	if ($RESPONSE['error']) $system->add('error', false, $RESPONSE['error']);
+	if ($RESPONSE['message']) $system->add('message', false, $RESPONSE['message']);
+	if ($RESPONSE['redirect']) $system->add('redirect', false, $RESPONSE['redirect']);
+	if ($session_user) {
+		$root->add('user', get_params($session_user, MOF_USER));
+	}
+	if ($area) {
+		$xml_area = &$root->add('area', get_params($area, MOF_AREA));
+		$xml_linked_area_list = &$xml_area->add('linked_area_list');
+		xml_object_area_link_list($xml_linked_area_list, $session_user, $session);
+		if ($RESPONSE['area_data']) {
+			$area_data = &$xml_area->add_recursive('area_data', $RESPONSE['area_data']);
+			if ($RESPONSE['mode_hash']) {
+				$xml_mode_list = &$area_data->add('mode_list', ($RESPONSE['mode'] ? array('mode' => $RESPONSE['mode']) : false), false);
+				foreach ($RESPONSE['mode_hash'] as $mode_id => $mode) {
+					$xml_mode_list->add('item', array('code' => $mode_id, 'title' => $mode['title']));
+				}
+			}
+		}
+	}
+	if ($RESPONSE['service']) {
+		$xml_service = &$root->add('service', $RESPONSE['service']);
+		if ($RESPONSE['service_data']) {
+			$service_data = &$xml_service->add_recursive('service_data', $RESPONSE['service_data']);
+			if ($RESPONSE['mode_hash']) {
+				$xml_mode_list = &$service_data->add('mode_list', ($RESPONSE['mode'] ? array('mode' => $RESPONSE['mode']) : false), false);
+				foreach ($RESPONSE['mode_hash'] as $mode_id => $mode) {
+					$xml_mode_list->add('item', array('code' => $mode_id, 'title' => $mode['title']));
+				}
+			}
+		}		
+	}
+	header('Content-Type: text/xml;charset=utf-8');
+	print '<?xml version="1.0" encoding="utf-8"?>';
+	print $root->get_xml();
+}
+
+
+?>

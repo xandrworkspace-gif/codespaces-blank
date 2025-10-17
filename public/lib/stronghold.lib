@@ -1,0 +1,206 @@
+<? # $Id: stronghold.lib,v 1.9 2010-03-05 13:05:02 p.knoblokh Exp $
+
+define('STRONGHOLD_TEAM_DEFENDERS', 1);	// ID команды защитников
+define('STRONGHOLD_TEAM_ATTACKERS', 2);	// ID команды атакующих
+
+define('STRONGHOLD_ALLIANCE_PERIOD', 14*86400); // Клан должен состоять в альянсе не менее двух недель
+
+define('STRONGHOLD_QUEUE_MAX_TIME_BONUS', '30'); // максимальное количество очков, которое можно получить за длительное неучастие в крепости
+define('STRONGHOLD_QUEUE_MAX_RANDOM_BONUS', '10'); // максимальный рандомный разброс очков, который можно получить в очереди на крепость
+define('STRONGHOLD_QUEUE_MAX_RACE_BONUS', '20'); // бонус, который выдается участникам очереди, когда первым участником выбран клан противоположной расы
+
+/**
+ * Время, в течении которого можно всупить в бой за крепость после его начала задается здесь.
+ * 15 * 60
+ */
+define ('STRONGHOLD_FIGHT_AVALIBLE_TIME', 900);
+
+$stronghold_hash = array(
+	STRONGHOLD_TEAM_DEFENDERS	=>	array('name' => 'defend', 'title' => translate('Защитники')),	// Количество защитников
+	STRONGHOLD_TEAM_ATTACKERS	=>	array('name' => 'attack', 'title' => translate('Атакующие')),	// Количество атакующих
+);
+
+// Имена и поля таблиц
+define('TABLE_STRONGHOLDS','strongholds');
+define('FIELD_STRONGHOLDS','');
+define('TABLE_STRONGHOLD_INFO','stronghold_info');
+define('FIELD_STRONGHOLD_INFO','');
+define('TABLE_STRONGHOLD_CLANS','stronghold_clans');
+define('FIELD_STRONGHOLD_CLANS','');
+define('TABLE_STRONGHOLD_SIEGE_HISTORY','stronghold_siege_history');
+define('FIELD_STRONGHOLD_SIEGE_HISTORY','');
+
+function stronghold_get($ref=false, $add='') {
+	global $db_2;
+	$stronghold = common_get($db_2,TABLE_STRONGHOLDS,$ref,$add);
+	if ($stronghold) $stronghold['object_class'] = OBJECT_CLASS_STRONGHOLD;
+	return $stronghold;
+}
+
+function stronghold_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_STRONGHOLDS,$ref,$add,$field_list);
+}
+
+function stronghold_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_STRONGHOLDS, $ref, $add);
+}
+
+function stronghold_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_STRONGHOLDS,$param,FIELD_STRONGHOLDS);
+}
+
+function stronghold_delete($ref) {
+	global $db_2;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_2,TABLE_STRONGHOLDS,$ref);
+	stronghold_clan_delete(array('stronghold_id' => $ref));
+	return true;
+}
+
+function stronghold_info_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_STRONGHOLD_INFO,$ref,$add);
+}
+
+function stronghold_info_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_STRONGHOLD_INFO,$ref,$add);
+}
+
+function stronghold_info_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_STRONGHOLD_INFO,$ref,$add);
+}
+
+function stronghold_info_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_STRONGHOLD_INFO,$param,FIELD_STRONGHOLD_INFO);
+}
+
+function stronghold_info_delete($ref) {
+	global $db_2;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_2,TABLE_STRONGHOLD_INFO,$ref);
+	return true;
+}
+
+
+function stronghold_clan_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_STRONGHOLD_CLANS,$ref,$add);
+}
+
+function stronghold_clan_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_STRONGHOLD_CLANS,$ref,$add,$field_list);
+}
+
+function stronghold_clan_save($param, $ref_name='id') {
+	global $db_2;
+	return common_save($db_2,TABLE_STRONGHOLD_CLANS,$param,FIELD_STRONGHOLD_CLANS,$ref_name);
+}
+
+function stronghold_clan_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_STRONGHOLD_CLANS,$ref,$add);
+}
+
+
+function stronghold_siege_history_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_STRONGHOLD_SIEGE_HISTORY,$ref,$add);
+}
+
+function stronghold_siege_history_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_STRONGHOLD_SIEGE_HISTORY,$ref,$add,$field_list);
+}
+
+function stronghold_siege_history_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_STRONGHOLD_SIEGE_HISTORY,$ref,$add);
+}
+
+function stronghold_siege_history_save($param, $ref_name='id') {
+	global $db_2;
+	return common_save($db_2,TABLE_STRONGHOLD_SIEGE_HISTORY,$param,FIELD_STRONGHOLD_SIEGE_HISTORY,$ref_name);
+}
+
+function stronghold_siege_history_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_STRONGHOLD_SIEGE_HISTORY,$ref,$add);
+}
+
+// выбрасывает всех пользователей, находящихся в крепости, за ее пределы
+function stronghold_unman($stronghold, &$stronghold_info) {
+	if (!$stronghold_info['owner_clan_id']) return;
+	// получаем список пользователей с локации двора крепости, которую надо очистить
+	$areas_ids = array_keys(make_hash(area_list(array('parent_id' => $stronghold['yard_area_id']))));
+	$areas_ids[] = $stronghold['yard_area_id'];
+	$stronghold_yard_users = make_hash(user_list(array('area_id' => $areas_ids), '', false, 'id,flags'));
+	if ($stronghold_yard_users) {
+		$yard_user_ids = array();
+		foreach ($stronghold_yard_users as $yard_user_id => $yard_user) {
+			// Снятие флага фарминга, если таковой стоит
+			if ($yard_user['flags'] & (USER_FLAG_NOACTION | USER_FLAG_FARMING)) user_set_flag($yard_user_id,(USER_FLAG_NOACTION | USER_FLAG_FARMING),false);
+			$yard_user_ids[] = $yard_user_id;
+		}
+		if ($yard_user_ids) {
+			// Снятие длительного действия, если такое запущено
+			session_save(array(
+				'_add' => sql_pholder(' AND uid IN (?@) ', $yard_user_ids),
+				'_set' => 'action_id=0, ltime=0'
+			));
+			// Уведомление
+			chat_msg_send_system(translate('Время владения Вашим кланом крепостью истекло, Вы будете телепортированы за её пределы!'), CHAT_CHF_USER, $yard_user_ids);
+		}
+		// Выкидываем пользователей с локации двора крепости
+		user_bulk_update(false, 'area_id', $stronghold['stronghold_area_id'], null, sql_pholder(' AND area_id IN (?@) ', $areas_ids));
+		chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$yard_user_ids,array('func' => "updateSwf({'area':''})",));
+	}
+	// производим смену владельца крепости
+	$clan_owner = clan_get($stronghold_info['owner_clan_id']);
+	chat_msg_send_system(sprintf(translate('Клан %s <a href="#" onclick="showClanInfo(%d)"><img src="%s" width=13 height=13 border=0 align="absmiddle"></a> больше не является хозяином крепости %s! Все воины, находящиеся на территории замка, были выдворены за ее пределы.'), $clan_owner['title'], $clan_owner['id'], PATH_IMAGE_CLANS.$clan_owner['picture'], $stronghold['title']), CHAT_CHF_AREA);
+	$stronghold_info['owner_clan_id'] = 0;
+}
+
+// обновление фарма в крепости
+function stronghold_farm_refresh($stronghold) {
+	require_once("lib/farm.lib");
+	$yard_area_id = intval($stronghold['yard_area_id']);
+	if (!$yard_area_id) {
+		vardump(__FILE__.':'.__LINE__."There is no yard location has found for stronghold id = '{$stronghold['id']}'",1);
+		return false;
+	}
+	if (!area_lock($yard_area_id)) {
+		vardump(__FILE__.':'.__LINE__."There 'area_lock' function no succed for area_id = '$yard_area_id'.",1);
+		return false;
+	}
+	$params = array(
+		'_mode'	=> CSMODE_UPDATE,
+		'_set'	=> sql_pholder("flags = flags | ?#AREA_FLAG_FARM_FLORA_REFRESH"),
+		'id'	=> $yard_area_id,
+	);
+	$result = area_save($params);
+	if (!$result) {
+		vardump(__FILE__.':'.__LINE__."There 'area_save' function no succed for area_id = '$yard_area_id'.",1);
+	}
+	area_unlock($yard_area_id);
+}
+
+function stronghold_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('STRONGHOLD_'.intval($ref),$timewait,$timelock);
+}
+
+function stronghold_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('STRONGHOLD_'.intval($ref));
+}
+
+?>

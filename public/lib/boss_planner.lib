@@ -1,0 +1,119 @@
+<?
+
+/**
+ * stime - время старта
+ * prepare_time - время подготовки
+ * period - переодичность...
+ * time_to_cht - нужная херня для вывода сообщений в чат
+ */
+
+define('TABLE_BOSS_SCHEDULER_LIST', 'boss_scheduler_list');
+define('TABLE_BOSS_LIST', 'boss_list');
+
+define('BOSS_PLANNER_PREP_AREA_ID', 644);
+
+$boss_week_flags_hash = array(
+    1 => translate('Понедельник'),
+    2 => translate('Вторник'),
+    4 => translate('Среда'),
+    8 => translate('Четверг'),
+    16 => translate('Пятница'),
+    32 => translate('Суббота'),
+    64 => translate('Воскресенье'),
+);
+
+define('BOSS_SCHEDULER_FLAG_ACTIVE', 0x000001);
+define('BOSS_SCHEDULER_FLAG_PROD_TIME', 0x000002);
+
+$boss_scheduler_flags_hash = array(
+    BOSS_SCHEDULER_FLAG_ACTIVE => 'Босс активен',
+    BOSS_SCHEDULER_FLAG_PROD_TIME => 'Следующая битва через указанное время',
+);
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function boss_scheduler_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BOSS_SCHEDULER_LIST,$ref,$add);
+}
+
+function boss_scheduler_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_BOSS_SCHEDULER_LIST,$ref,$add);
+}
+
+function boss_scheduler_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BOSS_SCHEDULER_LIST, $ref, $add);
+}
+
+function boss_scheduler_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BOSS_SCHEDULER_LIST,$param);
+}
+
+function boss_scheduler_delete($ref) {
+    global $db_2;
+    if (!$ref || is_array($ref)) return false;
+    common_delete($db_2,TABLE_BOSS_SCHEDULER_LIST,$ref);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function boss_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_BOSS_LIST,$ref,$add);
+}
+
+function boss_list($ref=false, $add='', $field='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_BOSS_LIST,$ref,$add, $field);
+}
+
+function boss_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_BOSS_LIST, $ref, $add);
+}
+
+function boss_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_BOSS_LIST,$param);
+}
+
+function boss_delete($ref) {
+    global $db_2;
+    if (!$ref || is_array($ref)) return false;
+    common_delete($db_2,TABLE_BOSS_LIST,$ref);
+    return true;
+}
+
+
+function boss_scheduller_cron(){
+
+
+
+
+
+}
+
+function boss_planner_user_backhome($user_list){
+    global $kind_info;
+    foreach ($user_list as $user){
+        if($user['area_id_transfer']){
+            user_save(array(
+                'id' => $user['id'],
+                'area_id' => $user['area_id_transfer'],
+                'area_id_transfer' => 0,
+                'area_ftime' => 0,
+            ));
+        }else{
+            user_save(array(
+                'id' => $user['id'],
+                'area_id' => $kind_info[$user['kind']]['city_area_id'],
+                'area_id_transfer' => 0,
+                'area_ftime' => 0,
+            ));
+        }
+    }
+}

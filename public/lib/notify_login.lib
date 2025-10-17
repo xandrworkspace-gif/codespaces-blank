@@ -1,0 +1,104 @@
+<?
+
+
+define('NOTIFY_LOGIN_TABLE', 'notify_login');
+define('NOTIFY_LOGIN_STAT_TABLE', 'notify_login_stat');
+
+define('NOTIFY_LOGIN_WINDOW', 0x000001);
+define('NOTIFY_DONT_SHOW_TIME', 0x000002);
+
+$notify_login_flags_hash = array(
+    NOTIFY_LOGIN_WINDOW => 'В окно',
+    NOTIFY_DONT_SHOW_TIME => 'Не показывать время',
+);
+
+function notify_login_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,NOTIFY_LOGIN_TABLE,$ref,$add);
+}
+
+function notify_login_list($ref=false, $add = '') {
+    global $db_diff;
+    return common_list($db_diff,NOTIFY_LOGIN_TABLE,$ref,$add);
+}
+
+function notify_login_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,NOTIFY_LOGIN_TABLE,$ref,$add);
+}
+
+function notify_login_save($param) {
+    global $db_diff;
+    return common_save($db_diff,NOTIFY_LOGIN_TABLE,$param);
+}
+
+function notify_login_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff,NOTIFY_LOGIN_TABLE,$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function notify_login_stat_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,NOTIFY_LOGIN_STAT_TABLE,$ref,$add);
+}
+
+function notify_login_stat_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,NOTIFY_LOGIN_STAT_TABLE,$ref,$add);
+}
+
+function notify_login_stat_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,NOTIFY_LOGIN_STAT_TABLE,$ref,$add);
+}
+
+function notify_login_stat_save($param) {
+    global $db_diff;
+    return common_save($db_diff,NOTIFY_LOGIN_STAT_TABLE,$param);
+}
+
+function notify_login_stat_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff,NOTIFY_LOGIN_STAT_TABLE,$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function notify_login_check($user) {
+    if(!$user) return false;
+    $notify_list = make_hash(notify_login_list(false, sql_pholder(' AND !(flags & ?#NOTIFY_LOGIN_WINDOW) AND (ctime < ?) AND (ctime + period) > ?', time_current(), time_current())));
+    if($notify_list) $notify_stat = make_hash(notify_login_stat_list(array('user_id' => $user['id'], 'notify_id' => array_keys($notify_list))), 'notify_id');
+    foreach ($notify_list as $notify){
+        $_stat = $notify_stat[$notify['id']];
+        if(!$notify['cnt'] && $_stat) continue; //Уже показывали
+        if($notify['cnt'] && $_stat['cnt'] >= $notify['cnt']) continue; //Превысили кол-во показов
+
+        if($_stat){
+            notify_login_stat_save(array(
+                'id' => $_stat['id'],
+                '_set' => sql_pholder(' ctime = ?, cnt = cnt + 1', time_current()),
+            ));
+        }else{
+            notify_login_stat_save(array(
+                'notify_id' => $notify['id'],
+                'user_id' => $user['id'],
+                'ctime' => time_current(),
+                'cnt' => 1,
+            ));
+        }
+        chat_msg_send_system($notify['description'], CHAT_CHF_USER, $user['id']);
+    }
+}
+
+function notify_login_check_window($user){
+    if(!$user) return false;
+    $notify_list = make_hash(notify_login_list(false, sql_pholder(' AND (flags & ?#NOTIFY_LOGIN_WINDOW) AND (ctime < ?) AND (ctime + period) > ?', time_current(), time_current())));
+    if($notify_list) $notify_stat = make_hash(notify_login_stat_list(array('user_id' => $user['id'], 'notify_id' => array_keys($notify_list))), 'notify_id');
+    foreach ($notify_list as $k=>$notify){
+        $_stat = $notify_stat[$notify['id']];
+        if($_stat) unset($notify_list[$k]); //Уже показывали
+    }
+    return $notify_list;
+}

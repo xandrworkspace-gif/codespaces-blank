@@ -1,0 +1,1011 @@
+<? # $Id: exp_imp.lib,v 1.41 2009-12-04 09:28:24 v.krutov Exp $ %TRANS_SKIP%
+
+define('EXP_IMP_PATH', 'tmp/');
+define('SYNC_DATA_PATH', 'sync_data/');
+require_once("lib/quest.lib");
+require_once("lib/bot.lib");
+require_once("lib/lua_script.lib");
+require_once("lib/trans.lib");
+
+$bonus_cache_dependens = array('bonuses', 'bonus_items', 'restrictions','restriction_items');
+
+// Если Вы решили изменить этот массив, обязательно поправьте cron_export.php
+$exp_imp_entities = array(	// container, title, table list
+	'dragons',
+	'areas'		 		=> array('db', 'areas', 'areas,area_actions,auction_groups,area_bank_rates,area_bots,area_links,area_settings,area_store_artikuls,area_store_categories,area_skills,area_bank_bonuses,area_bank_packs,area_bank_pack_groups,area_chat_subchannels'),
+	'artifact_artikuls' => array('db', 'artifact artikuls', 'artifact_artikuls,artifact_artikul_actions,artifact_artikul_skills,artifact_groups,artifact_kinds,artifact_sets,artifact_types,artifact_cd_groups'),
+	'bot_artikuls'		=> array('db', 'bot artikuls', 'bot_artikuls,bot_artikul_skills,bot_artikul_effects,bot_groups,bot_types'),
+	'instance_artikuls' => array('db', 'instance artikuls', 'instance_artikuls,instance_artikul_actions,instance_artikul_bots,instance_artikul_links,instance_artikul_skills'),
+	'nps'				=> array('db', 'nps', 'npcs,npc_quests'),
+	'pets'				=> array('db', 'pets', 'pet_artikuls,pet_artikul_effects,pet_groups,pet_types'),
+	'lua_scripts'		=> array('db', 'lua_scripts', 'lua_scripts'),
+	'cube_recipes'		=> array('db', 'cube_recipes', 'cube_recipes'),
+	'levelup_resources' => array('db', 'levelup_resources', 'levelup_resources'),
+
+	'dragons_2',
+	'actions'			=> array('db_2', 'actions', 'actions,action_codes,action_types'),
+	'bgs'				=> array('db_2', 'bgs', 'bgs,bg_levels'),
+	'bonuses'			=> array('db_2', 'bonuses', 'bonuses,bonus_items,bonus_types'),
+	'castles'			=> array('db_2', 'castles', 'castles'),
+	'farm'				=> array('db_2', 'farm', 'farm,farm_areas,farm_types'),
+	'injuries'			=> array('db_2', 'injuries', 'injuries'),
+	'punishments'		=> array('db_2', 'punishments', 'punishments'),
+	'quests'			=> array('db_2', 'quests', 'quests,quest_points,quest_point_awards,quest_types'),
+	'recipes'			=> array('db_2', 'recipes', 'recipes'),
+	'restrictions'		=> array('db_2', 'restrictions', 'restrictions,restriction_items'),
+	'skills'			=> array('db_2', 'skills', 'skills,skill_groups'),
+	'slaughters'		=> array('db_2', 'slaughters', 'slaughters'),
+	'slots'				=> array('db_2', 'slots', 'slots'),
+	'events'			=> array('db_2', 'events', 'event_artikuls,event_points,event_areas,event_point_tasks,event_artikul_points,event_point_types,event_types'),
+	'achievements'		=> array('db_2', 'achievements', 'achievements,achievement_groups,achievement_items'),
+	'clan_stat_artikuls'=> array('db_2', 'clan_stat_artikuls', 'clan_stat_artikuls,clan_stat_artikul_levels'),
+	'flood'				=> array('db_2', 'flood', 'flood_messages,flood_messages_type'),
+	'strongholds' => array('db_2', 'strongholds', 'strongholds'),
+	'estates'           => array('db_2', 'building_artikuls', 'building_artikuls,building_settings'),
+	'conversions'		=> array('db_2', 'conversions', 'conversions'),
+	'global_skills'		=> array('db_2', 'global_skills', 'global_skills'),
+	'restriction_objects'		=> array('db_2', 'restriction_objects', 'restriction_objects'),
+	
+	'dragons_diff',
+	'tutorials'			=> array('db_diff', 'tutorials', 'tutorials'),
+	'avatar_artikuls'   => array('db_diff', 'avatar artikuls', 'user_avatar_artikuls'),
+//	'admin_profiles'	=> array('db_diff', 'admin profiles', 'admin_profiles,admin_access'),
+);
+
+$exp_imp_localesafe_exclusions = array('title','description','nick','chat_msg','rules','reason_str','target','bonus_description','elsetext','store_title','finish_cht_msg','cht_msg','short','body','link_title','link_url','short_description');
+
+$user_export_tables = array(
+	// Вставка в таблицу авторизаций всегда должна быть первой
+	'db_auth' => array(
+		array(
+			'table' => 'auth',
+			'fields' => 'email,passwd,time_registered,time_login,time_logout,nick,blocked,last_ip,last_cid,m_login_time,auth_flags,session_time,ingame_time,fb_id',
+			'user_id_field' => 'uid',
+			'inserted_id' => 'new_user_id',
+		),
+		array(
+			'table' => 'user_info_changes',
+			'fields' => 'user_id,field,value_old,stime',
+		),
+		array(
+			'table' => 'user_info',
+			'fields' => 'uid,name,phone,birthdate,region_id,about,slogan,question,answer,notes,block_time,url_redirect,avatar_id,partner_data,playit_nick,u_settings',
+			'user_id_field' => 'uid',
+		),
+		array(
+			'table' => 'node_info',
+			'fields' => 'uid,node_num',
+			'user_id_field' => 'uid',
+		),
+	),
+	'db_3' => array(
+		array(
+			'table' => 'users',
+			'fields' => 'id,nick,level,gender,kind,rank,class,cfg_phead,cfg_phair,cfg_pbody,cfg_sk,msg_color,money,money_silver,money_gold,area_id,area_id_transfer,area_ftime,profession,0 as clan_id,0 as party_id,0 as raid_id,0 as instance_id,0 as fight_id,0 as fight_akey,0 as trophy_id,injury_time,injury_type,gag_time,gag_reason_str,0 as trade_id,0 as trade_sess_id,0 as mount_id,flags,marks,access,blocked,damaged,0 as referrer_id,0 as pet_id,invisibility_time,time_registered',
+			'user_id_field' => 'id',
+		),
+	),
+	'db' => array(
+		array(
+			'table' => 'area_bank_cells',
+			'fields' => 'type,area_id,user_id,clan_id,num',
+			'add' => ' and clan_id=0',
+		),
+		array(
+			'table' => 'area_bank_exchanges',
+			'fields' => 'user_id,money_type,sdate,amount,bonus',
+		),
+		array(
+			'table' => 'area_barber_changes',
+			'fields' => 'user_id,cost,stime',
+		),
+		array(
+			'table' => 'area_store_user_limits',
+			'fields' => 'user_id,limit_group_id,count',
+		),
+		array(
+			'table' => 'area_bank_pack_users',
+			'fields' => 'user_id,pack_id,status,ctime',
+		),
+	),
+	'db_2' => array(
+		array(
+			'table' => 'area_casino_super_games',
+			'fields' => 'user_id,ctime,data',
+		),
+		array(
+			'table' => 'combo_users',
+			'fields' => 'combo_id,user_id,seq,used',
+		),
+		array(
+			'table' => 'event_track_users',
+			'fields' => 'user_id,event_id,flags',
+		),
+		array(
+			'table' => 'farm_users',
+			'fields' => 'farm_id,user_id,cnt',
+		),
+		array(
+			'table' => 'lucky_star_users',
+			'fields' => 'user_id,warn_time,turns_left,opened_decks,game_field',
+		),
+		array(
+			'table' => 'punishment_users',
+			'fields' => 'user_id,crime_id,type_id,punishment_id,reason_str,money,money_type,ftime',
+		),
+		array(
+			'table' => 'recipe_users',
+			'fields' => 'user_id,artikul_id,cnt,ftime,favorite',
+		),
+	),
+	'db_diff' => array(
+		array(
+			'table' => 'cheaters',
+			'fields' => 'code,user_id,user_nick,user_level,cnt',
+		),
+		array(
+			'table' => 'dialog_users',
+			'fields' => 'dialog_id,user_id',
+		),
+		array(
+			'table' => 'log_quest_users',
+			'fields' => 'quest_id,user_id,user_level,user_kind,status,stime',
+		),
+		array(
+			'table' => 'log_user_actions',
+			'fields' => 'action_id,user_id,0 as user_id2,stime',
+		),
+		array(
+			'table' => 'money_stat2',
+			'fields' => 'user_id,user_level,user_rank,ingame_time,payment_time,amount',
+		),
+		array(
+			'table' => 'money_transfers',
+			'fields' => 'user_id,money_type,amount,stime,comment',
+		),
+		array(
+			'table' => 'user_credits',
+			'fields' => 'user_id,payments_total,loan_size,return_date,warn_num,loan_max_size',
+		),
+		array(
+			'table' => 'user_avatars',
+			'fields' => 'user_id,artikul_id,dtime',
+		),
+	),
+	'nodes' => array(
+		array(
+			'table' => 'artifacts',
+			'fields' => 'id,artikul_id,user_id,area_id,0 as owner_id,clan_id,time_expire,ctime,type_id,kind_id,slot_id,enchant_id,enchant2_id,slot_num,durability,durability_max,cnt,flags,param1,param2,artikul_actions,artikul_skills',
+			'crossnode' => 'id_artifacts',
+		),
+		array(
+			'table' => 'artifacts',
+			'fields' => 'id,artikul_id,0 as user_id,area_id,owner_id,clan_id,time_expire,ctime,type_id,kind_id,slot_id,enchant_id,enchant2_id,slot_num,durability,durability_max,cnt,flags,param1,param2,artikul_actions,artikul_skills',
+			'crossnode' => 'id_artifacts',
+			'user_id_field' => 'owner_id',
+			'node' => 1,
+		),
+		array(
+			'table' => 'artifacts',
+			'fields' => 'id,artikul_id,0 as user_id,area_id,owner_id,clan_id,time_expire,ctime,type_id,kind_id,slot_id,enchant_id,enchant2_id,slot_num,durability,durability_max,cnt,flags,param1,param2,artikul_actions,artikul_skills',
+			'crossnode' => 'id_artifacts',
+			'user_id_field' => 'owner_id',
+			'node' => 2,
+		),
+		array(
+			'table' => 'artifacts',
+			'fields' => 'id,artikul_id,0 as user_id,area_id,owner_id,clan_id,time_expire,ctime,type_id,kind_id,slot_id,enchant_id,enchant2_id,slot_num,durability,durability_max,cnt,flags,param1,param2,artikul_actions,artikul_skills',
+			'crossnode' => 'id_artifacts',
+			'user_id_field' => 'owner_id',
+			'node' => 3,
+		),
+		array(
+			'table' => 'artifacts',
+			'fields' => 'id,artikul_id,0 as user_id,area_id,owner_id,clan_id,time_expire,ctime,type_id,kind_id,slot_id,enchant_id,enchant2_id,slot_num,durability,durability_max,cnt,flags,param1,param2,artikul_actions,artikul_skills',
+			'crossnode' => 'id_artifacts',
+			'user_id_field' => 'owner_id',
+			'node' => FRIDGE_NN,
+		),
+		array(
+			'table' => 'pets',
+			'fields' => 'id,artikul_id,user_id,exp,exp_max,next_artikul_id,title,flags,upgrade_artikul_id,rest_time,quality,satiation,satiation_drop',
+			'crossnode' => 'id_pets',
+		),
+		array(
+			'table' => 'user_actions',
+			'fields' => 'user_id,action_id,n,per_unit,per_value',
+		),
+		array(
+			'table' => 'user_skills',
+			'fields' => 'user_id,skill_id,value',
+		),
+		array(
+			'table' => 'user_spells',
+			'fields' => 'user_id,artikul_id,slot',
+		),
+		array(
+			'table' => 'user_stats',
+			'fields' => 'user_id,type_id,object_id,value,prev_value,next_value,status,clan_id,before_clan_value',
+		),
+		array(
+			'table' => 'user_achievements',
+			'fields' => 'user_id,achievement_id,weight,kind,status,stime',
+		),
+		array(
+			'table' => 'quest_user_points',
+			'fields' => 'quest_id,user_id,point_id,subpoint_id,status',
+		),
+		array(
+			'table' => 'quest_users',
+			'fields' => 'quest_id,user_id,status,point_num,dtime,stime',
+		),
+	),
+);
+
+function exp_imp_read(&$fd) {
+	$data = fread($fd,4);
+	if (strlen($data) != 4) return false;
+	$size = reset(unpack('S',$data));
+	$data = fread($fd,$size);
+	if (strlen($data) != $size) return false;
+	return explode("\x00",$data);
+}
+
+function exp_imp_write(&$fd, $values=array()) {
+	$data = implode("\x00",$values);
+	$data = pack('l',strlen($data)).$data;
+	return fwrite($fd,$data);
+}
+
+function exp_imp_export($fn, $form = array(), $filter = false) {
+	global $exp_imp_entities, $db, $db_2, $db_diff, $exp_imp_localesafe_exclusions;
+	$error = false;
+	$log = array();
+	$custom_only = isset($form['custom_only']) && $form['custom_only'] ? 1 : 0;
+	do {
+		if (!$form['entities'] || !is_array($form['entities'])) {
+			$error = "No entity selected for export";
+			break;
+		}
+		$fd = fopen($fn,"wb");
+		if (!$fd) {
+			$error = "Can't open file for output: $fn";
+			break;
+		}
+		exp_imp_write($fd,array('header',charset_code()));	// header
+		foreach ($form['entities'] as $entity_key) {
+			$ent = $exp_imp_entities[$entity_key];
+			if (!is_array($ent)) continue;
+			list($cont,,$tables) = $ent;
+			$cur_db = $$cont;
+			$cur_db->die_on_error = false;
+			$tables = preg_split("/[\s,;]+/",$tables);
+			foreach ($tables as $table) {
+				if (!$cur_db->db_GetQueryArray("DESCRIBE `$table`",$data)) {
+					$error = "Can't describe table `$table`: ".$cur_db->last_error;
+					break 2;
+				}
+				$ref = false;
+				$fields = array();
+				foreach ($data as $item) {
+					if ($item['Key'] == 'PRI') {
+						$ref = $item['Field'];
+						
+						$start_pk = false;
+						if ($custom_only) {
+							if (strpos($item['Type'], 'smallint') === 0) {
+								$start_pk = CUSTOM_CONTENT_START_PK_SMALLINT;
+							} elseif (strpos($item['Type'], 'int') === 0) {
+								$start_pk = CUSTOM_CONTENT_START_PK_INT;
+							}
+						}
+					}
+					if ($item['Null'] == 'YES') $log[] = "<b class=red>Warning:</b> NULL values in field `${item['Field']}` in table `$table` will be lost.";
+					$fields[$item['Field']] = str_replace('var','',$item['Type']);
+				}
+				if (!$ref) {
+					$error = "Can't determine primary key for table `$table`";
+					break 2;
+				}
+				if (!$fields) {
+					$error = "Empty field list for table `$table`";
+					break 2;
+				}
+				$field_names = array_keys($fields);
+				$chunk_id = md5(uniqid(rand(),true));
+				exp_imp_write($fd,array('start',$chunk_id));	// chunk start
+				exp_imp_write($fd,array($cont,$table,$ref));	// table information
+				exp_imp_write($fd,$field_names);	// field names
+				exp_imp_write($fd,$fields);	// field types
+				$cnt = 0;
+				$total = 0;
+				while (1) {
+					$sql = "SELECT `".implode('`,`',$field_names)."` FROM `$table` WHERE 1 ".($start_pk ? ' AND '.$ref.' >= '.$start_pk : '').($filter && isset($filter[$table]['data']) && !empty($filter[$table]['data']) ? sql_pholder(' AND '.$ref.' IN (?@)', $filter[$table]['data']) : '')." ORDER BY $ref LIMIT $total,1000";
+					if (!$cur_db->db_GetQueryArray($sql,$data)) {
+						$error = "Can't execute SQL ($sql): ".$cur_db->last_error;
+						break 3;
+					}
+					if (!$data) break;
+					$total += count($data);
+					foreach ($data as $item) {
+						exp_imp_write($fd,$item);
+						$cnt++;
+					}
+				}
+				if ($filter && isset($filter[$table]['delete']) && !empty($filter[$table]['delete']))
+					exp_imp_write($fd,array('delete_items',implode(',',$filter[$table]['delete'])));	// chunk end
+
+				exp_imp_write($fd,array('end',$chunk_id));	// chunk end
+				$log[] = "Table <b>$table</b>: <b>$cnt</b> ".common_decline($cnt,'record','records','records')." exported";
+			}
+		}
+		fclose($fd);
+		if ($error) @unlink($fn);
+	} while (0);
+	return array($error, $log);
+}
+
+function exp_imp_import($form = array()) {
+	global $db, $db_2, $db_diff, $exp_imp_localesafe_exclusions;
+	global $bonus_cache_chain_types;
+
+	// Если надо поменять этот массив, не забудь поменят и логику exp_imp_get_bonus_changes() !
+	$bonus_cache_dependens = array('bonuses', 'bonus_items', 'restrictions','restriction_items');
+
+	$j = 0;
+	$localesafe = intval($form['localesafe']);
+	$readonly = intval($form['readonly']);
+	$verbose = intval($form['verbose']);
+	$deletion = intval($form['deletion']);
+	$custom_content_safe = intval($form['custom_content_safe']);
+	$absolute = intval($form['absolute']);
+	$move_to = isset($form['move_to']) ? $form['move_to'] : false;
+	$apply_as_diff = false;
+
+	if (isset($form['apply_as_diff']) && $form['apply_as_diff']) {
+		$apply_as_diff = true;
+		$bonus_changes = array();
+		$bonus_dependent_changes = array();
+		$diff_log = array();
+	}
+
+	if ($deletion == 1) $localesafe = false;
+	$error = false;
+	$local_charset = charset_code();
+	$log = array();
+	$imported_tables = array(); // после выполнения импорта, содержит в себе все импортные таблички
+	do {
+		// файл запосщен из формы
+		if ($_FILES['form']['name']['datafile']) {
+			$absolute = false;
+			$new_fn = $_FILES['form']['name']['datafile'];
+			if (!move_uploaded_file($_FILES['form']['tmp_name']['datafile'], ($move_to ? rtrim($move_to, '/').'/'.$new_fn : SERVER_ROOT.EXP_IMP_PATH.$new_fn))) {
+				$error = "Can't upload file: $new_fn";
+				break;
+			}
+			chmod(SERVER_ROOT.EXP_IMP_PATH.$new_fn,0644);
+			$form['datafile'] = $new_fn;
+		}
+		if (!$form['datafile']) {
+			$error = "No data file specified for import";
+			break;
+		}
+		
+		// обрабатываем параметр absolute
+		$fn = $form['datafile'];
+		if (!$absolute) {
+			$fn = ($move_to ? rtrim($move_to, '/').'/' : SERVER_ROOT.EXP_IMP_PATH).$form['datafile'];
+		}
+		
+		$fd = @fopen($fn,"rb");
+		if (!$fd) {
+			$error = "Can't open file for input: $fn";
+			break;
+		}
+		$charset = charset_code();
+		$row = exp_imp_read($fd);
+		if ($row[0] == 'start') rewind($fd);	// compatibility with old datafiles without a header
+		else {
+			if (($row[0] != 'header') || !$row[1]) {
+				$error = "Invalid header";
+				break;
+			}
+			$charset = $row[1];
+		}
+		while (1) {
+			$pos = ftell($fd);
+			$row = exp_imp_read($fd);
+			if ($row === false) break;
+			if (($row[0] != 'start') || !$row[1]) {
+				$error = "Invalid chunk start at position $pos";
+				break;
+			}
+			$chunk_id = $row[1];
+			list($cont,$table,$ref) = exp_imp_read($fd);
+			$field_names = exp_imp_read($fd);
+			$field_types = exp_imp_read($fd);
+			if (!$cont || !$table || !$ref || !$field_names || !$field_types || !is_array($field_names) || !is_array($field_types) || (count($field_names) != count($field_types))) {
+				$error = "Invalid table information at position $pos";
+				break;
+			}
+			$fields = array_combine($field_names,$field_types);
+			$cur_db = $$cont;
+			$cur_db->die_on_error = false;
+			if (!$cur_db->db_GetQueryArray("DESCRIBE `$table`",$data)) {
+				$error = "Can't describe table `$table`: ".$cur_db->last_error;
+				break;
+			}
+			$local_ref = false;
+			$local_fields = array();
+			foreach ($data as $item) {
+				if ($item['Key'] == 'PRI') $local_ref = $item['Field'];
+				$local_fields[$item['Field']] = str_replace('var','',$item['Type']);
+			}
+			if ($ref != $local_ref) {
+				$error = "Primary keys don't match for table `$table`";
+				break;
+			}
+			foreach ($fields as $k=>$v) {
+				if ($local_fields[$k] == $v) continue;
+				if ($local_fields[$k]) $error = "Field `$k` of type `$v` is marked to be of type `${local_fields[$k]}` in local table `$table`";
+				else $error = "Field `$k` of type `$v` is absent in local table `$table`";
+				break 2;
+			}
+
+			$store_cache_changes = $apply_as_diff && in_array($table, $bonus_cache_dependens);
+
+			$field_count = count($field_names);
+			$cnt = 0;
+			$del_cnt = 0;
+			$ref_values = array();
+			if ($verbose) $log[] = "Importing table <b>$table</b>...";
+			if ($deletion == 1) {	// Truncate before import
+				if ($custom_content_safe) {	// Delete
+					do {
+						$custom_content_start_pk = false;
+						if (strpos($fields[$ref], 'smallint') === 0) {
+							$custom_content_start_pk = CUSTOM_CONTENT_START_PK_SMALLINT;
+						} elseif (strpos($fields[$ref], 'int') === 0) {
+							$custom_content_start_pk = CUSTOM_CONTENT_START_PK_INT;
+						}
+						if (!$custom_content_start_pk) break;
+
+						if (!$readonly && !$cur_db->execSQL("DELETE FROM `$table` where ".$ref.($custom_content_safe == 1 ? " < " : " >= ").$custom_content_start_pk)) {
+							$error = "Can't clear table `$table`: ".$cur_db->last_error;
+							break;
+						}
+						if ($verbose) {
+							$c = $readonly ? 'green' : 'red';
+							$log[] = "<b class=$c>T</b> (table reset [custom content safe])";
+						}
+					} while(0);
+				} else {
+					if (!$readonly && !$cur_db->execSQL("TRUNCATE `$table`")) {
+						$error = "Can't truncate table `$table`: ".$cur_db->last_error;
+						break;
+					}
+					if ($verbose) {
+						$c = $readonly ? 'green' : 'red';
+						$log[] = "<b class=$c>T</b> (table reset)";
+					}
+				}
+			}
+			while (1) {
+				$pos = ftell($fd);
+				$row = exp_imp_read($fd);
+				if ($row === false) {
+					$error = "Premature end-of-file reached while importing table `$table`";
+					break 2;
+				}
+				if ($row[0] == 'delete_items') {
+					if (!$apply_as_diff) continue;
+					$to_delete = $row[1];
+					$ids = explode(',', $to_delete);
+					$where = sql_pholder(' WHERE '.$ref.' IN (?@)', $ids);
+					$sql = 'DELETE FROM '.$table.$where;
+
+					if ($store_cache_changes) exp_imp_get_bonus_changes($table, $ids, $bonus_changes);
+
+					$cur_db->db_GetQueryArray('SELECT id FROM '.$table.$where, $ids);
+					$del_cnt = count($ids);
+					if (!$readonly && !$cur_db->execSQL($sql)) {
+						$error = "Can't execute SQL ($sql): ".$cur_db->last_error;
+						break 2;
+					}
+					$diff_log[$table]['deleted'] = $ids;
+					continue;
+				}
+				if (($row[0] == 'end') && ($row[1] == $chunk_id)) break;
+				if (count($row) != $field_count) {
+					$error = "Value count doesn't match field count while importing table `$table` at position $pos";
+					break 2;
+				}
+				$values = array_combine($field_names,$row);
+
+				if ($store_cache_changes) $bonus_dependent_changes[$table][$values['id']] = $values['id'];
+
+				if ($charset == $local_charset) $values_conv = $values;
+				else {	// converting data if charsets differ
+					$values_conv = array();
+					foreach ($values as $k=>$v) {
+						$v = iconv($charset,$local_charset,$v);
+						if ($v === false) {
+							$error = "iconv() from '$charset' to '$local_charset' failed";
+							break 3;
+						}
+						$values_conv[$k] = $v;
+					}
+				}
+				if ($deletion == 1) $update = false;
+				else {
+					$sql = "SELECT count(*) FROM `$table` WHERE `$ref`='".$values[$ref]."'";
+					if (!$cur_db->db_GetQueryVal($sql,$update)) {
+						$error = "Can't execute SQL ($sql): ".$cur_db->last_error;
+						break 2;
+					}
+				}
+				$skip = false;
+
+				if ($apply_as_diff) $diff_log[$table][$update ? 'updated' : 'added'][$values[$ref]] = $values_conv;
+
+				// updating data in trans_phrases
+				if (!$readonly && $localesafe) {
+					foreach ($values_conv as $k => $v) {
+						if (in_array($k, $exp_imp_localesafe_exclusions) && ($v != '')) {
+							if (!$values_conv[$ref]) continue; // no primary key
+							$phrase = trans_phrase_get(array('entity' => $table, 'entity_id' => $values_conv[$ref], 'field' => $k));
+							if ($v != $phrase['value']) {
+								$param = array(
+									'_mode' => CSMODE_REPLACE,
+									'entity' => $table,
+									'entity_id' => $values_conv[$ref],
+									'field' => $k,
+									'value' => $v,
+									'status' => $phrase && $phrase['status'] > 0 ? 2 : 0,
+								);
+
+								trans_phrase_save($param);
+							}
+						}
+					}
+				}
+
+				if ($update && $localesafe) {	// excluding not locale-safe fields and checking data validity on update
+					foreach ($exp_imp_localesafe_exclusions as $k) {
+						unset($values[$k]);
+						unset($values_conv[$k]);
+					}
+					if (($charset == 'CP1251') && preg_match('/[а-яА-Я]/',implode("",$values))) {
+						$log[] = "<b class=red>Warning:</b> skipping not locale-safe record in table `$table` - [".htmlspecialchars("'".implode("','",$values_conv)."'")."] ($ref='".$values[$ref]."').";
+						$skip = true;
+					}
+				}
+				if (!$skip) {
+					$sql = $update ? sql_pholder("UPDATE `$table` SET ?% WHERE `$ref`=?",$values_conv,$values[$ref]) : sql_pholder("REPLACE INTO `$table` (`".implode('`,`',array_keys($values_conv))."`) values (?@)",$values_conv);
+					if (!$readonly && !$cur_db->execSQL($sql)) {
+						$error = "Can't execute SQL ($sql): ".$cur_db->last_error;
+						break 2;
+					}
+				}
+				if ($verbose) {
+					$c = (($readonly || $skip) ? 'green' : ($cur_db->affected_rows() > 0 ? 'red' : false));
+					if ($c) {
+						$t = "'".implode("','",$values_conv)."'";
+						$log[] = $update ? "<b class=$c>U</b> [".htmlspecialchars($t)."] ($ref='".$values[$ref]."')" : "<b class=$c>I</b> [".htmlspecialchars($t)."]";
+					}
+				}
+				$ref_values[] = $values[$ref];
+				$cnt++;
+			}
+			if ($deletion == 2) {	// Delete nonexistent records
+				$ref_diff = array();
+				$ref_values_cur = array();
+				if ($ref_values) {
+					$total = 0;
+					$add_nonexistent = '';
+					
+					if ($custom_content_safe) {	// Delete and leave custom content
+						do {
+							$custom_content_start_pk = false;
+							if (strpos($fields[$ref], 'smallint') === 0) {
+								$custom_content_start_pk = CUSTOM_CONTENT_START_PK_SMALLINT;
+							} elseif (strpos($fields[$ref], 'int') === 0) {
+								$custom_content_start_pk = CUSTOM_CONTENT_START_PK_INT;
+							}
+							if (!$custom_content_start_pk) break;
+
+							$add_nonexistent = ' WHERE `'.$ref.'`'.($custom_content_safe == 1 ? " < " : " >= ").$custom_content_start_pk;
+						} while(0);
+					}
+					
+					while (1) {
+						$ref_values_cur_part = array();
+						if (!$cur_db->db_GetQueryCol("SELECT `$ref` FROM `$table` ".$add_nonexistent." ORDER BY 1 LIMIT $total,10000",$ref_values_cur_part)) {
+							$error = "Can't execute SQL ($sql): ".$cur_db->last_error;
+							break 2;
+						}
+						if (!$ref_values_cur_part) break;
+						$total += count($ref_values_cur_part);
+						foreach ($ref_values_cur_part as $item) $ref_values_cur[] = $item;
+					}
+					$ref_diff = array_diff($ref_values_cur,$ref_values);
+				}
+				
+				if ($ref_diff) {
+					foreach (array_chunk($ref_diff,10000) as $ref_diff_part) {
+						if (!$readonly && !$cur_db->execSQL("DELETE FROM `$table`".sql_pholder(" WHERE `$ref` IN (?@)",$ref_diff_part))) {
+							$error = "Can't execute SQL ($sql): ".$cur_db->last_error;
+							break 2;
+						}
+					}
+				}
+				if ($verbose) {
+					$r = 0;
+					$c = 'green';
+					if (!$readonly) {
+						$r = $cur_db->affected_rows();
+						$c = $r > 0 ? 'red' : false;
+					}
+					if ($c) {
+						$s = "<b class=$c>D</b> ".($ref_values ? ($ref_diff ? "$ref=('".implode("','",$ref_diff)."')" : 'nothing') : 'all records');
+						if (!$readonly) $s .= " [affected rows: $r]";
+						$log[] = $s;
+					}
+				}
+			}
+			$log[] = "Table <b>$table</b>: <b>".$cnt."</b> ".common_decline($cnt,'record','records','records')." imported".($del_cnt > 0 ? ", <b style=\"color: red;\">".$del_cnt."</b> ".common_decline($del_cnt,'record','records','records')." deleted" : '');
+			$imported_tables[] = $table;
+		}
+		fclose($fd);
+		if (!$readonly) exp_imp_import_fix();
+		//23707 Сделать пересчёт bonus_cache при импорте данных по ограничениям или бонусам 
+		
+		if ($apply_as_diff) {
+			if (!empty($bonus_dependent_changes)) {
+				foreach ($bonus_dependent_changes as $table => $ids) exp_imp_get_bonus_changes($table, $ids, $bonus_changes);
+			}
+			
+			if (!empty($bonus_changes)) {
+				$log[] = '<b>bonuses cache</b> rebuilt: '.implode(', ', $bonus_changes);
+				if (!$readonly) bonus_set_for_cache_update($bonus_changes);
+			}
+		} else {
+			foreach ($bonus_cache_dependens as $table) {
+				if (in_array($table, $imported_tables)) {
+					// rebuild cache
+					if (!$readonly) {
+						require_once ('lib/bonus_cache.lib');
+						bonus_cache_truncate();
+						common_save_settings(array('BONUS_CACHE_UPDATE_ALL' => 1));
+					}
+					$log[] = "bonus_cache was rebuilt";
+					break;
+				}
+			}
+		}
+		
+		// обновляем xml'ку зданий, если они изменились
+		if (in_array('building_artikuls', $imported_tables)) {
+			if (!$readonly) {
+				building_artikul_make_xml();
+			}
+			$log[] = "building_artikuls.xml was rebuilt";
+		}
+		
+	} while (0);
+
+	$res = array($error,$log);
+	if ($apply_as_diff) $res[] = $diff_log;
+	return $res;
+}
+
+function exp_imp_get_bonus_changes($table, $ids, &$bonus_changes) {
+	global $db_2;
+	if (!is_array($ids)) $ids = array($ids);
+	switch ($table) {
+		case 'bonuses':
+			foreach ($ids as $del_id) $bonus_changes[$del_id] = $del_id;
+			break;
+		case 'restriction_items':
+			$restriction_items = !empty($ids) ? common_list($db_2,TABLE_RESTRICTION_ITEMS,array('id' => $ids)) : array();
+			$ids = get_hash($restriction_items, 'restriction_id', 'restriction_id');
+		case 'restrictions':
+			$restrictions = !empty($ids) ? common_list($db_2,TABLE_RESTRICTIONS,array('object_class' => OBJECT_CLASS_BONUS_ITEM, 'id' => $ids)) : array();
+			$ids = get_hash($restrictions, 'object_id', 'object_id');
+		case 'bonus_items':
+			$bonus_items = !empty($ids) ? common_list($db_2,TABLE_BONUS_ITEMS,array('id' => $ids)) : array();
+			foreach ($bonus_items as $bonus_item) $bonus_changes[$bonus_item['bonus_id']] = $bonus_item['bonus_id'];
+			break;
+		default:
+	}
+}
+
+function exp_imp_import_fix() {
+	// Включение квестов
+	if (defined('IMPORT_EXCLUSIONS_QUEST_ON') && IMPORT_EXCLUSIONS_QUEST_ON) {
+		quest_save(array(
+			'_set' => sql_pholder('flags = flags & ~?', QUEST_FLAG_ADMIN),
+			'_add' => sql_pholder(' AND id IN (?@)', common_comma_str_to_num_arr(IMPORT_EXCLUSIONS_QUEST_ON)),
+		));
+	}
+	// Выключение квестов
+	if (defined('IMPORT_EXCLUSIONS_QUEST_OFF') && IMPORT_EXCLUSIONS_QUEST_OFF) {
+		quest_save(array(
+			'_set' => sql_pholder('flags = flags | ?', QUEST_FLAG_ADMIN),
+			'_add' => sql_pholder(' AND id IN (?@)', common_comma_str_to_num_arr(IMPORT_EXCLUSIONS_QUEST_OFF)),
+		));
+	}
+	// Включение ботов
+	if (defined('IMPORT_EXCLUSIONS_BOT_ON') && IMPORT_EXCLUSIONS_BOT_ON) {
+		bot_artikul_save(array(
+			'_set' => 'hunt = 1',
+			'_add' => sql_pholder(' AND id IN (?@)', common_comma_str_to_num_arr(IMPORT_EXCLUSIONS_BOT_ON)),
+		));
+	}
+	// Отключение ботов
+	if (defined('IMPORT_EXCLUSIONS_BOT_OFF') && IMPORT_EXCLUSIONS_BOT_OFF) {
+		bot_artikul_save(array(
+			'_set' => 'hunt = 0',
+			'_add' => sql_pholder(' AND id IN (?@)', common_comma_str_to_num_arr(IMPORT_EXCLUSIONS_BOT_OFF)),
+		));
+	}
+	// Включение событий
+	if (defined('IMPORT_EXCLUSIONS_EVENTS_ON') && IMPORT_EXCLUSIONS_EVENTS_ON) {
+		$event_ids = array_filter(common_comma_str_to_num_arr(IMPORT_EXCLUSIONS_EVENTS_ON), 'intval');
+		if ($event_ids) {
+			event_artikul_save(array(
+				'_set' => sql_pholder('flags = flags & ~?', EVENT_FLAG_OFF),
+				'_add' => sql_pholder(' AND id IN (?@)', $event_ids),
+			));
+			admin_log_add(1405, sprintf(translate('Включение событий при синхронизации: %s'), implode(',', $event_ids)), AL_PRIORITY_NORMAL);
+		}
+	}
+	// Отключение событий
+	if (defined('IMPORT_EXCLUSIONS_EVENTS_OFF') && IMPORT_EXCLUSIONS_EVENTS_OFF) {
+		$event_ids = array_filter(common_comma_str_to_num_arr(IMPORT_EXCLUSIONS_EVENTS_OFF), 'intval');
+		if ($event_ids) {
+			$bot_plant = false;
+			event_artikul_save(array(
+				'_set' => sql_pholder('flags = flags | ?', EVENT_FLAG_OFF),
+				'_add' => sql_pholder(' AND id IN (?@)', $event_ids),
+			));
+			foreach ($event_ids as $event_id) {
+				event_delete(array('artikul_id' => $event_id));
+				event_track_user_delete(array('event_id' => $event_id));
+				$bot_plant = true;
+			}
+			if ($bot_plant) bot_plant(); // рассадка ботов
+			admin_log_add(1404, sprintf(translate('Отключение событий при синхронизации: %s'), implode(',', $event_ids)), AL_PRIORITY_NORMAL);
+		}
+	}
+	// Синхронизация файлов lua-скриптов обеспечивается вызовом cron_import_fix.php
+
+	return true;
+}
+
+function exp_imp_entity_container($table, &$db_objects) {
+	global $exp_imp_entities;
+	if ($db_objects[$table]) return $db_objects[$table];
+	foreach ($exp_imp_entities as $k => $v) {
+		if (is_array($v)) {
+			$db_object = $v[0];
+			$tables = explode(',',$v[2]);
+			if (in_array($table, $tables)) {
+				$db_objects[$table] = $db_object;
+				return $db_object;
+			}
+		}
+	}
+}
+
+function user_export($user_id, $filename) {
+	global $db, $db_2, $db_diff, $db_auth, $db_3;
+	global $user_export_tables;
+	global $node_num;
+	if (!$user_id) return false;
+	$fd = fopen($filename,"w");
+	if (!$fd) return false;
+	$macroses = array(
+		'user_id'  =>'#new_user_id#',
+		'uid'      =>'#new_user_id#',
+		'id'       =>'#new_user_id#',
+		'owner_id' =>'#new_user_id#',
+		'node_num' =>'#new_node_num#',
+	);
+	$str = "set_param:new_node_num=".NODE_GET($user_id)."\n";
+	fwrite($fd,$str);
+	$select_limit = 10;
+	foreach($user_export_tables as $dblink => $tables) {
+		if ($dblink == 'nodes') {
+			NODE_PUSH(null, $user_id);
+			$link = $db;
+		} else {
+			$link = $$dblink;
+		}
+		$str = "use_db:".$dblink."\n";
+		fwrite($fd,$str);
+		foreach($tables as $table_info) {
+			if (isset($table_info['node'])) {
+				NODE_PUSH($table_info['node']);
+				$str = "set_param:new_node_num=".$table_info['node']."\n"."use_db:".$dblink."\n";
+				fwrite($fd,$str);
+			}
+			$add = ($table_info['add']) ? $table_info['add'] : '';
+			$rows_total = 0;
+			$user_id_field = ($table_info['user_id_field']) ? $table_info['user_id_field'] : 'user_id';
+			$fields = explode(',',$table_info['fields']);
+			$real_fields = array();
+			foreach($fields as $field) {
+				if (strpos($field,' as ')) {
+					$field_parts = explode(' as ',$field);
+					$real_fields[] = $field_parts[1];
+				} else {
+					$real_fields[] = $field;
+				}
+			}
+			if (!$fields) continue;
+			while(1) {
+				$data = array();
+				$crossnode_data = array();
+				$add_limit = $add.' LIMIT '.$rows_total.','.$select_limit;
+				$rows = common_list($link, $table_info['table'], array($user_id_field => $user_id), $add_limit, $table_info['fields']);
+				if (!$rows) break;
+				$rows_total += count($rows);
+				$str = '';
+				foreach($rows as $row) {
+					$row_elements = array();
+					foreach($fields as $field) {
+						if ($table_info['crossnode'] && ($field == 'id')) {
+							$row_elements[] = "'#crossnode_id#'";
+						} elseif (in_array($field, array_keys($macroses))) {
+							$row_elements[] = "'".mysql_real_escape_string($macroses[$field])."'";
+						} else {
+							$row_elements[] = "'".mysql_real_escape_string($row[$field])."'";
+						}
+					}
+					if ($table_info['crossnode']) {
+						$str .= "use_db:db\n";
+						$sql = "INSERT INTO ".$table_info['crossnode']." (node_num) values (#new_node_num#)";
+						$str .= $sql."\n";
+						$str .= "set_param:crossnode_id=inserted_id\n";
+						$str .= "use_db:".$dblink."\n";
+						$sql = "INSERT INTO ".$table_info['table']." (".implode(',',$real_fields).") values (".implode(',',$row_elements).")";
+						$str .= $sql."\n";
+						if ($table_info['crossnode'] == 'id_artifacts') {
+							$str .= "set_param:new_artifact_id=inserted_id\n";
+							$art_str = get_artifact_export_str($row['id'], $user_id, $link);
+							$str .= $art_str;
+						}
+					}
+					$data[] = '('.implode(',',$row_elements).')';
+				}
+				
+				fwrite($fd,$str);
+				
+				if ($table_info['crossnode']) continue;
+				
+				if (!$data) break;
+				$str = '';
+				$sql = "INSERT INTO ".$table_info['table']." (".implode(',',$real_fields).") values ".implode(',',$data);
+				$str .= $sql."\n";
+				if ($table_info['inserted_id']) {
+					$str .= "set_param:".$table_info['inserted_id']."=inserted_id\n";
+				}
+				fwrite($fd,$str);
+			}
+			
+			if (isset($table_info['node'])) {
+				NODE_POP();
+				$str = "set_param:new_node_num=".NODE_GET($user_id)."\n"."use_db:".$dblink."\n";
+				fwrite($fd,$str);
+			}
+		}
+		if ($dblink == 'nodes') {
+			NODE_POP();
+		}
+	}
+	
+	return true;
+}
+
+function get_artifact_export_str($artifact_id, $user_id, $dblink) {
+	$str = '';
+	$arifact_export_tables = array(
+		'artifact_actions' => 'artifact_id,action_id,n,dispose,per_unit,per_value',
+		'artifact_notes'   => 'artifact_id,note,type',
+		'artifact_skills'   => 'artifact_id,skill_id,value,value2',
+	);
+	foreach($arifact_export_tables as $table_name => $fields_str) {
+		$rows = common_list($dblink, $table_name, array('artifact_id' => $artifact_id));
+		if (!$rows) continue;
+		$fields = explode(',', $fields_str);
+		$data = array();
+		foreach($rows as $row) {
+			$row_elements = array();
+			foreach($fields as $field) {
+				if ($field == 'artifact_id') {
+					$row_elements[] = "'#new_artifact_id#'";
+				} else {
+					$row_elements[] = "'".mysql_real_escape_string($row[$field])."'";
+				}
+			}
+			$data[] = '('.implode(',',$row_elements).')';			
+		}
+		if (!$data) break;
+		$sql = "INSERT INTO ".$table_name." (".implode(',',$fields).") values ".implode(',',$data);
+		$str .= $sql."\n";
+	}
+	return $str;
+}
+
+function user_import($filename, $add_execute = array()) {
+	global $db, $db_2, $db_diff, $db_auth, $db_3, $db_nodes;
+	global $node_num;
+	$dblink = $db;
+	$fd = file($filename);
+	if (!$fd) return false;
+	$import_vars = array();
+	foreach ($add_execute as $str) {
+		$fd[count($fd) + 1] = $str;
+	}
+	foreach($fd as $str_c => $str) {
+		$str = trim($str);
+		if (strpos($str,'set_param:') === 0) {
+			$param_arr = explode(':',$str);
+			if (!$param_arr[1]) {
+				$error = "error in ".$str_c.":".$str;
+				break;
+			}
+			$param = explode('=',$param_arr[1]);
+			if (!$param[0] || !$param[1]) {
+				$error = "error in ".$str_c.":".$str;
+				break;
+			}
+			if ($param[1] == 'inserted_id') {
+				$last_id = $dblink->insert_id();
+				if (!$last_id) {
+					$error = "error getting last_id in ".$str_c;
+					break;
+				}
+				$param[1] = $last_id;
+			}
+			if ($param[0] == 'new_node_num') {
+				$node_num = $param[1];
+			}
+			$import_vars[$param[0]] = $param[1];
+		} elseif (strpos($str,'use_db:') === 0) {
+			$param_arr = explode(':',$str);
+			if (!$param_arr[1]) {
+				$error = "error in ".$str_c.":".$str;
+				break;
+			}
+			if ($param_arr[1] == 'nodes') {
+				$dblink = $db_nodes[$node_num];
+			} else {
+				$dblink = $$param_arr[1];
+			}
+			if (!$dblink) {
+				$error = "error using db in ".$str_c;
+				break;
+			}
+		} else {
+			$sql = $str;
+			foreach($import_vars as $var => $value) {
+				$sql = str_replace('#'.$var.'#',$value,$sql);
+			}
+			$res = $dblink->execSQL($sql);
+			if (!$res) {
+				$error = "error while executing in ".$str_c;
+				break;
+			}
+		}
+	}
+	
+	if ($error) {
+		$ret = array('status' => 0, 'error' => $error);		
+	} else {
+		$ret = array('status' => 1, 'user_id' => $import_vars['new_user_id']);
+	}
+	
+	return $ret;	
+}

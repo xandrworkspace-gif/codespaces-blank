@@ -1,0 +1,423 @@
+<? # $Id: Exp $
+
+require_once("lib/xml.lib");
+
+define('TABLE_TERRABANK_PROJECTS', 'terrabank_projects');
+define('FIELD_TERRABANK_PROJECTS','');
+define('TABLE_TERRABANK_SYSTEMS', 'terrabank_systems');
+define('FIELD_TERRABANK_SYSTEMS','');
+define('TABLE_TERRABANK_FORMS', 'terrabank_forms');
+define('FIELD_TERRABANK_FORMS','');
+
+// Флаги платежных систем
+define('TERRABANK_PAYSYS_FLAG_NOPAY',     0x0001); // непосредственная оплата с витрины невозможна
+//define('TERRABANK_PAYSYS_FLAG_', 0x0002);
+
+// Флаги форм
+define('TERRABANK_FORM_FLAG_AUTO', 0x0001); // заполняются автоматически
+
+// TERRABANK payment_method
+function terrabank_system_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2, TABLE_TERRABANK_SYSTEMS, $ref, $add);
+}
+
+function terrabank_system_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2, TABLE_TERRABANK_SYSTEMS, $ref, $add);
+}
+
+function terrabank_system_save($param) {
+	global $db_2;
+	return common_save($db_2, TABLE_TERRABANK_SYSTEMS, $param, FIELD_TERRABANK_SYSTEMS);
+}
+
+function terrabank_system_delete($ref=false, $add='') {
+	global $db_2;
+	terrabank_form_delete(array('system_id' => $ref));
+	return common_delete($db_2, TABLE_TERRABANK_SYSTEMS, $ref, $add);
+}
+
+
+// TERRABANK FORMS
+function terrabank_form_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2, TABLE_TERRABANK_FORMS, $ref, $add);
+}
+
+function terrabank_form_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2, TABLE_TERRABANK_FORMS, $ref, $add);
+}
+
+function terrabank_form_save($param) {
+	global $db_2;
+	return common_save($db_2, TABLE_TERRABANK_FORMS, $param, FIELD_TERRABANK_FORMS);
+}
+
+function terrabank_form_delete($ref=false, $add='') {
+	global $db_2;
+	return common_delete($db_2, TABLE_TERRABANK_FORMS, $ref, $add);
+}
+
+// --------------------------
+
+function terrabank_query_dictionaries() {
+	$data = array(
+		'name' => 'model:dictionaries',
+		'attributes' => array('xmlns:model' => 'http'.'://'.'terrabank.ru/model'),
+		'children' => array(
+			_auth_xml(TERRABANK_SITE_ID, TERRABANK_SECRET),
+		),
+	);
+
+	$xml = xml_render($data);
+	$response = terrabank_make_request('dictionaries.xfrm', $xml);
+	if (!$response) {
+		return $response;
+	}
+
+	$projects = _parse_projects($response);
+	$systems = _parse_systems($response);
+
+	return array(
+		'projects' => $projects,
+		'systems' => $systems,
+	);
+}
+
+
+function terrabank_make_payment($project, $account, $xforms) {
+	$additional_data = xml_new('model:data');
+
+	foreach ($xforms as $field => $value) {
+		$additional_data['children'][] = array(
+			'name' => 'model:attribute',
+			'attributes' => array('model:name' => $field),
+			'content' => $value,
+		);
+	}
+
+	$data = array(
+		'name' => 'model:order',
+		'attributes' => array('xmlns:model' => 'http'.'://'.'terrabank.ru/model'),
+		'children' => array(
+			_auth_xml(TERRABANK_SITE_ID, TERRABANK_SECRET),
+			xml_new('model:project', $project), // в Террабанке сказали здесь слать master terrabank_id (не партнерский)
+			xml_new('model:account', $account),
+			$additional_data,
+		),
+	);
+
+	$xml = xml_render($data);
+	$response = terrabank_make_request('action.xfrm', $xml);
+
+	$status = _find_child($response, array('orderResponse', 'status'));
+	$url = _find_child($response, array('orderResponse', 'url'));
+
+	if (!$status || !$url) {
+		return false;
+	}
+
+	// code=0 означает, что заказ принят, иначе ошибка
+	$code = 0;
+	$error = false;
+	foreach ($status['child'] as $child) {
+		if ($child['name'] == 'code') {
+			$code = $child['data'];
+		} elseif ($child['description']) {
+			$error = $child['description'];
+		}
+	}
+
+	if ($code != 0) {
+		return false;
+	}
+
+	// Аццкий костыль на переходный период в Террабанке
+	$url = str_replace('dwar.ru', 'terrabank.ru', $url['data']);
+	return $url;
+}
+
+function terrabank_make_request($file, $xml) {
+	require_once('include/socksender.inc');
+
+	$url = TERRABANK_URL.$file;
+
+	$xml = '<'.'?xml version="1.0" encoding="UTF-8" standalone="no"?'.'>'.$xml;
+	$data = get_answer_xml($url, $xml);
+
+	if ($data) {
+		require_once("lib/xml_parser.lib");
+		$parser = new XmlParser();
+		$data = $parser->parse_string($data);
+		if ($data) {
+			_clean_xml($data);
+		}
+	}
+	return $data;
+}
+
+function terrabank_form_row_print($item) {
+	switch ($item['type']) {
+		case 'input':
+		case 'hidden':
+?>
+			<tr><td><?=$item['title']?></td><td><input type="text" name="form[<?=$item['name']?>]" class="brd dbgl" disabled /></td></tr>
+<?
+			break;
+		case 'select':
+			$option_hash = unserialize($item['data']);
+			if (!$option_hash) return;
+			// Выбирая сумму в реале, нужно синхронизироваться с бриллиантами
+			if ($item['name'] == 'sum') {
+				$add = ' id="form_sum_field" onchange="recalcamount(this.value)"';
+			}
+?>
+			<tr>
+				<td><?=$item['title']?></td>
+				<td><?=html_select('form['.$item['name'].']', $option_hash, -1, false, 'class="dbgl2 nobrd c-s-n-fon" disabled'.$add)?></td>
+			</tr>
+<?
+			break;
+		default:
+			break;
+	}
+}
+
+function _clean_xml(&$children) {
+	foreach ($children as &$child) {
+		$child['name'] = preg_replace('/^.+\:/', '', $child['name']);
+
+		foreach ($child['attr'] as $key => $value) {
+			$new_key = preg_replace('/^.+\:/', '', $key);
+
+			unset($child['attr'][$key]);
+			$child['attr'][$new_key] = $value;
+		}
+
+		if ($child['child']) {
+			_clean_xml($child['child']);
+		}
+	}
+}
+
+function _auth_xml($site_id, $secret, $language ='ru-RU', $label_type ='STRINGS') {
+	return array(
+		'name' => 'model:auth',
+		'children' => array(
+			array('name' => 'model:siteId',    'content' => $site_id),
+			array('name' => 'model:secret',    'content' => $secret),
+			array('name' => 'model:language',  'content' => $language),
+			array('name' => 'model:labelType', 'content' => $label_type),
+		),
+	);
+}
+
+function _find_child($xml_children, $path) {
+	$next_child = array_shift($path);
+
+	foreach ($xml_children as $node) {
+		if ($node['name'] == $next_child) {
+			if (count($path)) {
+				return _find_child($node['child'], $path);
+			} else {
+				return $node;
+			}
+		}
+	}
+	return false;
+}
+
+function _parse_systems($xml) {
+	$data = _find_child($xml, array('html', 'body', 'site', 'systems'));
+
+	if (!$data) {
+		return false;
+	}
+
+	$systems = array();
+	foreach ($data['child'] as $child) {
+		if ($child['name'] == 'system') {
+			$system = _parse_system($child);
+			$systems[] = $system;
+		}
+	}
+	return $systems;
+}
+
+function _parse_system($xml_node) {
+	$system = array();
+	if (isset($xml_node['attr']['uiType'])) {
+		$system['uiType'] = $xml_node['attr']['uiType'];
+	}
+	foreach ($xml_node['child'] as $property) {
+		$key = $property['name'];
+		switch ($key) {
+			default:
+			case 'id':
+			case 'name':
+				$data = $property['data'];
+				break;
+			case 'xforms':
+				$data = _parse_xforms($property);
+				break;
+			case 'accounts':
+				$data = array();
+				foreach ($property['child'] as $child) {
+					if ($child['name'] == 'account') {
+						$account = _parse_account($child);
+						$data[] = $account;
+					}
+				}
+				break;
+		}
+
+		$system[$key] = $data;
+	}
+	return $system;
+}
+
+function _parse_account($xml_node) {
+	return xml_make_hash($xml_node['child']);
+}
+
+function _parse_xforms($xml_node) {
+	require_once("lib/xml_parser.lib");
+	$parser = new XmlParser();
+	$xforms = $parser->parse_string($xml_node['data']);
+	if ($xforms) {
+		_clean_xml($xforms);
+	}
+
+	$steps = _find_child($xforms, array('steps'));
+
+	$fields = array();
+	foreach ($steps['child'] as $child) {
+		if ($child['name'] == 'step') {
+			$fields = array_merge($fields, _parse_step($child));
+		}
+	}
+	return $fields;
+}
+
+function _parse_step($xml_node) {
+	$model = _find_child($xml_node['child'], array('model'));
+
+	$fields = array();
+	foreach ($model['child'] as $child) {
+		if ($child['name'] == 'attribute' && isset($child['attr']['name'])) {
+			$name = $child['attr']['name'];
+			$value = isset($child['attr']['value']) ? $child['attr']['value'] : '';
+
+			$fields[$name] = array(
+				'id' => $name,
+				'value' => $value,
+				'type' => 'input',
+			);
+		}
+	}
+
+	$view = _find_child($xml_node['child'], array('view'));
+	foreach ($view['child'] as $child) {
+		if (isset($child['attr']['ref']) && preg_match('/attribute\[\@[^\=]+name\=\'([^\']+)\'\]/', $child['attr']['ref'], $match)) {
+			$id = $match[1];
+			if (isset($fields[$id])) {
+				switch ($child['name']) {
+					default:
+					case 'input':
+					case 'textarea':
+						$fields[$id]['type'] = 'input';
+						break;
+					case 'select1':
+						$fields[$id]['type'] = 'select';
+						$option_hash = array();
+						foreach ($child['child'] as $item) {
+							if ($item['name'] == 'item') {
+								$option = xml_make_hash($item['child']);
+								$option_hash[$option['value']] = $option['label'];
+							}
+						}
+						$fields[$id]['data'] = serialize($option_hash);
+						break;
+				}
+			}
+		}
+	}
+	return $fields;
+}
+
+function _parse_projects($xml) {
+	$data = _find_child($xml, array('html', 'body', 'site', 'projects'));
+
+	if (!$data) {
+		return false;
+	}
+
+	$projects = array();
+	foreach ($data['child'] as $child) {
+		if ($child['name'] == 'project') {
+			$project = _parse_project($child);
+			$projects[] = $project;
+		}
+	}
+	return $projects;
+}
+
+function _parse_project($xml_node) {
+	$project = array();
+	foreach ($xml_node['child'] as $property) {
+		$key = $property['name'];
+		switch ($key) {
+			default:
+			case 'id':
+			case 'name':
+				$data = $property['data'];
+				break;
+			case 'currencies':
+				$data = array();
+				foreach ($property['child'] as $child) {
+					if ($child['name'] == 'currency') {
+						$currency = _parse_currency($child);
+						$data[] = $currency;
+					}
+				}
+				break;
+		}
+
+		$project[$key] = $data;
+	}
+	return $project;
+}
+
+function _parse_currency($xml_node) {
+	$currency = array();
+	foreach ($xml_node['child'] as $property) {
+		$key = $property['name'];
+
+		switch ($key) {
+			default:
+			case 'id':
+			case 'label':
+			case 'name':
+				$data = $property['data'];
+				break;
+			case 'rates':
+				$data = array();
+				foreach ($property['child'] as $child) {
+					if ($child['name'] == 'rate') {
+						$rate = _parse_rate($child);
+						$data[] = $rate;
+					}
+				}
+				break;
+		}
+		$currency[$key] = $data;
+	}
+	return $currency;
+}
+
+function _parse_rate($xml_node) {
+	return xml_make_hash($xml_node['child']);
+}
+

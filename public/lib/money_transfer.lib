@@ -1,0 +1,61 @@
+<? # $Id: money_transfer.lib,v 1.10 2008-08-18 09:26:07 vadim_b Exp $
+
+// Имена и поля таблиц
+define('TABLE_MONEY_TRANSFERS','money_transfers');
+define('FIELD_MONEY_TRANSFERS','');
+define('TABLE_MONEY_TRANSFER_BLOCKS','money_transfer_blocks');
+define('FIELD_MONEY_TRANSFER_BLOCKS','');
+
+define('PAYMENT_TYPE_SMS',       1);
+define('PAYMENT_TYPE_TB',        2);
+define('PAYMENT_TYPE_TBCREDIT',  3);
+
+
+function money_transfer_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_MONEY_TRANSFERS,$ref,$add);
+}
+
+function money_transfer_list($user_id=false, $time_start=false, $time_end=false, $add='') {
+	global $db_diff;
+	$query_add = '';
+	if ($user_id) $query_add .= sql_pholder(" AND user_id=?", $user_id);
+	if ($time_start) $query_add .= sql_pholder(" AND stime>=?",$time_start);
+	if ($time_end) $query_add .= sql_pholder(" AND stime<=?",$time_end);
+	return common_list($db_diff,TABLE_MONEY_TRANSFERS,false,$query_add.$add);
+}
+
+function money_transfer_count($user_id=false, $time_start=false, $time_end=false, $add='') {
+	global $db_diff;
+	$query_add = '';
+	if ($user_id) $query_add .= sql_pholder(" AND user_id=?", $user_id);
+	if ($time_start) $query_add .= sql_pholder(" AND stime>=?",$time_start);
+	if ($time_end) $query_add .= sql_pholder(" AND stime<=?",$time_end);
+	return common_count($db_diff,TABLE_MONEY_TRANSFERS,false,$query_add.$add);
+}
+
+function money_transfer_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_MONEY_TRANSFERS,$param,FIELD_MONEY_TRANSFERS);
+}
+
+function money_transfer_delete($ref=false, $add='') {
+	global $db_diff;
+	return common_delete($db_diff,TABLE_MONEY_TRANSFERS,$ref,$add);
+}
+
+function money_transfer_set_block($payment_type, $payment_id, $user_id, $money_type, $amount) {
+	global $db_diff;
+  $id = common_save($db_diff,TABLE_MONEY_TRANSFER_BLOCKS,array(
+    '_noerr' => true,
+    'payment_type' => $payment_type,
+    'payment_id' => $payment_id,
+    'user_id' => $user_id,
+    'money_type' => $money_type,
+    'amount' => $amount,
+    'sdatetime' => date('Y-m-d H:i:s',time_current()),
+  ),FIELD_MONEY_TRANSFER_BLOCKS);
+  return $id > 0;
+}
+
+?>

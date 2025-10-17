@@ -1,0 +1,50 @@
+<? # $Id: trans.lib,v 1.5 2009-09-07 15:36:24 razor Exp $
+
+// Имена и поля таблиц
+define('TABLE_TRANS_PHRASE','trans_phrases');
+define('FIELD_TRANS_PHRASE','');
+
+define('TRANS_STATUS_TRANSLATED', 1);
+
+function trans_phrase_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff,TABLE_TRANS_PHRASE,$ref,$add);
+}
+
+function trans_phrase_list($ref=false, $add='', $field_list='*') {
+	global $db_diff;
+	return common_list($db_diff,TABLE_TRANS_PHRASE,$ref,$add,$field_list);
+}
+
+function trans_phrase_save($param) {
+	global $db_diff;
+	return common_save($db_diff,TABLE_TRANS_PHRASE,$param,FIELD_TRANS_PHRASE);
+}
+
+function trans_phrase_delete($ref) {
+	global $db_diff;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_diff,TABLE_TRANS_PHRASE,$ref);
+	return true;
+}
+
+function trans_phrase_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff,TABLE_TRANS_PHRASE,$ref,$add);
+}
+
+function trans_escape($text) {
+	$text = preg_replace('/\r?\n/','[lf]',$text);
+	$text = str_replace("\t","[t]",$text);
+//	$text = addslashes($text);
+	return $text;
+}
+
+function trans_unescape($text) {
+	$text = str_replace('[lf]',"\r\n",$text);
+	$text = str_replace('[t]',"\t",$text);
+	//$text = str_replace('\\','',$text);
+	return $text;
+}
+
+?>

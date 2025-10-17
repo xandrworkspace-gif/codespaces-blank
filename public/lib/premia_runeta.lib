@@ -1,0 +1,54 @@
+<?php
+
+define('TABLE_PREMIA_RUNETA', 'premia_runeta');
+define('PREMIA_RUNETA_COOLDOWN', 86400);
+
+function premia_runeta_get($ref = false, $add = '') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_PREMIA_RUNETA, $ref, $add);
+}
+
+function premia_runeta_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_PREMIA_RUNETA, $param);
+}
+
+// ---------------------------------------
+
+function premia_runeta_fill_swf_vars(&$vars, $ignore_can_count = false) {
+	global $session_user, $db_diff;
+	if (!defined('BANNER_SHOW') || 
+		!BANNER_SHOW || 
+		!$session_user || 
+		!($ignore_can_count || premia_runeta_can_count(premia_runeta_get($session_user['id'])))
+	) return;
+	$banner_msg = BANNER_MSG;
+	if (BANNER_MSG_VARS) {
+		$banner_vars = explode(';',BANNER_MSG_VARS);
+		foreach($banner_vars as $banner_var) {
+			$params = explode('=',$banner_var);
+			if (count($params)!=2) continue;
+			$banner_msg = str_replace('['.$params[0].']',$params[1],$banner_msg);
+		}
+	}
+	$vars['bannermsg'] = $banner_msg;
+	$vars['bannerurl'] = BANNER_FLASH_URL;
+}
+
+function premia_runeta_can_count($row) {
+	return !$row || ($row['stime'] < time_current() - PREMIA_RUNETA_COOLDOWN);
+}
+
+function premia_runeta_count($user_id) {
+	global $db_diff;
+	$row = premia_runeta_get($user_id);
+	if (!premia_runeta_can_count($row)) return;
+	$cnt = $row ? $row['cnt'] : 0;
+	$param = array(
+		'id' => $user_id,
+		'stime' => time_current(),
+		'cnt' => $cnt+1,
+	);
+	$param['_mode'] = $row ? CSMODE_UPDATE : CSMODE_INSERT;
+	premia_runeta_save($param);
+}

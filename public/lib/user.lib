@@ -1,0 +1,3870 @@
+<?
+
+require_once("/home/admin/web/dwar.fun/public_html/include/fsclient.inc");
+require_once("/home/admin/web/dwar.fun/public_html/lib/metric.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/chat.lib");
+
+define('TABLE_RENT_USERS','rent_users');
+define('FIELD_RENT_USERS','');
+define('TABLE_IP_HISTORY','ip_history');
+define('FIELD_IP_HISTORY','');
+define('IP_HISTORY_EXPIRED_LIFETIME', 60 * 60 * 24 * 30 * 3);  //  Keep expired tickets for one day more.
+define('TABLE_USER_CREDITS','user_credits');
+define('FIELD_USER_CREDITS','');
+define('TABLE_QIWI_EMAILS','qiwi_emails');
+define('FIELD_QIWI_EMAILS','');
+define('TABLE_QIWI_EMAILS_2','qiwi_emails_2');
+define('FIELD_QIWI_EMAILS_2','');
+//Коммон флаги
+define('TABLE_USER_COMMON_FLAGS','user_common_flags');
+define('FIELD_USER_COMMON_FLAGS','');
+//Настройки рюкзака
+define('TABLE_BACKPACK_SETTINGS', 'user_backpack_settings');
+define('FIELD_BACKPACK_SETTINGS','');
+
+define('TABLE_USER_BG_SPECTRARTOR', 'user_bg_spectrator');
+define('USER_BG_SPECTRATOR_TIME_TTL', 1800); //Пол часика
+
+define('TABLE_USER_ADD_SKILLS', 'user_add_skills'); //Добавление характеристик!
+//Быстрые действия
+define('TABLE_FAST_ACTION_USER', 'fast_action');
+
+// Флаги пользователя
+define('USER_FLAG_ADMIN',            0x00000001);	// Администратор
+define('USER_FLAG_NOATTACK',         0x00000002);	// Запрет нападения
+define('USER_FLAG_NOACTION',         0x00000004);	// Запрет на действия
+define('USER_FLAG_NOSYSMSG',         0x00000008);	// Не выводить общие системные сообщения
+define('USER_FLAG_TAGSINFO',         0x00000010);	// Форматирование в user_info
+define('USER_FLAG_HAS_SOCIAL_GIFT',  0x00000020);   // Есть подарок
+define('USER_FLAG_FORCEPROXY',       0x00000040);	// Использовать FS Proxy
+define('USER_FLAG_TALKFREE',         0x00000080);	// Межрасовый чат
+define('USER_FLAG_GHOST',            0x00000100);	// Игрок в состоянии "призрак"
+define('USER_FLAG_FARMING',          0x00000200);	// В процессе фарма
+define('USER_FLAG_PUNISH',           0x00000400);	// У игрока есть наказания
+define('USER_FLAG_JAIL',             0x00000800);	// Игрок должен сидеть в тюрьме
+define('USER_FLAG_NOCLANCHAT',       0x00001000);	// Нельзя писать в клан чат
+define('USER_FLAG_CSERVER_GUEST',    0x00002000);	// Пользователь - гость с другого мира
+define('USER_FLAG_SAVEPRIVATE',      0x00004000);	// Сохранять приваты в строке чата
+define('USER_FLAG_NOHELMET',         0x00008000);	// Не отображать шлем во флеше
+define('USER_FLAG_USER_INFO',        0x00010000);	// Показывать или нет кнопку на ИНФО Пользовательское
+define('USER_FLAG_USER_INFO_CLOSE',  0x00020000);	// Показывать или нет кнопку на ИНФО
+define('USER_FLAG_DEAF',             0x00040000);	// Игрок глухой
+define('USER_FLAG_FIRST_EXCHANGE',   0x00080000);	// Игрок совершил первый обмен в банке
+define('USER_FLAG_ADULT',            0x00100000);	// Игрок уже взрослый, для woniu - старше 18 лет
+define('USER_FLAG_SLOTS_RESTORE',    0x00200000);	// Автоматически восстанавливать содержимое карманов после боя
+define('USER_FLAG_ALLY_CHAT',        0x00400000);	// Флаг разрешает писать в чат альянса
+define('USER_FLAG_DIALOG_OFF',       0x00800000);	// Флаг разрешает писать в чат альянса
+define('USER_FLAG_ASSOC_FB',         0x01000000);	// Пользователь сопоставлен с facebook.com
+define('USER_FLAG_MENU_DRAGDROP',    0x02000000);	// Разрешить перетаскивание кнопок в верхнем меню Drag&Drop
+define('USER_FLAG_NOT_FINISHED_REG', 0x04000000);   // Пользователь проходит плавную регистрацию
+define('USER_FLAG_NOSUPERHITS',      0x08000000);   // Не показывать подсказку супер-ударов
+define('USER_FLAG_NO_SMS_SUBSCRIBE', 0x10000000);   // Отключил СМС-рассылку от администрации
+define('USER_FLAG_USE_HOTKEYS',      0x20000000);   // Использовать хоткеи в бою
+define('USER_FLAG_AUCTION_AGREE',    0x40000000);   // Ознакомлен с правилами закрытого аукциона
+
+// Флаги пользователя (flags2)
+define('USER_FLAG2_ACTING_GUARD',           0x00000001);   // Пользователь находится при исполнении обязанностей стража
+define('USER_FLAG2_TUTORIAL_OFF',           0x00000002);	// Юзер выключил или завершил туториал
+define('USER_FLAG2_LS_SKIP_STAT',           0x00000004);	// Юзер выключил или завершил туториал
+define('USER_FLAG2_IN_ESTATE',              0x00000008);	// сидит в поместье
+define('USER_FLAG2_FROZEN',                 0x00000010);	// В морозилке
+define('USER_FLAG2_NGINX_CHAT',             0x00000020);	// Чат через nginx
+define('USER_FLAG2_BIRTHDAY_GIFT',          0x00000040);	// Получал подарок на игровое др
+define('USER_FLAG2_GHOST_WALK',             0x00000080);	// Двинулся будучи признаком
+define('USER_FLAG2_ADMIN',                  0x00000100);	// Персонаж админа
+define('USER_FLAG2_SAVE_MENU',              0x00000200); // Показывать боковое меню сохранений.
+define('USER_FLAG2_DONT_OPEN_FIGHT_LOG',    0x00000400); // Не открывать окно "Лог боя" в бою с ботами
+define('USER_FLAG2_AUTO_KICKS',             0x00000800); // Автоматические удары в бою
+define('USER_FLAG2_CHAT_USERS',             0x00001000); // Показывать всех игроков в чате
+define('USER_FLAG2_CHAT_SUPER_UDAR',        0x00002000); // Не показывать подсказку о супер ударах
+define('USER_FLAG2_FIGHT_ACCESS_IP',        0x00004000); // Не логгировать поведение с 1 IP в бою
+define('USER_FLAG2_NO_RATING',              0x00008000); // Исключен из рейтинга
+define('USER_FLAG2_CHAT_LOCID',             0x00010000); //Виден чат локации
+define('USER_FLAG2_CHAT_ENEMY',             0x00020000); //Удалять обращения противоположной расы в чате
+define('USER_FLAG2_HIDE_ONLINE',            0x00040000); //Скрывать онлайн
+define('USER_FLAG2_CHAT_OLD',               0x00080000); //Старый тип чата
+define('USER_FLAG2_POST_KIND',              0x00100000); //Может отправлять почту и подарки другой расе
+define('USER_FLAG2_DELETE_MSG',             0x00200000); //Может удалять сообщения
+define('USER_FLAG2_SWITCH',                 0x00400000); //Смотрит стиль в user_info
+define('USER_FLAG2_PET_VISIBLE',            0x01000000); //Отображение пета в бою
+define('USER_FLAG2_IN_CASINO',              0x02000000);	// сидит в казино
+define('USER_FLAG2_NO_HELP_FORM',           0x04000000);   // Заблокирован доступ в техническую поддержку
+define('USER_FLAG2_DEAF',                   0x08000000);	// Игрок глухой в хаотической пб
+define('USER_FLAG2_ADMIN_CHAT_HIDE',        0x10000000); //Нельзя писать админу
+define('USER_FLAG2_SWSTAND',                0x20000000); //Стоит в магической стойки
+define('USER_FLAG2_FIGHTSTYLE',             0x40000000); //Не отображать доспехи стиля в бою
+define('USER_FLAG2_HIDE_STYLE',             0x80000000); //Не отображать надетый стиль
+define('USER_FLAG2_CLIENT',                 0x100000000); //Использует клиент
+define('USER_FLAG2_PIDOR',                 0x200000000); //Игрок пидор (запрет на пользование почтой, чатом и инфо персонажа)
+
+define('USER_DEFAULT_FLAGS',		USER_FLAG_SAVEPRIVATE | USER_FLAG_SLOTS_RESTORE | USER_FLAG_USE_HOTKEYS | USER_FLAG_MENU_DRAGDROP); // Выставляемые игроку флаги при регистрации
+define('USER_DEFAULT_FLAGS2',		USER_FLAG2_CHAT_USERS); // Выставляемые игроку флаги2 при регистрации
+
+//Коммьюнити пользователя
+define('U_COMMUNITY_FLAG_NO_WAIT_TOPIC',        0x00000001); //Создание вопросов без ожидания
+define('U_COMMUNITY_FLAG_NO_WAIT_POST',         0x00000002); //Ответы на вопросы без ожидания
+define('U_COMMUNITY_FLAG_ACCESS_DELETE_TOPIC',  0x00000004); //Можно удалять вопросы
+define('U_COMMUNITY_FLAG_ACCESS_DELETE_POST',   0x00000008); //Можно удалять сообщения
+define('U_COMMUNITY_FLAG_ACCESS_TOPIC',         0x00000010); //Можно закрывать/открывать вопрос
+define('U_COMMUNITY_FLAG_ACCESS_MOVE_TOPIC',    0x00000020); //Можно переносить вопросы
+define('U_COMMUNITY_FLAG_ACCESS_ATOP',          0x00000040); //Можно закреплять вопросы
+
+$user_community_flags_hash = array(
+    U_COMMUNITY_FLAG_NO_WAIT_TOPIC => 'Создание вопросов без ожидания',
+    U_COMMUNITY_FLAG_NO_WAIT_POST => 'Ответы на вопросы без ожидания',
+    U_COMMUNITY_FLAG_ACCESS_DELETE_TOPIC => 'Можно удалять вопросы',
+    U_COMMUNITY_FLAG_ACCESS_DELETE_POST => 'Можно удалять сообщения',
+    U_COMMUNITY_FLAG_ACCESS_TOPIC => 'Можно закрывать/открывать вопрос',
+    U_COMMUNITY_FLAG_ACCESS_MOVE_TOPIC => 'Можно переносить вопросы',
+    U_COMMUNITY_FLAG_ACCESS_ATOP => 'Можно закреплять вопросы',
+);
+
+// Пометки пользователя
+define('USER_MARK_GUARD',           0x0001);	// Дружинник
+define('USER_MARK_FOOL',            0x0002);	// Шут
+define('USER_MARK_MARRIAGE',        0x0004);	// Обрядник
+define('USER_MARK_SUBDEALER',       0x0008);	// Субдилер
+define('USER_MARK_JOKER',           0x0010);	// Балагур
+define('USER_MARK_POSITIVE',        0x0020);	// ПозитиФФщик
+define('USER_MARK_ADMIN',	        0x0040);	// Админчег
+define('USER_MARK_TESTER',	        0x0080);	// Тестер
+define('USER_MARK_CHRONICLER',	    0x0100);	// Летописец
+define('USER_MARK_ORDEN_GUARD',	    0x0200);	// Страж
+define('USER_MARK_YOUTUBE',	    0x0400);	// Ютубер
+
+$user_mark_hash = array(
+    USER_MARK_GUARD => translate('Помощник'),
+    USER_MARK_FOOL => translate('Арлекин'),
+    USER_MARK_MARRIAGE => translate('Священник'),
+    USER_MARK_SUBDEALER => translate('Кредитор'),
+    USER_MARK_JOKER => translate('Эвентор'),
+    USER_MARK_POSITIVE => translate('ПозитиФФщик'),
+    USER_MARK_ADMIN => translate('Администратор'),
+    USER_MARK_TESTER => translate('Тестировщик'),
+    USER_MARK_CHRONICLER => translate('Летописец'),
+    USER_MARK_ORDEN_GUARD => 'Модератор чата',
+    USER_MARK_YOUTUBE => 'Ютубер',
+);
+
+// Флаги доступа
+define('USER_ACCESS_LS_FULL',       0x0001);	// LS: Полный доступ
+define('USER_ACCESS_LS_ACT',        0x0002);	// LS: Просмотр действий
+define('USER_ACCESS_LS_OP',         0x0004);	// LS: Просмотр операций
+define('USER_ACCESS_LS_IPSRCH',     0x0008);	// LS: Поиск по IP
+define('USER_ACCESS_LS_CONFISC',    0x0010);	// LS: Конфискация
+define('USER_ACCESS_LS_OPALL',      0x0020);	// LS: Просмотр всех операций
+define('USER_ACCESS_LINKSCHAT',     0x0040);	// Возможность публиковать ссылки в чат
+define('USER_ACCESS_SUPPORT',       0x0100);	// Суппорт
+define('USER_ACCESS_COMPLAINCHN',   0x0200);	// Жалобы на сообщения
+define('USER_ACCESS_LS_ACCESS',     0x0400);	// LS: Лог просмотров
+define('USER_ACCESS_4',             0x0800);	// #4
+define('USER_ACCESS_LS_GIFTS',      0x1000);	// LS: Лог подарков
+define('USER_ACCESS_LS_MASSIVEBAN', 0x2000);	// LS: Массовый бан
+define('USER_ACCESS_LS_CHAT_MONIC', 0x4000);	// LS: Мониторинг всего чата!
+define('USER_ACCESS_LS_MULTS_CDN',  0x8000);
+
+define('USER_ACCESS_LS', USER_ACCESS_LS_FULL | USER_ACCESS_LS_ACT | USER_ACCESS_LS_OP | USER_ACCESS_LS_OPALL | USER_ACCESS_LS_IPSRCH | USER_ACCESS_LS_CONFISC | USER_ACCESS_LS_ACCESS | USER_ACCESS_LS_GIFTS | USER_ACCESS_LS_MASSIVEBAN);
+
+define('USER_CFLAGS_CHT_BB_B',    			0x00000001);   // Чат (Жирный текст [b]сообщение[/b])
+define('USER_CFLAGS_CHT_BB_I',    			0x00000002);   // Чат (Наклонный [i]сообщение[/i])
+define('USER_CFLAGS_CHT_BB_U',    			0x00000004);   // Чат (Подчеркнутый [u]сообщение[/u])
+define('USER_CFLAGS_CHT_BB_S',    			0x00000008);   // Чат (Зачеркнутый [s]сообщение[/s])
+define('USER_CFLAGS_CHT_BB_COLOR',			0x00000010);   // Чат (Цвет [color=red] сообщение [/color])
+define('USER_CFLAGS_CHT_BB_URL',			0x00000020);   // Чат (Ссылка [url] ссылка [/url])
+
+//Коммон флаги
+define('USER_COMMON_FLAG_NO_MULT', 0x0000001); //Игрок не мульт
+define('USER_COMMON_FLAG_GAMERS', 0x0000002); //Разрешен вход с 1 ip
+
+define('USER_LEVEL_NUB', 2); // персонаж до этого уровня имееет ограничения в некотором функционале
+
+define('USER_LEVEL_MANA_SHOW', 3); // перц до этого уровня не видет свою ману
+
+define('USER_CONVERSION_BONUS_LEVEL', 4); // левел, меньше котрого выдаются бонусы за время в игре
+
+define('USER_FIGHT_INVITE_PRICE', 100.00); //10 Серебра
+define('USER_FIGHT_INVITE_MONEY_TYPE', MONEY_TYPE_GAME);
+
+// ID кнопок пользовательского интерфейса
+define('GUI_TOP_BUTTON_BACKPACK',       0x00000001); // 1
+define('GUI_TOP_BUTTON_LOCATION',       0x00000002); // 2
+define('GUI_TOP_BUTTON_HUNTING',        0x00000004); // 3
+define('GUI_TOP_BUTTON_BATTLEFIELD',    0x00000010); // 5
+define('GUI_TOP_BUTTON_EVENTS',         0x00000040); // 7
+define('GUI_TOP_BUTTON_BANK',           0x00000080); // 8
+define('GUI_TOP_BUTTON_AUCTION',        0x00000100); // 9
+define('GUI_TOP_BUTTON_FIGHTS',         0x00000200); // 10
+define('GUI_TOP_BUTTON_FORUM',          0x00000800); // 12
+define('GUI_TOP_BUTTON_ACHIEVEMENTS',   0x00001000); // 13
+define('GUI_TOP_BUTTON_CLAN',           0x00002000); // 14
+define('GUI_TOP_BUTTON_QUESTIONARY',    0x00004000); // 15
+define('GUI_TOP_BUTTON_CONTACTS',       0x00008000); // 16
+define('GUI_TOP_BUTTON_REFFERALS',      0x00010000); // 17
+define('GUI_TOP_BUTTON_WORLD',          0x00020000); // 18
+define('GUI_TOP_BUTTON_INSTANCE',       0x00040000); // 19
+define('GUI_TOP_BUTTON_ABOUT',          0x00100000); // 21
+define('GUI_TOP_BUTTON_LIBRARY',        0x00200000); // 22
+define('GUI_TOP_BUTTON_NEWS',           0x00400000); // 23
+define('GUI_TOP_BUTTON_SEARCH_GROUP',   0x08000000); // 28
+define('GUI_TOP_BUTTON_RATING',         0x10000000); // 29
+
+define('GUI_RIGHT_BUTTON_MAIL',         0x00000001); // 1
+define('GUI_RIGHT_BUTTON_BACKPACK',     0x00000002); // 2
+define('GUI_RIGHT_BUTTON_MOUNT',        0x00000004); // 3
+define('GUI_RIGHT_BUTTON_COMPASS',      0x00000008); // 4
+define('GUI_RIGHT_BUTTON_PROFESSION',   0x00000010); // 5
+define('GUI_RIGHT_BUTTON_QUESTS',       0x00000020); // 6
+define('GUI_RIGHT_BUTTON_FRIENDS',      0x00000040); // 7
+
+$swf_top_button_hash = array(
+    GUI_TOP_BUTTON_BACKPACK             => translate('Рюкзак'),
+    GUI_TOP_BUTTON_LOCATION             => translate('Локации'),
+    GUI_TOP_BUTTON_HUNTING              => translate('Охота'),
+    GUI_TOP_BUTTON_BATTLEFIELD          => translate('Поля битв'),
+    GUI_TOP_BUTTON_EVENTS               => translate('События'),
+    GUI_TOP_BUTTON_BANK                 => translate('Банк'),
+    GUI_TOP_BUTTON_AUCTION              => translate('Аукцион'),
+    GUI_TOP_BUTTON_FIGHTS               => translate('Бои'),
+    GUI_TOP_BUTTON_FORUM                => translate('Форум'),
+    GUI_TOP_BUTTON_ACHIEVEMENTS         => translate('Достижения'),
+    GUI_TOP_BUTTON_CLAN                 => translate('Клан'),
+    GUI_TOP_BUTTON_QUESTIONARY          => translate('Анкета'),
+    GUI_TOP_BUTTON_CONTACTS             => translate('Контакты'),
+    GUI_TOP_BUTTON_REFFERALS            => translate('Рефералы'),
+    GUI_TOP_BUTTON_WORLD                => translate('Карта мира'),
+    GUI_TOP_BUTTON_INSTANCE             => translate('Карта инстанса'),
+    GUI_TOP_BUTTON_ABOUT                => translate('Об игре'),
+    GUI_TOP_BUTTON_LIBRARY              => translate('Библиотека'),
+    GUI_TOP_BUTTON_NEWS                 => translate('Новости'),
+    GUI_TOP_BUTTON_SEARCH_GROUP         => translate('Поиск группы'),
+    GUI_TOP_BUTTON_RATING               => translate('Рейтинг'),
+);
+
+$swf_right_button_hash = array(
+    GUI_RIGHT_BUTTON_MAIL               => translate('Почта'),
+    GUI_RIGHT_BUTTON_BACKPACK           => translate('Рюкзак'),
+    GUI_RIGHT_BUTTON_MOUNT              => translate('Животное'),
+    GUI_RIGHT_BUTTON_COMPASS            => translate('Навигатор'),
+    GUI_RIGHT_BUTTON_PROFESSION         => translate('Профессии'),
+    GUI_RIGHT_BUTTON_QUESTS             => translate('Квесты'),
+    GUI_RIGHT_BUTTON_FRIENDS            => translate('Друзья'),
+);
+
+define('SETTING_COMBO_DEFAULT', 0);
+define('SETTING_COMBO_JS', 1);
+define('SETTING_BOW_DEFAULT', 0);
+define('SETTING_BOW_JS', 1);
+define('SETTING_PET_DEFAULT', 0);
+define('SETTING_PET_JS', 1);
+define('SETTING_FIGHT_ANIM_DEFAULT', 0);
+define('SETTING_FIGHT_ANIM_DISABLED', 1);
+
+define('SETTING_CHAT_NOTIFY_DISABLE', 0);
+define('SETTING_CHAT_NOTIFY_ALL_ME', 1);
+define('SETTING_CHAT_NOTIFY_PRIVATE', 2);
+
+define('SETTING_CHAT_NOTIFY_ENABLE_HIDE_CHAT', 0);
+define('SETTING_CHAT_NOTIFY_ENABLE_VIEW_CHAT', 1);
+define('SETTING_CHAT_NOTIFY_ENABLE_ALL', 2);
+
+$chat_music_list = array(
+    1 => array('id' => 1, 'title' => 'Уведомление №1', 'file' => 'sms1.mp3',),
+    2 => array('id' => 2, 'title' => 'Уведомление №2', 'file' => 'sms2.mp3',),
+    3 => array('id' => 3, 'title' => 'Уведомление №3', 'file' => 'sms3.mp3',),
+    4 => array('id' => 4, 'title' => 'Уведомление №4', 'file' => 'sms4.mp3',),
+    5 => array('id' => 5, 'title' => 'Уведомление №5', 'file' => 'sms5.mp3',),
+    6 => array('id' => 6, 'title' => 'Уведомление №6', 'file' => 'tatadadadam.mp3',),
+);
+
+$user_settings = array(
+    'fight' => array(
+        'combo' => array(
+            SETTING_COMBO_DEFAULT => array('id' => SETTING_COMBO_DEFAULT, 'title' => 'Стандартный'),
+            SETTING_COMBO_JS => array('id' => SETTING_COMBO_JS, 'title' => 'JavaScript'),
+        ),
+        'bow' => array(
+            SETTING_BOW_DEFAULT => array('id' => SETTING_BOW_DEFAULT, 'title' => 'Стандартный'),
+            SETTING_BOW_JS => array('id' => SETTING_BOW_JS, 'title' => 'JavaScript'),
+        ),
+        'pet' => array(
+            SETTING_PET_DEFAULT => array('id' => SETTING_PET_DEFAULT, 'title' => 'Стандартный'),
+            SETTING_PET_JS => array('id' => SETTING_PET_JS, 'title' => 'JavaScript'),
+        ),
+        'fight_animations' => array(
+            SETTING_FIGHT_ANIM_DEFAULT => array('id' => SETTING_FIGHT_ANIM_DEFAULT, 'title' => 'Включить'),
+            SETTING_FIGHT_ANIM_DISABLED => array('id' => SETTING_FIGHT_ANIM_DISABLED, 'title' => 'Отключить'),
+        ),
+    ),
+    'chat' => array(
+        'notify' => array(
+            SETTING_CHAT_NOTIFY_DISABLE => array('id' => SETTING_CHAT_NOTIFY_DISABLE, 'title' => 'Оповещение отключено'),
+            SETTING_CHAT_NOTIFY_ALL_ME => array('id' => SETTING_CHAT_NOTIFY_ALL_ME, 'title' => 'Все сообщения мне'),
+            SETTING_CHAT_NOTIFY_PRIVATE => array('id' => SETTING_CHAT_NOTIFY_PRIVATE, 'title' => 'Только приватные'),
+        ),
+        /*'notify_info' => array(
+            SETTING_CHAT_NOTIFY_ENABLE_HIDE_CHAT => array('id' => SETTING_CHAT_NOTIFY_ENABLE_HIDE_CHAT, 'title' => 'При скрытом чате'),
+            SETTING_CHAT_NOTIFY_ENABLE_VIEW_CHAT => array('id' => SETTING_CHAT_NOTIFY_ENABLE_VIEW_CHAT, 'title' => 'При открытом чате'),
+            SETTING_CHAT_NOTIFY_ENABLE_ALL => array('id' => SETTING_CHAT_NOTIFY_ENABLE_ALL, 'title' => 'В любом состоянии'),
+        ),*/
+        'notify_sound' => $chat_music_list,
+        's_volume' => array('id' => 's_volume', 'type' => 'int', 'value' => true),
+    ),
+    'chat_msg' => array(
+        'notify_bg' => array('id' => 'notify_bg', 'type' => 'int', 'value' => true),
+    ),
+);
+
+global $socket_art_skill_info;
+$socket_art_skill_info = array();
+
+function __user_get_settings($user_id){
+    global $user_settings;
+    if(!function_exists('user_info_get')){
+        require_once("lib/user_info.lib");
+    }
+    if(!$user_id) return false;
+    $ret = array();
+    $user_info = user_info_get(array('uid' => $user_id));
+    $u_settings = json_decode($user_info['u_settings'], true);
+    foreach ($user_settings as $k => $_user_settings){
+        foreach ($_user_settings as $kk=>$user_setting){
+            $ret[$k][$kk] = ($u_settings[$k][$kk] ? $u_settings[$k][$kk] : 0);
+        }
+    }
+    return $ret;
+}
+
+$artifact_water_ids = array(2894,2895,2896,2897,2898,2899,2900,5101);
+
+// Зависимости
+require_once("/home/admin/web/dwar.fun/public_html/lib/session.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/auth.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/skill.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/artifact.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/clan.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/adv_premium.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/talents.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/companion.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/friend.lib");
+require_once("/home/admin/web/dwar.fun/public_html/lib/clan_bonus.lib");
+
+$user_access_hash = array(
+    USER_ACCESS_LS_FULL => translate('LS: Полный доступ'),
+    USER_ACCESS_LS_ACT => translate('LS: Просмотр действий'),
+    USER_ACCESS_LS_OP => translate('LS: Просмотр операций'),
+    USER_ACCESS_LS_OPALL => translate('LS: Просмотр всех операций'),
+    USER_ACCESS_LS_IPSRCH => translate('LS: Поиск по IP'),
+    USER_ACCESS_LS_CONFISC => translate('LS: Конфискация'),
+    USER_ACCESS_LS_ACCESS => translate('LS: Лог просмотров'),
+    USER_ACCESS_LS_GIFTS => translate('LS: Подарки'),
+    USER_ACCESS_LS_MASSIVEBAN => translate('LS: Массовый бан'),
+    USER_ACCESS_LINKSCHAT => translate('Ссылки в чате'),
+    USER_ACCESS_SUPPORT => translate('Суппорт'),
+    USER_ACCESS_COMPLAINCHN => translate('Жалобы на сообщения'),
+    USER_ACCESS_4 => translate('Кляп Обрядника'),
+    USER_ACCESS_LS_CHAT_MONIC => 'Моник чат',
+    USER_ACCESS_LS_MULTS_CDN => 'Доступ к просмотру мультов в инфе',
+);
+
+// Массив флагов пользователя для логгирования и проверки сложности пароля в случае изменения
+$user_flags_change_logging = array(USER_FLAG_ADMIN, USER_FLAG_NOATTACK, USER_FLAG_TALKFREE);
+// Массив флагов доступа пользователя для логгирования и проверки сложности пароля в случае изменения
+$user_access_change_logging = array(USER_ACCESS_LS_FULL, USER_ACCESS_LS_CONFISC, USER_ACCESS_LS_ACCESS, USER_ACCESS_LS_OPALL, USER_ACCESS_LS_MASSIVEBAN);
+// Поля, при смене значения которых нужно делать запись в лог админки
+$user_fields_change_logging = array(
+    'nick' => translate('Ник'),
+    'passwd' => translate('Пароль'),
+    'answer' => translate('Ответ на вопрос'),
+);
+
+$rf_enchant_slots = array('BODY','ARMOR','RHAND','SHOULDER','HEAD','GLOVE','LHAND','LEG','FOOT','QUIVER','BOW', 'QUIVER', 'RING', 'AMULET', 'ACCESSORY', 'BELT', 'MOUNT');
+$user_body_slots = array('BODY','ARMOR','RHAND','SHOULDER','HEAD','GLOVE','LHAND','LEG','FOOT','BANNER','BOW');
+$user_smol_slots = array('BODY','ARMOR','RHAND','SHOULDER','HEAD','GLOVE','LHAND','LEG','FOOT','BANNER','BOW', 'QUIVER', 'RING', 'AMULET', 'ACCESSORY', 'BELT');
+$user_weapon_slots = array('RHAND','LHAND');
+$oprava_add_slots = array('QUIVER', 'PR_BAG', 'MOUNT');
+$disenchant_slots = array('BODY','ARMOR','RHAND','SHOULDER','HEAD','GLOVE','LHAND','LEG','FOOT','QUIVER','BOW', 'QUIVER', 'RING', 'AMULET', 'ACCESSORY', 'BELT');
+$modification_menu_slots = array('BODY','ARMOR','RHAND','SHOULDER','HEAD','GLOVE','LHAND','LEG','FOOT','RHAND','LHAND', 'BOW', 'RING');
+
+define('USER_BACKPACK_MISC_GROUP_ID','3');
+
+define('USER_BACKPACK_NEW_GROUP_ID', 999);
+
+$user_backpack_groups = array(
+    1 => array('id' => 1, 'title' => translate('Эффекты'), 'alt' => translate('Эликсиры, свитки, и прочие временные эффекты')),
+    2 => array('id' => 2, 'title' => translate('Вещи'), 'alt' => translate('Доспехи, инструменты, амулеты и прочие полезные вещи')),
+    3 => array('id' => 3, 'title' => translate('Разное'), 'alt' => translate('Разные полезные и не очень предметы')),
+    4 => array('id' => 4, 'title' => translate('Квесты'), 'alt' => translate('Квестовые предметы')),
+    6 => array('id' => 6, 'title' => translate('Элементы'), 'alt' => translate('Коллекционные предметы')),
+    5 => array('id' => 5, 'title' => translate('Подарки'), 'alt' => translate('Подаренные Вам подарки')),
+);
+
+$user_backpack_groups = array(
+    1 => array('id' => 1, 'title' => translate('Эффекты'), 'subgroups' => array(1,2,3,4,5,21,24), 'unsub' => -1, 'alt' => translate('Эликсиры, свитки, и прочие временные эффекты')),
+    2 => array('id' => 2, 'title' => translate('Вещи'), 'subgroups' => array(6,7,8,9,10,20,26), 'unsub' => -2, 'alt' => translate('Доспехи, инструменты, амулеты и прочие полезные вещи')),
+    3 => array('id' => 3, 'title' => translate('Разное'), 'subgroups' => array(11,12,13,14,23), 'unsub' => -3, 'alt' => translate('Разные полезные и не очень предметы')),
+    4 => array('id' => 4, 'title' => translate('Квесты'), 'subgroups' => array(15,16), 'unsub' => -4, 'alt' => translate('Квестовые предметы')),
+    6 => array('id' => 6, 'title' => translate('Элементы'), 'subgroups' => array(17,18,19,22,25), 'unsub' => -6, 'alt' => translate('Коллекционные предметы')),
+    5 => array('id' => 5, 'title' => translate('Подарки'), 'alt' => translate('Подаренные Вам подарки')),
+);
+
+$user_backpack_subgroups = array(
+    0x00000001 => array('id' => 0x00000001, 'backpack_id' => 1 ,'title' => translate('Негативные эффекты')),
+    0x00000002 => array('id' => 0x00000002, 'backpack_id' => 1 ,'title' => translate('Еда')),
+    0x00000004 => array('id' => 0x00000004, 'backpack_id' => 1 ,'title' => translate('Чары')),
+    0x00000010 => array('id' => 0x00000010, 'backpack_id' => 1 ,'title' => translate('Боевые эффекты')),
+    0x00000020 => array('id' => 0x00000020, 'backpack_id' => 1 ,'title' => translate('Временные эффекты')),
+    0x00000040 => array('id' => 0x00000040, 'backpack_id' => 2 ,'title' => translate('Боевые амулеты')),
+    0x00000100 => array('id' => 0x00000100, 'backpack_id' => 2 ,'title' => translate('Вещи стиля')),
+    0x00000200 => array('id' => 0x00000200, 'backpack_id' => 2 ,'title' => translate('Ездовые животные')),
+    0x00000400 => array('id' => 0x00000400, 'backpack_id' => 2 ,'title' => translate('Аксессуары')),
+    0x00001000 => array('id' => 0x00001000, 'backpack_id' => 2 ,'title' => translate('Оружие и доспехи')),
+    0x00002000 => array('id' => 0x00002000, 'backpack_id' => 3 ,'title' => translate('Монеты')),
+    0x00004000 => array('id' => 0x00004000, 'backpack_id' => 3 ,'title' => translate('Ремесленные предметы')),
+    0x00010000 => array('id' => 0x00010000, 'backpack_id' => 3 ,'title' => translate('Сундучки и мешочки')),
+    0x00020000 => array('id' => 0x00020000, 'backpack_id' => 3 ,'title' => translate('Подарки')),
+    0x00040000 => array('id' => 0x00040000, 'backpack_id' => 4 ,'title' => translate('Квестовые ресурсы')),
+    0x00100000 => array('id' => 0x00100000, 'backpack_id' => 4 ,'title' => translate('Ремесленные знаки')),
+    0x00200000 => array('id' => 0x00200000, 'backpack_id' => 6 ,'title' => translate('Карты')),
+    0x00400000 => array('id' => 0x00400000, 'backpack_id' => 6 ,'title' => translate('Шахматные фигуры')),
+    0x01000000 => array('id' => 0x01000000, 'backpack_id' => 6 ,'title' => translate('Элементы коллекций')),
+    0x02000000 => array('id' => 0x02000000, 'backpack_id' => 2 ,'title' => translate('Руны')),
+);
+
+//Этот вариант вроде лучше и правильнее
+$user_backpack_subgroups = array(
+    -1 => array('id' => -1, 'backpack_id' => 1 , 'title' => translate('<b>Main Эффекты</b>')),
+    -2 => array('id' => -2, 'backpack_id' => 2 , 'title' => translate('<b>Main Вещи</b>')),
+    -3 => array('id' => -3, 'backpack_id' => 3 , 'title' => translate('<b>Main Разное</b>')),
+    -4 => array('id' => -4, 'backpack_id' => 4 , 'title' => translate('<b>Main Квесты</b>')),
+    -6 => array('id' => -6, 'backpack_id' => 6 , 'title' => translate('<b>Main Коллекции</b>')),
+    1  => array('id' => 1, 'backpack_id' => 1 , 'title' => translate('Негативные эффекты')),
+    21  => array('id' => 21, 'backpack_id' => 1 ,'title' => translate('Вспомогательные эффекты')),
+    2  => array('id' => 2, 'backpack_id' => 1 ,'title' => translate('Еда')),
+    3  => array('id' => 3, 'backpack_id' => 1 ,'title' => translate('Чары')),
+    4  => array('id' => 4, 'backpack_id' => 1 ,'title' => translate('Боевые эффекты')),
+    5  => array('id' => 5, 'backpack_id' => 1 ,'title' => translate('Временные эффекты')),
+    6  => array('id' => 6, 'backpack_id' => 2 ,'title' => translate('Боевые амулеты')),
+    7  => array('id' => 7, 'backpack_id' => 2 ,'title' => translate('Вещи стиля')),
+    8  => array('id' => 8, 'backpack_id' => 2 ,'title' => translate('Ездовые животные')),
+    9  => array('id' => 9, 'backpack_id' => 2 ,'title' => translate('Аксессуары')),
+    10 => array('id' => 10, 'backpack_id' => 2 , 'title' => translate('Оружие и доспехи')),
+    11 => array('id' => 11, 'backpack_id' => 3 ,'title' => translate('Ингридиенты')),
+    12 => array('id' => 12, 'backpack_id' => 3 ,'title' => translate('Ремесленные предметы')),
+    13 => array('id' => 13, 'backpack_id' => 3 ,'title' => translate('Сундучки и мешочки')),
+    14 => array('id' => 14, 'backpack_id' => 3 ,'title' => translate('Подарки')),
+    15 => array('id' => 15, 'backpack_id' => 4 ,'title' => translate('Квестовые ресурсы')),
+    16 => array('id' => 16, 'backpack_id' => 4 ,'title' => translate('Ремесленные знаки')),
+    17 => array('id' => 17, 'backpack_id' => 6 ,'title' => translate('Карты')),
+    18 => array('id' => 18, 'backpack_id' => 6 ,'title' => translate('Шахматные фигуры')),
+    22 => array('id' => 22, 'backpack_id' => 6 ,'title' => translate('Монеты')),
+    19 => array('id' => 19, 'backpack_id' => 6 ,'title' => translate('Элементы коллекций')),
+    20 => array('id' => 20, 'backpack_id' => 2 ,'title' => translate('Руны')),
+    23 => array('id' => 23, 'backpack_id' => 3 ,'title' => translate('Клановые ресурсы')),
+	24 => array('id' => 24, 'backpack_id' => 1 ,'title' => translate('Свитки')),
+	25 => array('id' => 25, 'backpack_id' => 6 ,'title' => translate('Клановые коллекции')),
+	26 => array('id' => 26, 'backpack_id' => 2 ,'title' => translate('Магические статуэтки')),
+	
+  
+);
+
+$user_backpack_groups_mod = array(
+    1 => array('id' => 1,'title' => 'Боевые эффекты', 'default' => true), //Свитки, Эликсиры, Эликсиры2, Амулеты, Боеприпасы
+    2 => array('id' => 2,'title' => 'Еда', 'default' => true), //Еда
+
+    3 => array('id' => 3, 'title' => 'Вещи', 'default' => true), //Вещи
+    4 => array('id' => 4, 'title' => 'Оружие', 'default' => true), //Оружие
+    5 => array('id' => 5, 'title' => 'Амулеты, Кольца, Боевые амулеты', 'default' => true), //Амулеты, Кольца, Боевые амулеты
+    6 => array('id' => 6, 'title' => 'Руны', 'default' => true), //Руны
+    7 => array('id' => 7, 'title' => 'Ремесло', 'default' => true), //Ремесло
+
+    8 => array('id' => 8, 'title' => 'Разное', 'default' => true), //Разное
+    9 => array('id' => 9, 'title' => 'Подарки', 'default' => true), //Подарки
+    10 => array('id' => 10, 'title' => 'Вещи Стиля', 'default' => true), //Стиль
+    11 => array('id' => 11, 'title' => 'Профессиональные ресурсы', 'default' => true), //Профессиональные ресурсы
+
+    12 => array('id' => 12, 'title' => 'Квестовые вещи', 'default' => true),
+    13 => array('id' => 13, 'title' => 'Квестовые ресурсы', 'default' => true),
+);
+
+$f_speed_settings = array(
+    0 => array(
+        'id' => 0,
+        'title' => 'x1.0',
+        'speed' => 1.0,
+    ),
+    1 => array(
+        'id' => 1,
+        'title' => 'x1.5',
+        'speed' => 1.5,
+    ),
+    2 => array(
+        'id' => 2,
+        'title' => 'x2',
+        'speed' => 2,
+    ),
+    3 => array(
+        'id' => 3,
+        'title' => 'x2.5',
+        'restriction' => array(
+            'level' => 3, //3 уровень
+        ),
+        'speed' => 2.5,
+    ),
+    4 => array(
+        'id' => 4,
+        'title' => 'x3',
+        'restriction' => array(
+            'premium' => 4, //4 уровень премиума
+        ),
+        'speed' => 3,
+    ),
+    5 => array(
+        'id' => 5,
+        'title' => 'x3.5',
+        'restriction' => array(
+            'premium' => 5, //5 уровень премиума
+        ),
+        'speed' => 3.5,
+    ),
+
+);
+
+// ==== Дублирование данных сервера боев (доя определения HPMAX) ====
+define('_V0', 1.5);
+define('_Vs', 1);
+define('_X0', 1.5);
+define('_Xs', 0.1);
+define('_IComp', 0.5);
+define('_decHP', 0.8);
+
+$_BASE_EXP = array( // базовый опыт
+    1 => 20,
+    2 => 25,
+    3 => 30,
+    4 => 35,
+    5 => 40,
+    6 => 45,
+    7 => 50,
+    8 => 55,
+    9 => 60,
+    10 => 65,
+    11 => 70,
+    12 => 75,
+    13 => 80,
+    14 => 85,
+    15 => 90,
+    16 => 95,
+    17 => 100,
+    18 => 105,
+    19 => 110,
+    20 => 115,
+);
+
+$_SKILL_SUM = array( // средние суммы статов { BASE_SUM, ITEM_SUM }
+    1 => array(  30,  100 ),
+    2 => array(  36,  120 ),
+    3 => array(  43,  144 ),
+    4 => array(  52,  173 ),
+    5 => array(  62,  207 ),
+    6 => array(  75,  249 ),
+    7 => array(  90,  299 ),
+    8 => array( 107,  358 ),
+    9 => array( 129,  430 ),
+    10 => array( 155,  516 ),
+    11 => array( 186,  722 ),
+    12 => array( 186,  795 ),
+    13 => array( 186,  874 ),
+    14 => array( 186,  961 ),
+    15 => array( 186, 1058 ),
+    16 => array( 186, 1163 ),
+    17 => array( 186, 1280 ),
+    18 => array( 186, 1408 ),
+    19 => array( 186, 1548 ),
+    20 => array( 186, 1703 ),
+);
+
+// ----------------------------------------------------------------------
+
+$_part_match = array(
+    ARTIFACT_PPT_HD1 => FS_PPT_HD1,
+    ARTIFACT_PPT_HD2 => FS_PPT_HD2,
+    ARTIFACT_PPT_BD1 => FS_PPT_BD1,
+    ARTIFACT_PPT_BD2 => FS_PPT_BD2,
+    ARTIFACT_PPT_RH1 => FS_PPT_RH1,
+    ARTIFACT_PPT_RH2 => FS_PPT_RH2,
+    ARTIFACT_PPT_RH3 => FS_PPT_RH3,
+    ARTIFACT_PPT_LH1 => FS_PPT_LH1,
+    ARTIFACT_PPT_LH2 => FS_PPT_LH2,
+    ARTIFACT_PPT_LH3 => FS_PPT_LH3,
+    ARTIFACT_PPT_RL1 => FS_PPT_RL1,
+    ARTIFACT_PPT_RL2 => FS_PPT_RL2,
+    ARTIFACT_PPT_RL3 => FS_PPT_RL3,
+    ARTIFACT_PPT_LL1 => FS_PPT_LL1,
+    ARTIFACT_PPT_LL2 => FS_PPT_LL2,
+    ARTIFACT_PPT_LL3 => FS_PPT_LL3,
+    ARTIFACT_PPT_RW  => FS_PPT_RW,
+    ARTIFACT_PPT_LW  => FS_PPT_LW,
+    ARTIFACT_PPT_MW  => FS_PPT_MW,
+    ARTIFACT_PPT_BN  => FS_PPT_BN,
+    ARTIFACT_PPT_BOW => FS_PPT_BOW,
+);
+
+$_skill_match = array(
+    'LEVEL' => FS_SK_LEVEL,
+    'STR' => FS_SK_STR,
+    'INT' => FS_SK_INT,
+    'DEX' => FS_SK_DEX,
+    'ENDUR' => FS_SK_ENDUR,
+    'VIT' => FS_SK_VIT,
+    'WISDOM' => FS_SK_WISDOM,
+    'INTELL' => FS_SK_INTELL,
+    'PWRMIN' => FS_SK_PWRMIN,
+    'PWRMAX' => FS_SK_PWRMAX,
+    'HP' => FS_SK_HP,
+    'HPMAX' => FS_SK_HPMAX,
+    'MP' => FS_SK_MP,
+    'MPMAX' => FS_SK_MPMAX,
+    'XHPMAX' => FS_SK_XHPMAX,
+    'XMPMAX' => FS_SK_XMPMAX,
+    'MAGCRIT' => FS_SK_MAGCRIT,
+    'MAGHIT' => FS_SK_MAGHIT,
+    'MAGPWRMIN' => FS_SK_MAGPWRMIN,
+    'MAGPWRMAX' => FS_SK_MAGPWRMAX,
+    'RSTPHYSIC' => FS_SK_RSTPHYSIC,
+    'RSTKIDMAG' => FS_SK_RSTKIDMAG,
+    'RSTAIRFIRE' => FS_SK_RSTAIRFIRE,
+    'RSTWTRGRND' => FS_SK_RSTWTRGRND,
+    'RSTLGHSHAD' => FS_SK_RSTLGHSHAD,
+    'RSTALL' => FS_SK_RSTALL,
+    'MREG' => FS_SK_MREG,
+    'CHRGDMGX' => FS_SK_CHRGDMGX,
+    'CHRGVAMP' => FS_SK_CHRGVAMP,
+    'CHRGSTUNP' => FS_SK_CHRGSTUNP,
+    'CHRGSTUNT' => FS_SK_CHRGSTUNT,
+    'CHRGCRIT' => FS_SK_CHRGCRIT,
+    'WILL' => FS_SK_WILL,
+    'SHIP' => FS_SK_SHIP,
+    'PENETRATION' => FS_SK_PENETRATION,
+    'VAMPIR' => FS_SK_VAMPIR,
+    'STOIKOST' => FS_SK_STOIKOST,
+    'HPMOD' => FS_SK_HPMOD,
+    'INICIATIV' => FS_SK_INICIATIV,
+    'UNHPMOD' => FS_SK_UNHPMOD,
+    'AURACHRGDMGX' => FS_SK_AURACHRGDMGX,
+    'AURACHRGVAMP' => FS_SK_AURACHRGVAMP,
+    'AURACHRGCRIT' => FS_SK_AURACHRGCRIT,
+    'USE_WISDOM' => FS_SK_USE_WISDOM,
+    'RSTPHYSICBLOCK' => FS_SK_RSTPHYSICBLOCK,
+    'PCRSTAIRBLOCK' => FS_SK_PCRSTAIRBLOCK,
+    'MAGCRITDEF' => FS_SK_MAGCRITDEF,
+    'MAGCRITDMX' => FS_SK_MAGCRITDMX,
+    'CHVAMPMINUS' => FS_SK_CHVAMPMINUS,
+    'CHVAMPPLUS' => FS_SK_CHVAMPPLUS,
+    'FIZCRITDEF' => FS_SK_FIZCRITDEF,
+    'FIZCRITDMX' => FS_SK_FIZCRITDMX,
+    'RAZPELENY' => FS_SK_RAZPELENY,
+	
+	'WILL_REPRESSION' => FS_SK_WILL_REPRESSION,
+    'FW_PENETRATION' => FS_SK_FW_PENETRATION,
+    'LD_PENETRATION' => FS_SK_LD_PENETRATION,
+    'WE_PENETRATION' => FS_SK_WE_PENETRATION,
+    'INITIATIVE' => FS_SK_INITIATIVE,
+    'ANTISTUN' => FS_SK_ANTISTUN,
+    'CHRGSTUNC' => FS_SK_CHRGSTUNC,
+);
+
+function _part($pack=0, $color=0) {
+    return (($pack & 0xFFFF) + ($color * 0x10000));
+}
+
+function _unpart($cfg) {
+    return array($cfg & 0xFFFF, intval(($cfg / 0x10000)));
+}
+
+function _skills($skills, $field='value', $positive=false) {
+    global $_skill_match;
+    $out = array();
+    foreach ($skills as $k=>$skill) {
+        $skill_id = $skill['skill_id'] ? $skill['skill_id']: $k;
+        if (!isset($_skill_match[$skill_id])) continue;
+        if (($skill[$field] < 0) && $positive) $skill[$field] = 0;
+        $out[] = array('type' => PT_INT, 'id' => $_skill_match[$skill_id], 'val' => $skill[$field]);
+    }
+    return $out;
+}
+
+function _comp($lvl, $ratio) {
+    global $_SKILL_SUM;
+    $lvl = (int)$lvl;
+    return $_SKILL_SUM[$lvl][1]/(2*$ratio-2) - $_SKILL_SUM[$lvl][0]/5;
+}
+
+// ===========================================================================================================================
+
+function user_get($ref=false, $nick=false, $add='', $extended=false) {
+    global $db_3;
+    if ($nick) $ref['nick'] = $nick;
+    $user = common_get($db_3,TABLE_USERS,$ref,$add,'id');
+    if ($user) {
+        $user['object_class'] = OBJECT_CLASS_USER;
+        if ($extended) {
+            require_once("lib/user_info.lib");
+            $user_info = user_info_get($user['id']);
+            $auth = auth_get($user['id']);
+            $user = array_merge($user,$user_info,$auth);
+        }
+    }
+    return $user;
+}
+
+function user_list($ref=false, $add='', $extended=false, $field_list='*', $param = array()) {
+    global $db_3;
+    $user_list = common_list($db_3,TABLE_USERS,$ref,$add,$field_list, false, $param);
+    foreach ($user_list as $k=>$user) $user_list[$k]['object_class'] = OBJECT_CLASS_USER;
+    if ($extended) {
+        require_once("lib/user_info.lib");
+        foreach ($user_list as $k=>$user) {
+            $user_info = user_info_get($user['id']);
+            $auth = auth_get($user['id']);
+            $user_list[$k] = array_merge($user,$user_info,$auth);
+        }
+    }
+    return $user_list;
+}
+
+function user_count($ref=false, $add='') {
+    global $db_3;
+    return common_count($db_3,TABLE_USERS,$ref,$add);
+}
+
+function user_save($param, $force_insert=false) {
+    global $db_3;
+    global $session_user;
+    $user = $param;
+    if (!$user['id']) return false;
+    if ($force_insert) $user['_mode'] = CSMODE_INSERT;
+    $res = common_save($db_3,TABLE_USERS,$user,FIELD_USERS);
+    $user_info = get_params($param,FIELD_USER_INFO,true);
+    if ($user_info || $force_insert) {
+        $user_info['uid'] = $user['id'];
+        require_once("lib/user_info.lib");
+        user_info_save($user_info,$force_insert);
+    }
+
+    // Синхронизируем изменения дублирующихся полей
+    if (!$force_insert) {
+        $auth = get_params($param,FIELD_AUTH,true);
+        if ($auth) {
+            $auth['uid'] = $user['id'];
+            auth_save($auth);
+        }
+        $session = get_params($param,FIELD_SESSIONS,true);
+        if ($session) {
+            $session['uid'] = $user['id'];
+            if (NODE_PUSH(null, $user['id'])) {
+                session_save($session);
+                NODE_POP();
+            }
+        }
+    }
+    if ($session_user && ($session_user['id'] == $user['id'])) {
+        $session_user = $param['_set'] ? user_get($user['id']) : array_merge($session_user,$user);
+    }
+    return $res;
+}
+
+function user_delete($ref, $delete_context_only = false, $save_email = false) {
+    global $db_3;
+
+    if (!$ref) return false;
+
+    $user = user_get($ref,false,'',true);
+    if ($user && $user['fight_id']) fight_abort($user['fight_id']);
+
+    if (!$delete_context_only) common_delete($db_3,TABLE_USERS,$ref);
+    if (strpos($user['email'], '@bigpoint') !== false) {
+        require_once("include/bigpoint.inc");
+        $auth = auth_get($ref);
+        if ($auth['auth_flags'] & AUTH_FLAG_BIGPOINT) {
+            $bp = new Bigpoint(BIGPOINT_PARTNER_ID, BIGPOINT_PROJECT_ID, BIGPOINT_API_KEY, 'client', BIGPOINT_PORTAL_API_URL);
+            $bp->portal_delete($user);
+        }
+    }
+    if (!$delete_context_only){
+        if (strpos($user['email'], '@odnoklassniki.mail') !== false || strpos($user['email'], '@vkontakte.mail') !== false) $save_email = false;
+        if ($save_email) {
+            auth_save(array(
+                'uid' => $user['id'],
+                'nick' => 'player_'.time().'_'.sprintf("%06d", rand(0, 999999)),
+                'passwd' => '',
+                'auth_flags' => AUTH_FLAG_DELETED,
+            ));
+        } else {
+            auth_delete($ref);
+        }
+        user_info_delete($ref);
+    }
+    user_info_change_delete(array('user_id' => $ref));
+    if (!$delete_context_only && defined("SOUZ_PROJECT_ID")) {
+        require_once("include/souz.inc");
+        souz_delete(false,$ref);
+    }
+    if(!NODE_PUSH(null,$ref))
+        return true;
+    if (!$delete_context_only){
+        NODE_REMOVE($ref);
+    }
+    require_once("lib/user_info.lib");
+    session_delete($ref);
+    require_once("lib/skill.lib");
+    skill_object_delete(OBJECT_CLASS_USER,$user);
+    require_once("lib/action.lib");
+    action_object_delete(OBJECT_CLASS_USER,$user);
+
+    require_once("lib/artifact.lib");
+    $artifact_list = artifact_list(false,$ref);
+    $artifact_ids = get_hash($artifact_list, 'id', 'id');
+    if ($artifact_ids) {
+        common_delete($db,TABLE_ARTIFACTS,array('id' => $artifact_ids));
+        NODE_MULTI_DELETE_CROSSNODE_REF(TABLE_ARTIFACTS, $artifact_ids);
+        artifact_note_delete(array('artifact_id' => $artifact_ids));
+        common_delete($db,TABLE_ARTIFACT_ACTIONS,array('artifact_id' => $artifact_ids));
+        common_delete($db,TABLE_ARTIFACT_SKILLS,array('artifact_id' => $artifact_ids));
+    }
+
+    require_once("lib/spell.lib");
+    spell_user_delete(array('user_id' => $ref));
+    require_once("lib/combo.lib");
+    combo_user_delete(array('user_id' => $ref));
+    require_once("lib/farm.lib");
+    farm_user_delete(array('user_id' => $ref));
+    require_once("lib/punishment.lib");
+    punishment_user_delete(array('user_id' => $ref));
+    require_once("lib/quest.lib");
+    quest_user_delete(array('user_id' => $ref));
+    quest_user_point_delete(array('user_id' => $ref));
+    require_once("lib/recipe.lib");
+    recipe_user_delete(array('user_id' => $ref));
+    require_once("lib/friend.lib");
+    friend_delete(array('user_id' => $ref));
+    friend_delete(array('friend_id' => $ref));
+    require_once("lib/event.lib");
+    event_track_user_delete(array('user_id' => $ref));
+    require_once("lib/dialog.lib");
+    dialog_user_delete(array('user_id' => $ref));
+    require_once("lib/achievement.lib");
+    user_achievement_delete(array('user_id' => $ref));
+    require_once("lib/user_stat.lib");
+    user_stat_delete(array('user_id' => $ref));
+    require_once("lib/archive.lib");
+    archive_user_delete(array('user_id' => $ref));
+    user_credit_delete(array('user_id' => $ref));
+    require_once("lib/action.lib");
+    action_stat_delete(array('user_id'=>$ref));
+    require_once("lib/pet.lib");
+    pet_delete(array('user_id'=>$ref));
+    require_once("lib/smile.lib");
+    smile_user_delete(array('user_id'=>$ref));
+    require_once("lib/user_avatar.lib");
+    user_avatar_delete(array('user_id'=>$ref));
+    require_once("lib/bonus_stat.lib");
+    bons_stat_user_delete(array('user_id'=>$ref));
+    // ======================================================================
+    if ($user['clan_id']) {
+        require_once("lib/clan.lib");
+        clan_member_delete(array('user_id' => $ref));
+    }
+    require_once("lib/mailru_api.lib");
+    soc_user_delete(array('uid' => $ref));
+    estate_delete(array('user_id'=>$ref));
+    building_delete(array('user_id'=>$ref));
+    NODE_POP();
+
+    return true;
+}
+
+// ----------------------------------------------------------
+// Коммон флаги.
+function user_common_flags_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_USER_COMMON_FLAGS,$ref,$add);
+}
+
+function user_common_flags_list($add) {
+    global $db_path;
+    return common_list($db_path,TABLE_USER_COMMON_FLAGS,false,$add);
+}
+
+function user_common_flags_save($param) {
+    global $db_path;
+    $user_c_f = user_common_flags_get(intval($param['id']));
+    if(!$user_c_f){ $param['_mode'] = CSMODE_INSERT; }
+    return common_save($db_path,TABLE_USER_COMMON_FLAGS,$param,FIELD_USER_COMMON_FLAGS);
+}
+
+function user_common_flags_delete($ref=false, $add='') {
+    global $db_path;
+    return common_delete($db_path,TABLE_USER_COMMON_FLAGS,$ref,$add);
+}
+
+
+///////////////////////////////
+
+function user_bg_spectrator_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_USER_BG_SPECTRARTOR,$ref,$add);
+}
+
+function user_bg_spectrator_list($ref = false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_USER_BG_SPECTRARTOR,$ref,$add);
+}
+
+function user_bg_spectrator_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_USER_BG_SPECTRARTOR,$param);
+}
+
+function user_bg_spectrator_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_USER_BG_SPECTRARTOR,$ref,$add);
+}
+
+function user_bulk_update($user_ids, $field, $value='', $value_old=null, $add='') {
+    global $db_3;
+    global $session_user;
+    if (!common_bulk_update($db_3,TABLE_USERS,$user_ids,$field,$value,$value_old,$add)) return false;
+    if ($user_ids && $session_user && in_array($session_user['id'],$user_ids)) $session_user[$field] = $value;
+    if (!$user_ids && $session_user && $session_user[$field] == $value_old) $session_user[$field] = $value;
+    return true;
+}
+
+// ===============================================
+
+//Работа с рюкзаком настройки
+function user_backpack_settings_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_BACKPACK_SETTINGS,$ref,$add);
+}
+
+function user_backpack_settings_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_BACKPACK_SETTINGS,$ref,$add,$field_list);
+}
+
+function user_backpack_settings_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_BACKPACK_SETTINGS, $ref, $add);
+}
+
+function user_backpack_settings_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_BACKPACK_SETTINGS,$param,FIELD_BACKPACK_SETTINGS);
+}
+
+function user_backpack_settings_delete($ref, $add = '') {
+    global $db_path;
+    common_delete($db_path,TABLE_BACKPACK_SETTINGS,$ref,$add);
+    return true;
+}
+
+function user_backpack_settings_conf($ref=false, $group_id=false, $kinds_hash = array()){
+    global $user_backpack_groups, $user_backpack_subgroups;
+    if(!$ref || !$group_id) return false;
+    $settings = user_backpack_settings_get(false, ' AND user_id = '.$ref.' AND group_id = '.$group_id);
+    if(!$user_backpack_groups[$group_id]) return false;
+    $g_settings = $user_backpack_groups[$group_id]['subgroups'];
+    if(!$g_settings) return false;
+
+    $u_settings = json_decode($settings['settings'],true);
+
+    //По умолчанию пусть будет нормальный рюкзак)
+    if(!$settings) {
+        $u_settings = array();
+        foreach ($g_settings as $g_v) {
+            $u_settings[$g_v] = 1;
+        }
+    }
+
+    //TODO: ЧТо я имел ввиду?
+    $config = array(); //Будущий конфиг
+    if(!$u_settings){
+        foreach($g_settings as $setting){
+            if(isset($u_settings[$setting])){ //Если существует настройка.
+                $config[intval($setting)] = $u_settings[intval($setting)]; //Ставим
+            }else{
+                $config[intval($setting)] = false; //Если не существует ставим все по стандарту.
+            }
+        }
+        return $config;
+    }else{
+        foreach($g_settings as $setting){
+            if(!isset($u_settings[$setting])){ //Если не существует настройка.
+                $u_settings[intval($setting)] = false; //Если не существует ставим все по стандарту.
+            }
+        }
+        return $u_settings;
+    }
+}
+
+function user_backpack_settings_conf_old($ref=false,$group_id=false, $kinds_hash = array()){
+    global $user_backpack_groups, $user_backpack_subgroups;
+    if(!$ref || !$group_id) return false;
+    $settings = user_backpack_settings_get(false, ' AND user_id = '.$ref.' AND group_id = '.$group_id);
+    if(!$user_backpack_groups[$group_id]) return false;
+    $g_settings = $user_backpack_groups[$group_id]['subgroups'];
+    if(!$g_settings) return false;
+
+    $u_settings = json_decode($settings['settings'],true);
+
+    //TODO: ЧТо я имел ввиду?
+    $config = array(); //Будущий конфиг
+    if(!$u_settings){
+        foreach($g_settings as $setting){
+            if(isset($u_settings[$setting])){ //Если существует настройка.
+                $config[intval($setting)] = $u_settings[intval($setting)]; //Ставим
+            }else{
+                $config[intval($setting)] = false; //Если не существует ставим все по стандарту.
+            }
+        }
+        return $config;
+    }else{
+        foreach($g_settings as $setting){
+            if(!isset($u_settings[$setting])){ //Если не существует настройка.
+                $u_settings[intval($setting)] = false; //Если не существует ставим все по стандарту.
+            }
+        }
+        return $u_settings;
+    }
+}
+
+// ===============================================
+
+function user_is_login_correct($login) {
+    if (mb_strlen($login) < 4) return false;
+    if (preg_match('/\s|[^A-Za-z\d-_]/',$login)) return false;
+    if (preg_match('/^guest/i',$login)) return false;
+    if (preg_match('/^admin/i',$login)) return false;
+    return true;
+}
+
+function user_is_nick_correct($nick) {
+    if ((mb_strlen($nick) < 2) || (mb_strlen($nick) > 16)) return false;
+    if (preg_match('/^\d/',$nick)) return false;
+    if (preg_match(common_get_regexp('valid_name_symbols'),$nick)) return false;
+    if (@constant('_TRANS_LANG') == 'ru' && preg_match('/[a-zA-Z]/',$nick) && preg_match(common_get_regexp('locale_symbols'),$nick)) return false;
+    if (preg_match('/^('.translate('Фаулиус|Андельван|Го-Занар|Шеара|Ор-Веррон|Таллаар|Лайтир|Градон|Аквалон|Эарит|Айстрин|Эгос|Гельдокк|Умаллоу|Вулкан|Фиониус|Лецест|Андэр|ААрон|Осмол').')$/i',$nick)) return false;
+    if (preg_match('/('.translate('стреагорн|стриагрон|сртиагорн|страигорн|стриагрон|стреагрон|стеагорн|стриагон|Эрифариус|Арифариус|Эрефариус|Эрифаруис|Эфирариус|Эрефареус').')/i',$nick)) return false;
+    return true;
+}
+
+function user_get_hpmax($lvl, $vit, $art=false) {
+    return intval(round(($vit + _comp($lvl,_V0)*(1 - _IComp)) * _Vs * ($art ? 1: _decHP)));
+}
+function user_get_mpmax($intell, $user_level) {
+    // до 10-го левела у юзера нет маны
+    if($user_level > USER_LEVEL_MANA_SHOW)
+        return $intell;
+    else
+        return 0;
+}
+
+function user_get_xmpmax($xmpmax, $user_level) {
+    // до 10-го левела у юзера нет маны
+    if($user_level > USER_LEVEL_MANA_SHOW)
+        return $xmpmax;
+    else
+        return 0;
+}
+function user_get_strpwr($lvl, $str) {
+    return (_comp(min($lvl,10),_X0)*(1 - _IComp) + $str) * _Xs;
+}
+function user_get_vithp($lvl, $vit, $art=false) {
+    return intval(round((_comp($lvl,_V0)*(1 - _IComp) + $vit) * _Vs * ($art ? 1: _decHP)));
+}
+function user_get_bonushp($lvl, $vit) {
+    return user_get_vithp($lvl, $vit, true) - user_get_vithp($lvl, $vit, false);
+}
+function user_get_baseexp($lvl) {
+    global $_BASE_EXP;
+    return intval($_BASE_EXP[$lvl]);
+}
+
+function user_print_skill_value($skill_id, $value, $comp=0, $lvl=0, $str_value=0, $vit_value=0, $art=0) {
+    if ($skill_id == 'PWRMIN') {
+        $value = $lvl == 0 && $comp ? 0 : ($value / 10 + ($comp ? user_get_strpwr($lvl, $str_value) : $str_value * _Xs) * .8);
+    } else if ($skill_id == 'PWRMAX') {
+        $value =  $lvl == 0 && $comp ? 0 : ($value / 10 + ($comp ? user_get_strpwr($lvl, $str_value) : $str_value * _Xs) * 1.2);
+    } else if ($skill_id == 'XHPMAX') {
+        $value =  $lvl == 0 && $comp ? 0 : ($value + ($comp ? user_get_vithp($lvl, $vit_value, $art) : intval(round($vit_value * _Vs * ($art ? 1: _decHP)))));
+    } else if (in_array($skill_id, array('MAGPWRMIN','MAGPWRMAX'))) {
+        $value /= 10;
+    }
+
+    if ($value == 0) {
+        return '';
+    }
+    if (in_array($skill_id, array('PWRMIN', 'PWRMAX', 'MAGPWRMIN', 'MAGPWRMAX'))) {
+        return ($value > 0 && !$comp ? '+'  : '') . sprintf("%.1f", $value);
+    }
+    if (in_array($skill_id, array('PWR','MAGPWR'))) {
+        return $value;
+    }
+    return ($value > 0 && !$comp ? '+'  : '') . $value;
+}
+
+function user_calc_power_skills(&$artifact_skills) {
+    $skill_pwrmin = $artifact_skills['PWRMIN'];
+    $skill_pwrmax = $artifact_skills['PWRMAX'];
+    if ($skill_pwrmin['value'] || $skill_pwrmax['value']) {
+        $skill_pwrmin['title'] = translate('Урон');
+        $skill_pwrmin['skill_id'] = 'PWR';
+        $skill_pwrmin['value'] =
+            user_print_skill_value('PWRMIN', $skill_pwrmin['value'])
+            . ' .. ' .
+            user_print_skill_value('PWRMAX', $skill_pwrmax['value']);
+        $artifact_skills['PWR'] = $skill_pwrmin;
+        unset($artifact_skills['PWRMAX']);
+        unset($artifact_skills['PWRMIN']);
+    }
+    $skill_magpwrmin = $artifact_skills['MAGPWRMIN'];
+    $skill_magpwrmax = $artifact_skills['MAGPWRMAX'];
+    if ($skill_magpwrmin['value'] || $skill_magpwrmax['value']) {
+        $skill_magpwrmin['title'] = translate('Магический урон');
+        $skill_magpwrmin['skill_id'] = 'MAGPWR';
+        $skill_magpwrmin['value'] =
+            user_print_skill_value('MAGPWRMIN', $skill_magpwrmin['value'])
+            . ' .. ' .
+            user_print_skill_value('MAGPWRMAX', $skill_magpwrmax['value']);
+        $artifact_skills['MAGPWR'] = $skill_magpwrmin;
+        unset($artifact_skills['MAGPWRMAX']);
+        unset($artifact_skills['MAGPWRMIN']);
+    }
+    return null;
+}
+
+// Возвращает хэш скиллов пользователя с учетом надетых вещей и травм
+function user_get_skill_info($user_id, $skill_id=false, $with_artifacts=true, $with_injuries=true, $extended=false, $param = array()) {
+    global $user_body_slots, $clan_talents_skill_type_hash;
+
+    if (!$user_id) return false;
+
+    if(!$param['downgrade_effect']) $param['downgrade_effect'] = 1.0;
+
+    $fight_param = ($param['fight_param'] ? $param['fight_param'] : array());
+    $user_skill_params = ($fight_param['user_skill_params'] ? $fight_param['user_skill_params'] : array());
+
+    $user = user_get(array('id' => $user_id));
+    if (!$user) return false;
+    $query_add = '';
+    if ($skill_id) {
+        if (!is_array($skill_id)) $skill_id = array($skill_id);
+        if (in_array('HP',$skill_id)) $skill_id = array_unique(array_merge($skill_id,array('HPMAX','HP_T0','HP_T1')));
+        if (in_array('HPMAX',$skill_id)) $skill_id = array_unique(array_merge($skill_id,array('VIT','XHPMAX')));
+        if (in_array('MP',$skill_id)) $skill_id = array_unique(array_merge($skill_id,array('MPMAX','MP_T0','MP_T1')));
+        if (in_array('MPMAX',$skill_id)) $skill_id = array_unique(array_merge($skill_id,array('INTELL','XMPMAX')));
+        $query_add .= sql_pholder(" AND skill_id IN (?@)",$skill_id);
+    }
+    $art = true;
+    $skill_hash = make_hash(skill_object_list(OBJECT_CLASS_USER,$user_id,$query_add),'skill_id');
+
+    // Применяем нативные скиллы
+    $native_skills = user_get_native_skill_info($user['level'], $user['kind']);
+    foreach ($native_skills as $id => $value) {
+        if (!isset($skill_hash[$id])) {
+            $skill_hash[$id] = array(
+                'skill_id' => $id,
+                'value' => $value,
+                'user_id' => $user_id,
+            );
+        } else {
+            $skill_hash[$id]['value'] += $value;
+        }
+    }
+
+    //Применяем скиллы клановых талантов
+    if($user['clan_id'] && !$user_skill_params['no_clan_talents']) {
+        $clan_talents = make_hash(clan_talents_list(array('clan_id' => $user['clan_id']), ' AND select_num > 0 AND level > 0'), 'type_id');
+        $clan_talent_artikul_ids = array();
+        foreach ($clan_talents as $clan_talent) {
+            $clan_talent_artikul_ids[$clan_talent['clan_talent_id']] = $clan_talent['clan_talent_id'];
+        }
+        if ($clan_talent_artikul_ids) $clan_talent_artikul_list = make_hash(clan_talents_artikul_list(array('id' => $clan_talent_artikul_ids)));
+        foreach ($clan_talents as $type_id => $clan_talent) {
+            if (!$clan_talent_artikul_list[$clan_talent['clan_talent_id']]) continue;
+
+            $tal_skill_id = $clan_talents_skill_type_hash[$type_id]['skill' . $clan_talent['select_num']];
+            $tal_skill_val = intval($clan_talent_artikul_list[$clan_talent['clan_talent_id']]['data' . $clan_talent['select_num']]); // Future MB floatval?
+
+            if (!$tal_skill_id || !$tal_skill_val || $tal_skill_val <= 0) continue;
+            if (is_array($tal_skill_id)) {
+                foreach ($tal_skill_id as $_tal_skill_id) {
+                    $skill_hash[$_tal_skill_id]['value'] += $tal_skill_val; //Добавляем к общему списку скиллов юзера
+                }
+            } else {
+                $skill_hash[$tal_skill_id]['value'] += $tal_skill_val; //Добавляем к общему списку скиллов юзера
+            }
+        }
+    }
+    //Применяем скиллы клановых бонусов
+    if($user['clan_id'] && !$user_skill_params['no_clan_bonus']) {
+        $clan_bonus_info = clan_bonus_exist($user['clan_id']);
+        foreach ($clan_bonus_info[CLAN_BONUS_TYPE_SKILL] as $_skill_id=>$_value){
+            $skill_hash[$_skill_id]['value'] += $_value;
+        }
+    }
+
+    $skill_self_hash = $skill_hash;
+    $skill_art_hash = array();
+    $skill_inj_hash = array();
+
+    if ($with_artifacts || $with_injuries) {    // учитываем надетые предметы и травмы
+        $artifacts = artifact_list(false,$user_id,'*',true);
+
+        $artifact_bag_items = artifact_list(false, $user_id, '', true, false, sql_pholder(' AND area_id = 0 AND owner_id = 0 AND flags2 & ?#ARTIFACT_FLAG2_BACKPACK_SKILL'));
+        foreach ($artifact_bag_items as $artifact_bag_item) $artifacts[] = $artifact_bag_item;
+
+        $trends = array();
+        $artifact_sets = array();
+        $set_quality = array();
+        $enchant_artikul_ids = array();
+        $enchant_list = array();
+        $oprava_artikul_ids = array();
+        $oprava_list = array();
+        $artifact_artikul_ids = array();
+        foreach ($artifacts as $k=>$artifact) {
+            if($param['rent_user'] && ($artifact['slot_id'] == 'EFFECT' || $artifact['slot_id'] == 'MOUNT')) unset($artifacts[$k]); //NOTE: Рентабельным игрокам обрубать эффекты.
+            if($user_skill_params['no_obcast'] && $artifact['slot_id'] == 'TEMP_EFFECT') {
+                unset($artifacts[$k]);
+                continue;
+            }
+
+            if ($artifact['enchant_id']) $enchant_artikul_ids[$artifact['enchant_id']] += 1;
+            if ($artifact['oprava_id']) $enchant_artikul_ids[$artifact['oprava_id']] += 1;
+            if ($artifact['char_id']) $enchant_artikul_ids[$artifact['char_id']] += 1;
+            $artifact_artikul_ids[$artifact['artikul_id']] = 1;
+        }
+
+        $talents_artikul_ids = talents_user_artikul_ids($user_id);
+        /*
+        foreach ($talents_artikul_ids as $talents_artikul_id=>$_cck) {
+            $enchant_artikul_ids[$talents_artikul_id] += 1;
+        }
+        */
+
+        if ($enchant_artikul_ids) {
+            $enchant_artikul_hash = artifact_artikul_list(array('id' => array_keys($enchant_artikul_ids)));
+            foreach ($enchant_artikul_hash as $artikul) $enchant_list = array_merge($enchant_list, array_fill(0,$enchant_artikul_ids[$artikul['id']], $artikul));
+        }
+        #2017 оправы, похуй припишем к энчантам?
+        if ($oprava_artikul_ids) {
+            $oprava_artikul_hash = artifact_artikul_list(array('id' => array_keys($oprava_artikul_ids)));
+            foreach ($oprava_artikul_hash as $artikul) $enchant_list = array_merge($enchant_list, array_fill(0,$oprava_artikul_ids[$artikul['id']], $artikul));
+        }
+        #2017 все еще, таланты припешем к энчантам тоже xD
+        if ($talents_artikul_ids && !$user_skill_params['no_talents']) {
+            $talents_artikul_hash = artifact_artikul_list(array('id' => array_keys($talents_artikul_ids)));
+            foreach ($talents_artikul_hash as $k=>$artifact) $talents_artikul_hash[$k]['object_class'] = OBJECT_CLASS_ARTIFACT_ARTIKUL;
+            skill_objects_list($talents_artikul_hash, $query_add);
+            foreach ($talents_artikul_hash as $artifact) {
+                if (count($artifact['artifact_skills'])) foreach ($artifact['artifact_skills'] as $artifact_skill) {
+                    if($talents_artikul_ids[$artifact['id']] >= 1) {
+                        $cnt_add = $talents_artikul_ids[$artifact['id']];
+                        if(!$cnt_add) break;
+
+                        for($i = 0; $i < $cnt_add; $i++) {
+                            $skill_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                            $skill_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                            $skill_art_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                            $skill_art_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                        }
+                    }
+                }
+            }
+        }
+
+        if ($artifact_artikul_ids) {
+            $artifact_artikul_hash = make_hash(artifact_artikul_list(array('id' => array_keys($artifact_artikul_ids)), '', 'id, quality, trend, set_id'));
+        }
+
+        $artifact_set_all_cnt = 0;
+
+        $artifact_type_list = array(
+            OBJECT_CLASS_ARTIFACT => &$artifacts,
+            OBJECT_CLASS_ARTIFACT_ARTIKUL => &$enchant_list,
+        );
+        foreach ($artifact_type_list as $object_class => $artifact_list) {
+            foreach ($artifact_list as $k=>$artifact) $artifact_list[$k]['object_class'] = $object_class;
+            skill_objects_list($artifact_list,$query_add);
+            foreach ($artifact_list as $artifact) {
+                if ($artifact['type_id'] != ARTIFACT_TYPE_ID_INJURY) {
+                    if (!$with_artifacts) continue;
+                } else {
+                    if (!$with_injuries) continue;
+                }
+
+                //Скиллы с сокетов
+                $artifact_socket_skills = socket_skills_get($artifact);
+                if($artifact_socket_skills){
+                    foreach ($artifact_socket_skills as $sock_skills){
+                        $skill_hash[$sock_skills['skill_id']]['skill_id'] = $sock_skills['skill_id'];
+                        $skill_hash[$sock_skills['skill_id']]['value'] += $sock_skills['value'];
+                        $skill_art_hash[$sock_skills['skill_id']]['skill_id'] = $sock_skills['skill_id'];
+                        $skill_art_hash[$sock_skills['skill_id']]['value'] += $sock_skills['value'];
+                    }
+                }
+
+                if($object_class == OBJECT_CLASS_ARTIFACT && $artifact['flags2'] & ARTIFACT_FLAG2_RUNIC_FRAME && $artifact['rf_enchant_id'] > 0){
+                    $symbol_skills_hash = artifact_symbol_skill_hash($artifact);
+                    foreach ($symbol_skills_hash as $e_skill){
+                        $skill_hash[$e_skill['skill_id']]['skill_id'] = $e_skill['skill_id'];
+                        $skill_hash[$e_skill['skill_id']]['value'] += $e_skill['value'];
+                        $skill_art_hash[$e_skill['skill_id']]['skill_id'] = $e_skill['skill_id'];
+                        $skill_art_hash[$e_skill['skill_id']]['value'] += $e_skill['value'];
+                    }
+                }
+
+//				$artifact_skill_list = skill_object_list($object_class,$artifact,$query_add);
+
+                if (count($artifact['artifact_skills'])) foreach ($artifact['artifact_skills'] as $artifact_skill) {
+
+                    if($artifact['slot_id'] == 'TEMP_EFFECT') {
+                        $artifact_skill['value'] = ceil($artifact_skill['value'] * $param['downgrade_effect']);
+                    }
+
+                    $skill_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                    $skill_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                    if ($artifact['type_id'] != ARTIFACT_TYPE_ID_INJURY) {
+                        $skill_art_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                        $skill_art_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                    } else {
+                        $skill_inj_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                        $skill_inj_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                    }
+                    do{
+                        if($artifact['object_class'] == OBJECT_CLASS_ARTIFACT_ARTIKUL && $artifact['type_id'] == ARTIFACT_TYPE_ID_TALENT) {
+                            if($talents_artikul_ids[$artifact['id']] >= 1) {
+                                $cnt_add = $talents_artikul_ids[$artifact['id']];
+                                if(!$cnt_add) break;
+                                for($i = 0; $i < $cnt_add; $i++) {
+                                    $skill_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                                    $skill_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                                    $skill_art_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                                    $skill_art_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                                }
+                            }
+                        }
+                    }while(0);
+                }
+                $artikul = ($artifact['object_class'] == OBJECT_CLASS_ARTIFACT) ? $artifact_artikul_hash[$artifact['artikul_id']] : $artifact;
+
+                //Скиллы заточек
+                $skills_toch = ztoch_skills($artifact, ($artikul['slot_id'] ? $artikul['slot_id'] : $artifact['slot_id']));
+                if ($skills_toch) foreach ($skills_toch as $_skid => $_val) {
+                    $skill_hash[$_skid]['skill_id'] = $_skid;
+                    $skill_hash[$_skid]['value'] += $_val;
+                    $skill_art_hash[$_skid]['skill_id'] = $_skid;
+                    $skill_art_hash[$_skid]['value'] += $_val;
+                }
+
+                if ((in_array($artifact['slot_id'],$user_body_slots) || in_array($artifact['slot_id'],array('TEMP_EFFECT'))) && !($artikul['flags'] & ARTIFACT_FLAG_ARMOR_STYLE) && $artikul['trend']){
+                    if(!$artifact['oprava_id'] && !$artikul['type_id'] == ARTIFACT_TYPE_ID_OPRAVA){
+                        $trends[] = $artikul['trend'];
+                    }
+                }
+                if ($artikul['set_id']) {
+                    $artifact_sets[$artikul['set_id']]++;
+                    $set_quality[$artikul['set_id']] = $artikul['quality'];
+                }
+                if($artikul['flags2'] & ARTIFACT_FLAG2_SET_CHAMELION) $artifact_set_all_cnt++;
+            }
+        }
+
+        if($artifact_set_all_cnt) {
+            arsort($artifact_sets);
+            foreach ($artifact_sets as $_set_id=>$_cnts) {
+                $artifact_sets[$_set_id] += $artifact_set_all_cnt;
+                break;
+            }
+        }
+
+        $trends = array_unique($trends);
+        if ((count($trends) > 1) && in_array(-1, $trends)) {
+            sort($trends);
+            array_shift($trends);
+        }
+        $art = ((count($trends) == 1) && $trends[0] || !$trends);
+        $set_info = array();
+        foreach ($artifact_sets as $set_id => $set_count) {
+            if ($set_count < ARTIFACT_SET_MINCOUNT) {
+                continue;
+            }
+            $artifact_set = artifact_set_get($set_id);
+            $bonus_artikul_id = 0;
+            for ($i = $set_count; $i>= ARTIFACT_SET_MINCOUNT; $i--) {
+                $bonus_artikul_id = $artifact_set[sprintf("bonus%d", $i)];
+                if ($bonus_artikul_id) {
+                    break;
+                }
+            }
+            if ($bonus_artikul_id) {
+                $set_info[$set_id] = $artifact_set;
+                $set_info[$set_id]['quality']= $set_quality[$set_id];
+                $artifact_skill_list = skill_object_list(OBJECT_CLASS_ARTIFACT_ARTIKUL,$bonus_artikul_id);
+                foreach ($artifact_skill_list as $artifact_skill) {
+                    $skill_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                    $skill_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+
+                    $skill_art_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                    $skill_art_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+
+                    $set_info[$set_id]['skills'][$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+                    $set_info[$set_id]['skills'][$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+                }
+            }
+        }
+    }
+
+    if($skill_hash['LEVEL']['value'] != $user['level']) $skill_hash['LEVEL']['value'] = $user['level'];
+
+    // Вычисляем расчетные характеристики
+    if (!$skill_id || in_array('HPMAX',$skill_id)) { // HPMAX
+        $_level = floor($user['level'] * (100 + $skill_hash['LEVEL']['value']) / 100);
+        $_level = intval($user['level']); //Фикс ебанутства
+        $skill_hash['HPMAX']['value'] = max(user_get_hpmax($_level,$skill_hash['VIT']['value'],$art) + intval($skill_hash['XHPMAX']['value']), 1);
+        $skill_hash['HPMAX']['skill_id'] = 'HPMAX';
+    }
+    if (!$skill_id || in_array('HP',$skill_id)) { // HP
+        $hp_t0 = intval($skill_hash['HP_T0']['value']);
+        $hp_t1 = intval($skill_hash['HP_T1']['value']);
+        $d = ($hp_t0 >= $hp_t1 ? 1: (time_current() - $hp_t0) / ($hp_t1 - $hp_t0));
+        $d = min(max($d,0),1);
+        $skill_hash['HP']['value'] = intval($skill_hash['HPMAX']['value'] * $d);
+        $skill_hash['HP']['skill_id'] = 'HP';
+    }
+    if (!$skill_id || in_array('MPMAX',$skill_id)) { // MPMAX
+        $skill_hash['MPMAX']['value'] = user_get_mpmax($skill_hash['INTELL']['value'], $user['level']) + user_get_xmpmax($skill_hash['XMPMAX']['value'], $user['level']);
+        $skill_hash['MPMAX']['skill_id'] = 'MPMAX';
+    }
+    if (!$skill_id || in_array('MP',$skill_id)) { // MP
+        $mp_t0 = intval($skill_hash['MP_T0']['value']);
+        $mp_t1 = intval($skill_hash['MP_T1']['value']);
+        $d = ($mp_t0 >= $mp_t1 ? 1: (time_current() - $mp_t0) / ($mp_t1 - $mp_t0));
+        $d = min(max($d,0),1);
+        $skill_hash['MP']['value'] = intval($skill_hash['MPMAX']['value'] * $d);
+        $skill_hash['MP']['skill_id'] = 'MP';
+    }
+    if ($extended) {
+        $skill_ids = array_keys($skill_hash);
+        if ($skill_ids) {
+            $skill_list = skill_list(false,sql_pholder(" AND id IN (?@)",$skill_ids));
+            foreach($skill_list as $skill) {
+                $skill_hash[$skill['id']] = array_merge($skill_hash[$skill['id']],$skill);
+            }
+            uasort($skill_hash, create_function('$a,$b', 'return strcmp($a["title"],$b["title"]);'));
+        }
+    }
+    return array(
+        'skills' => &$skill_hash,
+        'skills_self' => &$skill_self_hash,
+        'skills_art' => &$skill_art_hash,
+        'skills_inj' => &$skill_inj_hash,
+        'artifacts' => &$artifacts,
+        'set_info' => $set_info,
+        'art' => $art,
+    );
+}
+
+define('PARAM_COMP_ITEMS_NO' , 1);
+define('PARAM_COMP_ITEMS_ONLY' , 2);
+define('PARAM_COMP_ITEMS_YES' , 3);
+
+// Функция возвращает список доступных предметов у пользователя
+// Если slot_id='*', возвращает список одетых предметов
+function user_get_artifact_list($user_id, $slot_id='', $add='', $storage=false, $param = array(), $sort='artikul_id', $field='*') {
+    if (!$user_id) return false;
+
+    //COMPANION_SELECTIOR
+    if(is_array($param)){
+        if(!isset($param['companion_item'])) $param['companion_item'] = PARAM_COMP_ITEMS_NO;
+        if(!isset($param['companion_slot'])) $param['companion_slot'] = null;
+    }else{
+        $param['companion_item'] = PARAM_COMP_ITEMS_NO;
+        $param['companion_slot'] = null;
+    }
+
+    $add2 = '';
+    switch ($param['companion_item']){
+        case PARAM_COMP_ITEMS_NO:
+            $add2 .= sql_pholder(' AND type_id != ?#ARTIFACT_TYPE_ID_COMPANION');
+            break;
+        case PARAM_COMP_ITEMS_ONLY:
+            $add2 .= sql_pholder(' AND type_id = ?#ARTIFACT_TYPE_ID_COMPANION');
+            break;
+        case PARAM_COMP_ITEMS_YES:
+            //SMOKE V STORONKE
+            break;
+    }
+    if (isset($param['companion_slot'])) $add2 .= ($param['companion_slot'] == '*' ? " AND slot_id_c<>''": (is_array($param['companion_slot']) ? sql_pholder(" AND slot_id_c IN(?@)",$param['companion_slot']) : sql_pholder(" AND slot_id_c=?",$param['companion_slot'])));
+    //COMPANION_SELECTIOR
+
+    $artifact_list = artifact_list(false,$user_id,$slot_id,true,ARTIFACT_FLAG_HIDDEN, $add2." AND type_id NOT IN('".ARTIFACT_TYPE_ID_INJURY."','".ARTIFACT_TYPE_ID_AWARD."') ".$add, $storage, $field);
+    common_fldsort($artifact_list, false, $sort);
+    if ($sort == 'slot_num') {
+        foreach ($artifact_list as $k => $art) {
+            if ($art['slot_num'])
+                continue;
+            unset($artifact_list[$k]);
+            array_push($artifact_list, $art);
+        }
+    }
+    return $artifact_list;
+}
+
+function user_get_artifact_count($user_id, $slot_id='', $add='', $storage=false, $param = array(), $sort='artikul_id') {
+    if (!$user_id) return false;
+
+    //COMPANION_SELECTIOR
+    if(is_array($param)){
+        if(!isset($param['companion_item'])) $param['companion_item'] = PARAM_COMP_ITEMS_NO;
+        if(!isset($param['companion_slot'])) $param['companion_slot'] = null;
+    }else{
+        $param['companion_item'] = PARAM_COMP_ITEMS_NO;
+        $param['companion_slot'] = null;
+    }
+
+    $add2 = '';
+    switch ($param['companion_item']){
+        case PARAM_COMP_ITEMS_NO:
+            $add2 .= sql_pholder(' AND type_id != ?#ARTIFACT_TYPE_ID_COMPANION');
+            break;
+        case PARAM_COMP_ITEMS_ONLY:
+            $add2 .= sql_pholder(' AND type_id = ?#ARTIFACT_TYPE_ID_COMPANION');
+            break;
+        case PARAM_COMP_ITEMS_YES:
+            //SMOKE V STORONKE
+            break;
+    }
+    if (isset($param['companion_slot'])) $add2 .= ($param['companion_slot'] == '*' ? " AND slot_id_c<>''": (is_array($param['companion_slot']) ? sql_pholder(" AND slot_id_c IN(?@)",$param['companion_slot']) : sql_pholder(" AND slot_id_c=?",$param['companion_slot'])));
+    //COMPANION_SELECTIOR
+
+    $artifact_count = artifact_count(false,$user_id,$slot_id,true,ARTIFACT_FLAG_HIDDEN, $add2." AND type_id NOT IN('".ARTIFACT_TYPE_ID_INJURY."','".ARTIFACT_TYPE_ID_AWARD."') ".$add, $storage);
+    return $artifact_count;
+}
+
+// Функция снимает вещи с пользователя
+function user_undress($user_id, $slot_id=false) {
+    global $user_body_slots;
+    if (!$user_id) return false;
+    $query_add = sql_pholder(" AND user_id=? AND slot_id IN (?@) AND type_id<>'".ARTIFACT_TYPE_ID_INJURY."'",$user_id, array_merge($user_body_slots, array('MOUNT')));
+    $query_add .= $slot_id ? sql_pholder(" AND slot_id=?",$slot_id) : sql_pholder(" AND slot_id IN (?@)",$user_body_slots);
+    return artifact_save(array(
+        '_set' => " slot_id = '', slot_num = IF(cnt >= 1, 0, slot_num) ",
+        '_add' => $query_add,
+        '_cnt' => 1,
+    ));
+}
+
+// Функция производит оплату
+function user_make_payment($money_type, $user_id, $amount, $comment='', $nolog=false, $operation=false) {
+    global $money_type_info;
+    if (!$user_id) return false;
+    $field = $money_type_info[$money_type]['field'];
+    if (!$field) return false;
+    $amount = money_floatval($amount);
+    if(is_nan($amount)) return false;
+    $status = user_save(array(
+        'id' => $user_id,
+        '_set' => $field."=".$field."+(".$amount.")",
+        '_add' => " AND (".$field."+(".$amount."))>=0",
+        '_cnt' => true,
+    ));
+    if (!$status) return false;
+
+    chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user_id, array('func' => "updateSwf({'lvl':''})"));
+    if ($nolog) return true;
+    /*
+    if (!$comment) {
+        $Trace = debug_backtrace();
+        $t = pathinfo($Trace[0]['file']);
+        $file = $t['basename'];
+        $line = $Trace[0]['line'];
+        $func = $Trace[1]['function'];
+        if (preg_match('/^require|^include/', $func)) $func = '';
+        $comment = sprintf('%s at %s line %s', $func, $file, $line);
+    }
+    require_once("lib/money_change.lib");
+    money_change_save(array(
+        'user_id' => $user_id,
+        'money_type' => $money_type,
+        'amount' => $amount,
+        'stime' => time_current(),
+        'comment' => $comment,
+    ));
+    */
+
+
+    // Если юзер сессионный берем данные из сессии
+    global $session_user;
+    if($user_id == $session_user['id']) {
+        $user = $session_user;
+    } else {
+        $user = user_get($user_id);
+
+    }
+    // не пишем стату если админ
+    if ($user['flags'] & USER_FLAG_ADMIN) return true;
+
+    if ($money_type == MONEY_TYPE_GAME) {
+        require_once("lib/log_stat_uniform.lib");
+        log_stat_uniform::cashflow_add($user['id'], $amount);
+    }
+
+    // Статистика Деньги-глобально
+    require_once("lib/money_stat.lib");
+
+    $level = $user['level'];
+    $kind = $user['kind'];
+
+    if (!$operation) {
+        if ($amount > 0) {
+            $operation = array(MONEY_STAT_OPERATION_RECEIVE);
+        } else {
+            $operation = array(MONEY_STAT_OPERATION_LOST);
+        }
+    }
+
+    if (!is_array($operation)){
+        $operation = array($operation);
+    }
+
+    foreach($operation as $item){
+        $amount_save = (in_array($item, array(MONEY_STAT_OPERATION_LOST)) && $amount < 0) ? -$amount : $amount;
+        money_stat_smart_save($amount_save, $money_type, $item, $level, $kind);
+        if ( ($item == MONEY_STAT_OPERATION_PURE_RECEIVE) && ($money_type == MONEY_TYPE_GAME) ) {
+            if (NODE_PUSH(null, $user_id)) {
+                $profile_pvp = skill_object_get(OBJECT_CLASS_USER, $user_id, array('skill_id' => 'PROFILE_PVP'));
+                if ($profile_pvp && ($profile_pvp['value'] > 50)) metric_group_add(METRIC_TYPES_PVP, array('level' => $user['level']), array('pvp_gold' => $amount * 100));
+                NODE_POP();
+            }
+        }
+    }
+
+    // Статистика Деньги
+    if ($money_type == MONEY_TYPE_GOLD AND $amount > 0) {
+        money_stat2_payment($user_id, $amount);
+    }
+
+    return true;
+}
+
+// Функция производит перевод денег от одного пользователя другому
+function user_make_transfer($money_type, $from_user_id, $to_user_id, $amount=0, $comment='', $operation=MONEY_STAT_OPERATION_RECEIVE) {
+    if (!$from_user_id || !$to_user_id || ($amount <= 0)) return false;
+    $amount = money_floatval($amount);
+    $status = user_make_payment($money_type, $from_user_id,-$amount,'',true);
+    if (!$status) return false;
+// Логирование скупки бриллиантов и рубинов
+    user_make_payment($money_type, $to_user_id,$amount,'',true);
+
+    return true;
+}
+
+// Функция производит передачу артефакта от одного пользователя другому
+function user_make_artifact_transfer($artifact_id, $from_id, $to_id, $storage=ARTIFACT_STORAGE_TYPE_USER) {
+    if (!$artifact_id || !$from_id || !$to_id) return false;
+    return artifact_save(array(
+        'id' => $artifact_id,
+        'user_id' => $to_id,
+        'slot_id' => '',
+        '_cnt' => true,
+        'storage_type' => $storage,
+    ));
+}
+
+
+// Функция возвращает количество денег пользователя
+function user_get_money_amount($money_type, $user_id) {
+    global $money_type_info, $session_user;
+    if (!$user_id) return false;
+    $field = $money_type_info[$money_type]['field'];
+    if (!$field) return false;
+    if ($session_user['id'] == $user_id) return $session_user[$field];
+    $user = user_get($user_id);
+    return $user[$field];
+}
+
+// Функция возвращает количество предметов в рюкзаке
+function user_get_artifact_amount($user_id, $storage=ARTIFACT_STORAGE_TYPE_USER) {
+    if (!$user_id) return 0;
+    $cnt = artifact_count(false,$user_id,null,true,ARTIFACT_FLAG_NOWEIGHT,sql_pholder(" AND slot_id='' AND type_id NOT IN('".ARTIFACT_TYPE_ID_INJURY."','".ARTIFACT_TYPE_ID_AWARD."') AND storage_type = ?", $storage));
+    return $cnt;
+}
+
+$user_storage_capacity_cache = array();
+// Функция возвращает макс. количество предметов возможное у пользователя
+function user_get_artifact_amount_max($user_id, $storage=false) {
+    if (!$user_id) return 0;
+    global $user_storage_capacity_cache;
+
+    $premium = user_premium_get($user_id);
+
+    switch ($storage) {
+        case ARTIFACT_STORAGE_TYPE_PR_BAG:
+            if (!isset($user_storage_capacity_cache[$user_id][$storage])) {
+                $skill_info = user_get_skill_info($user_id,'PR_BAG_CAPACITY',true,false);
+                $user_storage_capacity_cache[$user_id][$storage] = intval($skill_info['skills']['PR_BAG_CAPACITY']['value']);
+            }
+            return $user_storage_capacity_cache[$user_id][$storage];
+        case ARTIFACT_STORAGE_TYPE_USER:
+        default:
+            $skill_info = user_get_skill_info($user_id,'CAPACITY',true,false);
+            return BACKPACK_DEFAULT_SLOTS + intval($skill_info['skills']['CAPACITY']['value']) + ($premium['vars'][P_BACKPACK]['cnt'] ? $premium['vars'][P_BACKPACK]['cnt'] : 0);
+    }
+
+}
+
+// проверяет активность списка пользователей по всем нодам.
+// возвращает хеш (int)user_id = (bool)is_online
+function user_is_online_global($user_ids = false, $ignore_invisibility =false, $real_online = false) {
+    global $SESSION_TTL, $NODE_NUMS;
+
+    if (!$user_ids || !is_array($user_ids)) {
+        return false;
+    }
+
+    $user_ids = array_combine($user_ids, $user_ids); // получаем хеш id=id
+    $user_online_states = array_combine($user_ids, array_fill(0, count($user_ids), false)); // id=false
+    foreach ($NODE_NUMS as $nn) {
+        // пропускаем морозилку, там не может быть активных пользователей
+        if ($nn == FRIDGE_NN) {
+            continue;
+        }
+        if (!NODE_PUSH($nn)) {
+            error_log(sprintf('user_is_online_global: Unable to push node %d', $nn));
+            continue;
+        }
+
+        $add = sql_pholder(' AND uid IN (?@)', $user_ids);
+        $users = make_hash(session_list(null, null, null, $add, 'uid,stime,invisibility_time'), 'uid');
+
+        NODE_POP();
+
+        foreach ($users as $uid => $session) {
+            if (isset($user_states[$uid])) {
+                error_log(sprintf('user_is_online_global: Duplicate session entry for user %d', $uid));
+                continue;
+            }
+
+            $user_online_states[$uid] = check_online($session, $ignore_invisibility, $real_online);
+
+            // чтобы лишний раз не запрашивать пользователя из базы и выйти из цикла, если это возможно
+            unset($user_ids[$uid]);
+        }
+
+        if (!$user_ids) {
+            break;
+        }
+    }
+    return $user_online_states;
+}
+
+function check_online($session, $ignore_invisibility, $real_online = false) {
+    global $SESSION_TTL;
+    $is_online = ($ignore_invisibility || !user_is_invisible($session));
+    $is_online = $is_online && (intval($session['stime']) > (time_current() - ($real_online ? NORMAL_SESSION_TTL : $SESSION_TTL)));
+    return $is_online;
+}
+
+function user_is_online($user_id, $ignore_invisibility =false, $real_online = false) {
+    NODE_PUSH(null, $user_id);
+    $session = session_get($user_id);
+    NODE_POP();
+    return check_online($session, $ignore_invisibility, $real_online);
+}
+
+function user_is_near(&$user1, &$user2) {
+    if ($user1['instance_id'] || $user2['instance_id']) return ($user1['instance_id'] == $user2['instance_id']);
+    return ($user1['area_id'] == $user2['area_id']);
+}
+
+
+/**
+ * Вовращает конфигурацию образа
+ *
+ * @param array $user
+ * @param unknown_type $no_cfg_sk
+ * @param unknown_type $show_armor_style
+ * #96051 - Доспехи стиля: функционал
+ * http://task.corp.mail.ru/task/edit/id96051/
+ * $show_armor_style - ожидает один из вариантов: null, false или true.
+ * 	Где, null - зничит доставать все артефакты, вне зависимости от флага ARTIFACT_FLAG_ARMOR_STYLE
+ * 		false - артефакты, не имеющие этот флаг
+ * 		true - либо артефакты, имеющие этот флаг, либо другой артефакт в этом же слоте
+ * @return array
+ */
+
+function user_get_cfg($user, $no_cfg_sk = false, $show_armor_style = null, $no_mount = false, $param = array()) {
+    global $_part_match, $armor_style_slots_info;
+    if (!$user || !is_array($user))
+        return false;
+    $layers = array();
+
+    $fight_param = ($param['fight_param'] ? $param['fight_param'] : array());
+    $user_skill_params = ($fight_param['user_skill_params'] ? $fight_param['user_skill_params'] : array());
+
+    foreach ($_part_match as $k=>$v) $layers[0][$v] = ($v != FS_PPT_HD2) && ($v <= FS_PPT_LL3) ? $user['cfg_pbody'].';;;' : '0;;;';
+    $layers[0][FS_PPT_HD1] = $user['cfg_phead'].';;;';
+    $layers[1][FS_PPT_HD1] = $user['cfg_phair'].';;;';
+
+    $artifact_list = artifact_list(false,$user['id'],'*',true);
+    if ($show_armor_style === false) {
+        foreach ($artifact_list as $k => $item) {
+            if (!($item['flags'] & ARTIFACT_FLAG_ARMOR_STYLE))
+                continue;
+            unset($artifact_list[$k]);
+        }
+    } elseif ($show_armor_style) {
+        // Обработка случая, если $show_armor_style == true, значит нужно выбрать
+        // для каждого слота либо артефакт с флагом ARTIFACT_FLAG_ARMOR_STYLE
+        // либо другой артефакт в текущем слоте.
+        $slots_filled = array();
+        $have_armor_style = false;
+        foreach ($artifact_list as $item) {
+            if (!isset($armor_style_slots_info[$item['slot_id']]))
+                continue;
+            ++$slots_filled[$item['slot_id']];
+            if (!$have_armor_style && ($item['flags'] & ARTIFACT_FLAG_ARMOR_STYLE))
+                $have_armor_style = true;
+        }
+        if ($have_armor_style) {
+            foreach ($artifact_list as $k => $item) {
+                if (isset($slots_filled[$item['slot_id']]) && $slots_filled[$item['slot_id']] > 1 && !($item['flags'] & ARTIFACT_FLAG_ARMOR_STYLE)) {
+                    unset($artifact_list[$k]);
+                    array_push($artifact_list, $item);
+                }
+            }
+        }
+    }
+
+    if($user_skill_params['no_obcast']) {
+        foreach ($artifact_list as $k => $item) {
+            if ($item['slot_id'] == 'TEMP_EFFECT') {
+                unset($artifact_list[$k]);
+            }
+        }
+    }
+
+    artifact_artikul_get_title($artifact_list);
+    $artikul_ids = get_hash($artifact_list, 'artikul_id', 'artikul_id');
+    $artikul_hash = $artikul_ids ? make_hash(artifact_artikul_list(array('id' => $artikul_ids), '', 'id, f_pack, f_layer, f_cfg, f_color2, f_anim, bound_effects')) : array();
+    $weapon_mask = 0;
+    foreach ($artifact_list as $k => $artifact) {
+        $artikul_id = $artifact['artikul_id'];
+        if ($artikul_hash[$artikul_id]['bound_effects']) $artifact_list[$k]['bound_effects'] = $artikul_hash[$artikul_id]['bound_effects'];
+        if (($user['flags'] & USER_FLAG_NOHELMET) && ($artifact['slot_id'] == 'HEAD')) continue;
+        if (!$artikul_hash[$artikul_id]['f_pack'] || ($artifact['slot_id'] == 'MOUNT')) continue;
+        if (!isset($armor_style_slots_info[$artifact['slot_id']]) || !isset($slots_filled[$artifact['slot_id']]) || $slots_filled[$artifact['slot_id']] <= 1 || ($artifact['flags'] & ARTIFACT_FLAG_ARMOR_STYLE)) {
+            if ($artifact['flags'] & ARTIFACT_FLAG_WEAPON) $weapon_mask |= $artikul_hash[$artikul_id]['f_cfg'] & (ARTIFACT_PPT_RW | ARTIFACT_PPT_LW | ARTIFACT_PPT_MW);
+        }
+        foreach ($_part_match as $k=>$v) {
+            if (!($artikul_hash[$artikul_id]['f_cfg'] & $k)) continue;
+            if ($layers[$artikul_hash[$artikul_id]['f_layer']][$v] && !($artifact['flags'] & ARTIFACT_FLAG_LAYERPRIO)) continue;
+            // Формирование правильно внешности в бою с учетом, чтобы шмот под доспехами стиле не отображался
+            if (isset($armor_style_slots_info[$artifact['slot_id']]) && isset($slots_filled[$artifact['slot_id']]) && $slots_filled[$artifact['slot_id']] > 1 && !($artifact['flags'] & ARTIFACT_FLAG_ARMOR_STYLE)) continue;
+            //$layers[$artikul_hash[$artikul_id]['f_layer']][$v] = $artikul_hash[$artikul_id]['f_pack'];
+            $layers[$artikul_hash[$artikul_id]['f_layer']][$v] = $artikul_hash[$artikul_id]['f_pack'].';'.$artikul_hash[$artikul_id]['f_color'].';'.$artikul_hash[$artikul_id]['f_color2'].';'.$artikul_hash[$artikul_id]['f_anim'].';';
+        }
+    }
+    if ($layers[2][FS_PPT_HD1] || $layers[2][FS_PPT_HD2]) $layers[1][FS_PPT_HD1] = '0;;;';
+    $slot_artifacts = make_hash($artifact_list,'slot_id',true);
+    foreach (array_keys($slot_artifacts) as $slot_id) {
+        $artikul_id = $slot_artifacts[$slot_id][0]['artikul_id'];
+        $slot_artifacts[$slot_id][0]['f_cfg'] = $artikul_hash[$artikul_id]['f_cfg'];
+    }
+    $parts = array();
+    foreach ($_part_match as $k=>$v) {
+        if ($no_cfg_sk && ($k == ARTIFACT_PPT_BOW)) continue;
+        $parts[] = $layers[0][$v];
+        $parts[] = $layers[1][$v];
+        $parts[] = $layers[2][$v];
+    }
+    $skeleton = 0;
+
+    if($no_mount) unset($slot_artifacts['MOUNT']);
+
+    $skeleton =
+        ($slot_artifacts['MOUNT'] ? 9 :
+            (($weapon_mask & ARTIFACT_PPT_RW) && ($weapon_mask & ARTIFACT_PPT_LW) ? 4:	// две руки с оружием
+                ($weapon_mask & ARTIFACT_PPT_MW ? 3:	// двуручное оружие
+                    ($weapon_mask & ARTIFACT_PPT_RW ? 1:	// правое оружие
+                        ($weapon_mask & ARTIFACT_PPT_LW ? 5:	// левое оружие
+                            2)))));	// нет оружия
+
+    if (!$no_cfg_sk) {
+        foreach ($artifact_list as $artifact) { // Если хоть в одном из одетых предметов есть param2, значит это задан новый спецскелет
+            if ($artifact['slot_id'] && ($artifact['slot_id'] == 'TEMP_EFFECT') && $artifact['param2']) {
+                $user['cfg_sk'] = $artifact['param2'];
+                break;
+            }
+        }
+        if(!$user['cfg_sk']){
+            $bot_skin_active = bot_skin_get(array('user_id' => $user['id']), sql_pholder(' AND atime > ? ORDER BY atime DESC', (time_current() - BOT_SKIN_RENT_TIME)));
+            if($bot_skin_active){
+                $user['cfg_sk'] = $bot_skin_active['bot_sk'];
+            }
+        }
+        if ($user['cfg_sk']) {	// задан спецскелет
+            $skeleton = $user['cfg_sk'];
+            $layers = $parts = array();
+
+            foreach ($artifact_list as $artifact) { // оставляем знамя
+                if ($artifact['slot_id'] != 'BANNER') {
+                    continue;
+                }
+
+                $artikul_id = $artifact['artikul_id'];
+
+                foreach ($_part_match as $k=>$v) {
+                    if (!($artikul_hash[$artikul_id]['f_cfg'] & $k)) continue;
+                    if ($layers[$artikul_hash[$artikul_id]['f_layer']][$v] && !($artifact['flags'] & ARTIFACT_FLAG_LAYERPRIO)) continue;
+                    $layers[$artikul_hash[$artikul_id]['f_layer']][$v] = $artikul_hash[$artikul_id]['f_pack'].';'.('').';'.$artikul_hash[$artikul_id]['f_color2'].';'.$artikul_hash[$artikul_id]['f_anim'];
+                }
+            }
+
+
+
+            if ($layers[2][FS_PPT_HD1] || $layers[2][FS_PPT_HD2]) $layers[1][FS_PPT_HD1] = 0;
+            foreach ($_part_match as $k=>$v) {
+                $parts[] = $layers[0][$v];
+                $parts[] = $layers[1][$v];
+                $parts[] = $layers[2][$v];
+            }
+
+
+        }
+
+    }
+
+    $mount_artikul_id = @$slot_artifacts['MOUNT'][0]['artikul_id'];
+    $ret = array(
+        'mount' => $mount_artikul_id ? ($slot_artifacts['MOUNT'][0]['packet_id'] ? $slot_artifacts['MOUNT'][0]['packet_id'] : $artikul_hash[$mount_artikul_id]['f_pack']) : 0,
+        'skeleton' => $skeleton,
+        'layers' => &$layers,
+        'parts' => &$parts,
+        'artifacts' => &$artifact_list,
+        'slot_artifacts' => &$slot_artifacts,
+    );
+    return $ret;
+}
+
+function user_get_trophy_cfg($user) {
+    $trophy_parts = array();
+    if ($user['trophy_id']) {
+        if ($user['trophy_server_id'] &&  ($user['trophy_server_id'] != SERVER_ID)) {
+            // каждый раз нельзя ходить за инфой о трофее, поэтому закэшируем
+            $trophy_cache = new Cache('USER_TROPHY_'.$user['trophy_server_id'].'_'.$user['trophy_id']);
+            if ($trophy_cache->isValid()) {
+                return unserialize($trophy_cache->get());
+            } else {
+                // сходим за инфой на сервер, закэшируем
+                require_once('lib/crossserver.lib');
+                $trophy = crossserver_get_userinfo($user['trophy_server_id'], $user['trophy_id']);
+                $trophy['rank_img'] = PATH_IMAGE_RANKS.'rank'.$trophy['rank'].'.gif';
+                $ret = array(
+                    'trophy_parts' => array($trophy['cfg_phead'], $trophy['cfg_phair']),
+                    'trophy_nick' => $trophy['nick'],
+                    'trophy_gender' => $trophy['gender'],
+                    'trophy_clan' => $trophy['clan_img'],
+                    'trophy_rank' => $trophy['rank_img'],
+                    'trophy_level' => $trophy['level'],
+                );
+                $trophy_cache->update(serialize($ret), 60);
+                return $ret;
+            }
+        } else {
+            $trophy = user_get($user['trophy_id']);
+            $trophy_parts = array($trophy['cfg_phead'], $trophy['cfg_phair']);
+            $trophy['rank_img'] = PATH_IMAGE_RANKS.'rank'.$trophy['rank'].'.gif';
+            if ($trophy['clan_id']) {
+                $clan = clan_get($trophy['clan_id']);
+                $trophy['clan_img'] = PATH_IMAGE_CLANS.$clan['picture'];
+            }
+        }
+    }
+    $ret = array(
+        'trophy_parts' => $trophy_parts,
+        'trophy_nick' => $trophy['nick'],
+        'trophy_gender' => $trophy['gender'],
+        'trophy_clan' => $trophy['clan_img'],
+        'trophy_rank' => $trophy['rank_img'],
+        'trophy_level' => $trophy['level'],
+    );
+    return $ret;
+}
+
+// Проверяем и инициализируем параметры образа
+// функция меняет не правильные значения на дефолтные(или случайные если задан $random = true)
+function user_cfg_validate($cfg, $random = false) {
+    global $cfg_info, $cfgc_info;
+    $kinds = array(KIND_HUMAN, KIND_MAGMAR);
+    if (!isset($cfg['kind'])) $cfg['kind'] = $kinds[array_rand($kinds)];
+
+    $cfg['gender'] = intval($cfg['gender']);
+    $cfg['kind'] = intval($cfg['kind']);
+
+    if (!$cfg_info[$cfg['gender']])
+        $cfg['gender'] = reset(array_keys($cfg_info));
+
+    if (!$cfg_info[$cfg['gender']][$cfg['kind']])
+        $cfg['kind'] = reset(array_keys($cfg_info[$cfg['gender']]));
+
+    foreach ($cfg_info[$cfg['gender']][$cfg['kind']] as $k=>$data) {
+        if (!isset($cfg[$k]) || !in_array($cfg[$k],$data)) {
+            if ($random) {
+                $cfg[$k] = $data[rand(0, count($data)-1)];
+            } else {
+                $cfg[$k] = reset($data);
+            }
+        } else {
+            $cfg[$k] = intval($cfg[$k]);
+        }
+    }
+    $kp = $cfg['kind'] == 1 ? 'H': 'M';
+    foreach (array('chair','cbody') as $k) {
+        if (!isset($cfg[$k]) || !in_array($cfg[$k],$cfgc_info[$k.$kp])) {
+            $cfg[$k] = reset($cfgc_info[$k.$kp]);
+        }
+    }
+    return $cfg;
+}
+
+function user_get_cost($user_id) {
+    if (!$user_id) return false;
+    $skill_ids = array('STR','INT','DEX','ENDUR','VIT','PWRMIN','PWRMAX');
+    NODE_PUSH(null, $user_id);
+    $skill_info = user_get_skill_info($user_id,$skill_ids);
+    NODE_POP();
+    $skill_hash = &$skill_info['skills'];
+    $cost =
+        (int)$skill_hash['STR']['value'] +
+        (int)$skill_hash['INT']['value'] +
+        (int)$skill_hash['DEX']['value'] +
+        (int)$skill_hash['ENDUR']['value'] +
+        (int)$skill_hash['VIT']['value'] +
+        (int)$skill_hash['PWRMIN']['value']/1.5 +
+        (int)$skill_hash['PWRMAX']['value']/1.5
+    ;
+    return $cost;
+}
+
+function effect_skill_hash($artikul_hash, $with_hidden = false) {
+    if(!$artikul_hash) return false;
+    foreach ($artikul_hash as $k=>$artifact) $artikul_hash[$k]['object_class'] = OBJECT_CLASS_ARTIFACT;
+    skill_objects_list($artikul_hash, false, true);
+
+    $skill_hash = array();
+
+    foreach ($artikul_hash as $artifact) {
+        if(!$with_hidden && $artifact['flags2'] & ARTIFACT_FLAG2_TEMP_EFFECT_HIDE) continue;
+        if (count($artifact['artifact_skills'])) foreach ($artifact['artifact_skills'] as $artifact_skill) {
+            $skill_hash[$artifact_skill['skill_id']]['skill_id'] = $artifact_skill['skill_id'];
+            $skill_hash[$artifact_skill['skill_id']]['value'] += $artifact_skill['value'];
+            $skill_hash[$artifact_skill['skill_id']]['title'] = $artifact_skill['title'];
+            $skill_hash[$artifact_skill['skill_id']]['flags'] = $artifact_skill['flags'];
+        }
+    }
+    return $skill_hash;
+}
+
+function effect_get_cost($skills) {
+    $skill_ids = array('STR','INT','DEX','ENDUR','VIT','PWRMIN','PWRMAX');
+    $skill_hash = &$skills;
+    $cost =
+        (int)$skill_hash['STR']['value'] +
+        (int)$skill_hash['INT']['value'] +
+        (int)$skill_hash['DEX']['value'] +
+        (int)$skill_hash['ENDUR']['value'] +
+        (int)$skill_hash['VIT']['value'] +
+        (int)$skill_hash['PWRMIN']['value']/1.5 +
+        (int)$skill_hash['PWRMAX']['value']/1.5
+    ;
+    return $cost;
+}
+
+$user_equip_needed = array(
+    1 => 1,
+    2 => 3,
+    4 => 5,
+    5 => 7,
+    6 => 7,
+);
+
+function user_body_equip_count($user_id) {
+    if (!$user_id) return false;
+    $slots_need = array('BODY','ARMOR','RHAND','SHOULDER','HEAD','GLOVE','LHAND','LEG','FOOT');
+    NODE_PUSH(null, $user_id);
+    $artifact_count = artifact_count_advanced(false,$user_id,$slots_need,true,ARTIFACT_FLAG_HIDDEN | ARTIFACT_FLAG_ARMOR_STYLE, " AND type_id NOT IN('".ARTIFACT_TYPE_ID_INJURY."','".ARTIFACT_TYPE_ID_AWARD."') ");
+    NODE_POP();
+    return $artifact_count;
+}
+
+function user_get_slot_num_max($user_id, $slot_id = 'EFFECT') {
+    if (!$user_id) return false;
+    switch ($slot_id) {
+        case 'EFFECT':
+            $skill_info = user_get_skill_info($user_id,'SLOT_CNT',true,false);
+            return 4 + intval($skill_info['skills']['SLOT_CNT']['value']);
+        case 'VARIANT_EFFECT':
+            $skill_info = user_get_skill_info($user_id,'VARIANT_SLOT',true,false);
+            return intval($skill_info['skills']['VARIANT_SLOT']['value']) + 4;
+        case 'ACCESSORY':
+            return 2;
+        case 'BELT':
+            return 2;
+        case 'RING':
+            return 2;
+        case 'AMULET':
+            return 2;
+        case 'ARK':
+            $skill_info = user_get_skill_info($user_id,'ARKAT',true,false);
+            return intval($skill_info['skills']['ARKAT']['value']);
+        case 'SPELL_AURA':
+            $skill_info = user_get_skill_info($user_id,'AURACNT',true,false);
+            return min(intval($skill_info['skills']['AURACNT']['value']),SPELL_AURA_SLOT_NUM);
+        case 'SPELL':
+            return 15;
+        default:
+            return 1;
+    }
+    return 0;
+}
+
+function user_set_flag($user_id, $flag, $value) {
+    if (!$user_id) return false;
+    $flag = intval($flag);
+    return user_save(array(
+        'id' => $user_id,
+        '_set' => $value ? "flags = flags | ".$flag : "flags = flags & ~".$flag,
+        '_cnt' => true,
+    ));
+}
+function user_set_flag2($user_id, $flag, $value) {
+    if (!$user_id) return false;
+    $flag = intval($flag);
+    return user_save(array(
+        'id' => $user_id,
+        '_set' => $value ? "flags2 = flags2 | ".$flag : "flags2 = flags2 & ~".$flag,
+        '_cnt' => true,
+    ));
+}
+
+// функция транспорта персонажа
+// Проверяет, нужна ли персонажу транспортировка, и, если да, инициирует ее
+// Работает только для разморозки
+function user_transfer($user_id) {
+    require_once("include/node_transfer.inc");
+    require_once("lib/area.lib");
+
+    if (!$user_id) return false;
+    $src = NODE_GET($user_id);
+    if ($src != FRIDGE_NN) {
+        error_log('TRY TO TRANSFER NOT FROM FRIDGE');
+        return false;
+    }
+    $dst = NODE_UID_TO_NUM($user_id);
+    if (!$src || !$dst)
+        return false;
+    $status = true;
+    if ($src != $dst) {
+        if (!NODE_TRANSFER_USER($src,$dst,$user_id)) {
+            $status = false;
+        }
+        NODE_SAVE($user_id,$dst);
+    }
+
+    if ($status) {
+        auth_save(array(
+            'uid' => $user_id,
+            '_set' => sql_pholder('auth_flags = auth_flags & ~?#AUTH_FLAG_FROZEN'),
+        ));
+        user_save(array(
+            'id' => $user_id,
+            '_set' => sql_pholder('flags2 = flags2 & ~?#USER_FLAG2_FROZEN'),
+        ));
+    }
+
+    NODE_SWITCH(null,$user_id);
+    return $status;
+}
+
+/*
+// функция транспорта персонажа
+// Проверяет, нужна ли персонажу транспортировка, и, если да, инициирует ее
+function user_transfer($user_id) {
+    require_once("include/node_transfer.inc");
+    require_once("lib/area.lib");
+
+    if (!$user_id) return false;
+    $user = user_get($user_id,false,'',true);
+    $src = NODE_GET($user_id);
+    $user_param = false;
+    if ($user['area_id_transfer']) {
+        $area_to = area_get($user['area_id_transfer']);
+        if (!$area_to) return false;
+        $dst = NODE_GET($user['id']);
+        $user_param = array(
+            'id' => $user_id,
+            'area_id' => $area_to['id'],
+            'area_id_transfer' => 0,
+            'instance_id' => 0,
+            'raid_id' => 0,
+            'flags2' => $user['flags2'] & ~USER_FLAG2_IN_ESTATE,
+        );
+    } else {
+        $dst = NODE_UID_TO_NUM();
+    }
+    if (!$src || !$dst) return false;
+    $status = true;
+    if ($src != $dst) {
+        if (!NODE_TRANSFER_USER($src,$dst,$user_id)) {
+            if ($user_param) unset($user_param['area_id']);
+            $status = false;
+        } else NODE_SAVE($user_id,$dst);
+    }
+    NODE_SWITCH(null,$user_id);
+    if ($user_param) {
+        //user_change_chat_channels($user, $user_param);
+        user_save($user_param);
+    }
+    if (($user['auth_flags'] & AUTH_FLAG_FROZEN) && $status) {
+        auth_save(array(
+            'uid' => $user_id,
+            'auth_flags' => $user['auth_flags'] & ~AUTH_FLAG_FROZEN,
+        ));
+    }
+    return $status;
+}
+*/
+
+// функция удаления профессии
+function user_profession_delete($user_id, $profession_id) {
+    global $profession_info;
+    if (!$user_id || !$profession_id) return false;
+    $user = user_get($user_id);
+    if (!$user || !(intval($user['profession']) & intval($profession_id))) return false;
+    $skill_id = $skill_id = $profession_info[$profession_id]['skill_id'];
+    if ($profession_info[$profession_id]['type'] == PR_TYPE_CRAFT || $profession_info[$profession_id]['type'] == PR_TYPE_OTHER) { // для крафтовых профессий чистим изученные рецепты
+        $recipe_user_list = recipe_user_list($user['id'], $profession_id);
+        if ($recipe_user_list) {
+            recipe_user_delete(array('id' => get_hash($recipe_user_list, 'id', 'id')));
+        }
+    } elseif ($profession_info[$profession_id]['type'] == PR_TYPE_FARM) { // для фармовых профессий чистим статистику добытого
+        $farm_user_list = farm_user_list($user['id'], $profession_id);
+        if ($farm_user_list) {
+            farm_user_delete(array('id' => get_hash($farm_user_list, 'id', 'id')));
+        }
+    } elseif ($profession_info[$profession_id]['id'] == PR_MEDIC) { // для медика убивает сопутствующий скилл
+        skill_object_delete(OBJECT_CLASS_USER, $user, array('skill_id' => array('CURED_WEIGHT', 'MAG_CURED_WEIGHT')));
+    }
+    $profession_skill = user_get_skill_info($user['id'], $skill_id);
+    $profession_skill = intval($profession_skill['skills'][$skill_id]['value']);
+    skill_object_delete(OBJECT_CLASS_USER, $user, array('skill_id' => $skill_id));
+    user_save(array(
+        'id' => $user['id'],
+        '_set' => 'profession=profession &~'.intval($profession_id),
+    ));
+    // Снимаем проф. сумку
+    NODE_PUSH(null, $user_id);
+    $pr_bag = user_get_artifact_list($user_id, 'PR_BAG', ' LIMIT 1');
+    if (!empty($pr_bag)) {
+        $pr_bag = reset($pr_bag);
+        artifact_save(array(
+            'id' => $pr_bag['id'],
+            'slot_id' => '',
+            'slot_num' => 0,
+        ));
+        chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user_id, array('func' => 'user_show_prof_bag(0)'));
+        $bag_artifact_hash = make_hash(user_get_artifact_list($user_id, '', '', ARTIFACT_STORAGE_TYPE_PR_BAG));
+        if (count($bag_artifact_hash)) {
+            foreach($bag_artifact_hash as $prof_bag_artifact) {
+                artifact_move($prof_bag_artifact['id'], $prof_bag_artifact['cnt'], $user_id);
+            }
+        }
+    }
+    NODE_POP();
+    // лог-сервис -----------------------
+    logserv_log_note(array(
+        'note' => sprintf(translate('Отказ от профессии "%s"'),$profession_info[$profession_id]['title']),
+        'comment' => sprintf(translate('Текущее мастерство: %d'),$profession_skill),
+    ),$user);
+    // ----------------------------------
+    return true;
+}
+
+// возвращает, есть ли непросроченное преступление такого типа.
+function user_get_punishment_state($user_id, $crime_id) {
+    require_once("lib/punishment.lib");
+    if (!$user_id || !$crime_id) return true;
+    $query_add = '';
+    if (is_array($crime_id)) {
+        $query_add = sql_pholder(' AND crime_id IN (?@)', $crime_id);
+    } else {
+        $query_add = sql_pholder(' AND crime_id=?', $crime_id);
+    }
+    $punishment = punishment_user_get(array('user_id' => $user_id), true, $query_add);
+    return ($punishment) ? true : false;
+}
+
+function user_resurrect($user) {
+    if (!is_array($user)) $user = user_get($user);
+    if (!$user || !($user['flags'] & USER_FLAG_GHOST)) return false;
+    NODE_PUSH(null, $user['id']);
+    $skill_info = user_get_skill_info($user['id'],array('HP','HPMAX','MP','MPMAX'),true,true,true);
+    $skill_hash = &$skill_info['skills'];
+    $need_hp = $skill_hash['HPMAX']['value'] / 3.0;
+    if ($need_hp > $skill_hash['HP']['value']) {
+        $r = $user['level']*30;
+        $d = $skill_hash['HPMAX']['value'] ? $need_hp*$r/$skill_hash['HPMAX']['value']: 0;
+        $hp_t0 = time_current() - $d;
+        $hp_t1 = time_current() - $d + $r;
+        skill_object_set_value(OBJECT_CLASS_USER,$user['id'],'HP_T0',$hp_t0);
+        skill_object_set_value(OBJECT_CLASS_USER,$user['id'],'HP_T1',$hp_t1);
+    }
+    $need_mp = $skill_hash['MPMAX']['value'] / 3.0;
+    if ($need_mp > $skill_hash['MP']['value']) {
+        $r = $user['level']*10;
+        $d = $skill_hash['MPMAX']['value'] ? $need_mp*$r/$skill_hash['MPMAX']['value']: 0;
+        $mp_t0 = time_current() - $d;
+        $mp_t1 = time_current() - $d + $r;
+        skill_object_set_value(OBJECT_CLASS_USER,$user['id'],'MP_T0',$mp_t0);
+        skill_object_set_value(OBJECT_CLASS_USER,$user['id'],'MP_T1',$mp_t1);
+    }
+    user_set_flag($user['id'],USER_FLAG_GHOST,false);
+
+    if (session_count(null, null, false, sql_pholder(' AND uid = ?', $user['id']))) {
+        session_save(array(
+            'uid' => $user['id'],
+            'ressurect_time' => time_current(),
+        ));
+        user_save(array(
+            'id' => $user['id'],
+            'garea_id' => 0,
+        ));
+    }
+    NODE_POP();
+
+    return true;
+}
+
+function user_calc_ftime($user, $ftime) {
+    if ($ftime && !($user['flags'] & USER_FLAG_GHOST)) {
+        $premium = user_premium_get($user['id']);
+
+        if(!$premium['vars'][P_MOUNTC]) {
+            $mount = reset(user_get_artifact_list($user['id'], 'MOUNT'));
+            if ($mount) {
+                if ($mount['param1'] && !artifact_remove($mount['param1'], 1, $user['id'])) {
+//				user_undress($user['id'], 'MOUNT');
+//				chat_msg_send_special(CODE_CALL_JSFUNC,CHAT_CHF_USER,$user['id'],array('func' => "updateSwf({'items_right':''})",));
+//				chat_msg_send_system('У Вашего ездового животного кончился корм!',CHAT_CHF_USER,$user['id']);
+                    return array(
+                        'error' => translate('У Вашего ездового животного кончился корм!'),
+                        'ftime' => 0,
+                    );
+                }
+            }
+        }
+        $skill_info = user_get_skill_info($user['id'], 'SPEED');
+        $speed = max(1, 100 + $skill_info['skills']['SPEED']['value']);
+        if ($speed > 10000) {
+            $ftime = 0;
+        } else {
+            $length = 100 * $ftime;
+            $ftime = $length / $speed;
+        }
+
+        if (($user['flags'] & USER_FLAG_PUNISH) && user_get_punishment_state($user['id'], CRIME_FINANCE3)) {
+            // #112895 Снижаем скорость передвижения в 3 раза 
+            $ftime *= 3;
+        }
+
+        $ftime = intval($ftime / 2);
+
+        if($premium['vars'][P_SPEED_WALK]['cnt']){
+            $ftime -= intval($ftime * ($premium['vars'][P_SPEED_WALK]['cnt'] / 100));
+        }
+    } else {
+        $ftime = 0;
+    }
+    return array(
+        'error' => false,
+        'ftime' => $ftime,
+    );
+}
+
+function user_online_time($user_id=false) {
+    global $session;
+    if (!$user_id || ($session && ($session['uid'] == $user_id))) {
+        return $session['online_time'] + (time_current() - $session['ctime']);
+    }
+    NODE_PUSH(null,$user_id);
+    $sess = session_get($user_id);
+    NODE_POP();
+    if ($sess) return $sess['online_time'] + (time_current() - $sess['ctime']);
+    return 0;
+}
+
+function user_online_time_notify() {
+    global $session_user;
+    if ($session_user && ($session_user['flags'] & USER_FLAG_ADULT)) return;
+    $cookie_online_time = intval($_COOKIE[SESSION_COOKIE_PREFIX.'ot']);
+    $user_online_time = user_online_time();
+    if (($user_online_time - $cookie_online_time) >= 300) {
+        require_once(partner_path().'template.inc');
+        template_online_time_notify($user_online_time);
+        common_resetcookie(SESSION_COOKIE_PREFIX.'ot',strval($user_online_time),0,'/',$domain);
+    }
+}
+
+function user_ip_history_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_IP_HISTORY,$ref,$add,'id');
+}
+
+function user_ip_history_list($ref=false, $add='', $field_list='*') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_IP_HISTORY,$ref,$add,$field_list);
+}
+
+function user_ip_history_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,TABLE_IP_HISTORY,$ref,$add);
+}
+
+function user_ip_history_save($param) {
+    global $db_diff;
+    return common_save($db_diff,TABLE_IP_HISTORY,$param,FIELD_IP_HISTORY);
+}
+
+function user_ip_history_delete($ref, $time=false, $add='') {
+    global $db_diff;
+    if ($time) {
+        $querty = sql_pholder(' AND stime<? ',$time);
+    }
+    return common_delete($db_diff,TABLE_IP_HISTORY,$ref,$querty.$add);
+}
+
+// ---- Для кредитов пользователей
+
+function user_credit_get($ref=false, $add='',$ref_name='user_id') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_USER_CREDITS,$ref,$add,$ref_name);
+}
+
+function user_credit_list($ref=false, $add='', $field_list='*') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_USER_CREDITS,$ref,$add,$field_list);
+}
+
+function user_credit_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,TABLE_USER_CREDITS,$ref,$add);
+}
+
+function user_credit_save($param,$ref_name='user_id') {
+    global $db_diff;
+    return common_save($db_diff,TABLE_USER_CREDITS,$param,FIELD_USER_CREDITS,$ref_name);
+}
+
+function user_credit_delete($ref,$add='',$ref_name='user_id') {
+    global $db_diff;
+    return common_delete($db_diff,TABLE_USER_CREDITS,$ref,$add,$ref_name);
+}
+
+// ----QIWI emails
+
+function qiwi_email_get($ref=false, $add='',$ref_name='email') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_QIWI_EMAILS,$ref,$add,$ref_name);
+}
+
+function qiwi_email_list($ref=false, $add='', $field_list='*') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_QIWI_EMAILS,$ref,$add,$field_list);
+}
+
+function qiwi_email_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,TABLE_QIWI_EMAILS,$ref,$add);
+}
+
+function qiwi_email_save($param,$ref_name='email') {
+    global $db_diff;
+    return common_save($db_diff,TABLE_QIWI_EMAILS,$param,FIELD_QIWI_EMAILS,$ref_name);
+}
+
+function qiwi_email_delete($ref,$add='',$ref_name='email') {
+    global $db_diff;
+    return common_delete($db_diff,TABLE_QIWI_EMAILS,$ref,$add,$ref_name);
+}
+
+function qiwi_email_2_get($ref=false, $add='',$ref_name='email') {
+    global $db_diff;
+    return common_get($db_diff,TABLE_QIWI_EMAILS_2,$ref,$add,$ref_name);
+}
+
+function qiwi_email_2_list($ref=false, $add='', $field_list='*') {
+    global $db_diff;
+    return common_list($db_diff,TABLE_QIWI_EMAILS_2,$ref,$add,$field_list);
+}
+
+function qiwi_email_2_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,TABLE_QIWI_EMAILS_2,$ref,$add);
+}
+
+function qiwi_email_2_save($param,$ref_name='email') {
+    global $db_diff;
+    return common_save($db_diff,TABLE_QIWI_EMAILS_2,$param,FIELD_QIWI_EMAILS_2,$ref_name);
+}
+
+function qiwi_email_2_delete($ref,$add='',$ref_name='email') {
+    global $db_diff;
+    return common_delete($db_diff,TABLE_QIWI_EMAILS_2,$ref,$add,$ref_name);
+}
+function user_credit_loan_max($user_credit) {
+    if (!$user_credit) return 0;
+    if ($user_credit['loan_max_size'] < LOAN_MAX_SIZE) {
+        require_once('lib/money_transfer.lib');
+        $begin_of_month = strtotime(date('Y-m-01 00:00:00'));
+        $payments = money_transfer_list($user_credit['user_id'], false, false, sql_pholder(' AND money_type = ? AND stime >= ? AND stime < ?', MONEY_TYPE_GOLD, strtotime('-6 months', $begin_of_month), $begin_of_month));
+        if (!$payments) return min(LOAN_MAX_SIZE, $user_credit['loan_max_size']);
+        $total_payments = array();
+        foreach ($payments as $item) $total_payments[date('Y-m', $item['stime'])] += $item['amount'];
+
+        $avg_payment = money_floatval(array_sum($total_payments) / 6);
+        if ($avg_payment > $user_credit['loan_max_size']) {
+            $user_credit['loan_max_size'] = min(LOAN_MAX_SIZE, $avg_payment);
+            user_credit_save(array('user_id' => $user_credit['user_id'], 'loan_max_size' => $user_credit['loan_max_size']));
+        }
+    }
+
+    return money_floatval($user_credit['loan_max_size']);
+}
+
+function user_password_complexity_level($password) {
+    if (!$password) return false;
+    $complexity = 0;
+    if (preg_match('/[[:lower:]]/', $password)) $complexity += 1;
+    if (preg_match('/[[:upper:]]/', $password)) $complexity += 1;
+    if (preg_match('/[[:punct:]]/', $password)) $complexity += 1;
+    if (preg_match('/[[:digit:]]/', $password)) $complexity += 1;
+    if (mb_strlen($password) >= 16) $complexity += 1;
+    return $complexity;
+}
+
+function user_is_invisible($user_or_session) {
+    return ($user_or_session['invisibility_time'] > time_current());
+}
+
+function user_welcome($user) {
+    require_once('lib/friend.lib');
+
+
+    user_friend_trigger($user, FRIEND_SETTING_ENTER_FLAG, 1);
+
+    if(true == false) {
+        // Оповещение друзей о входе
+        $members = array();
+        $friend_of = friend_list(array('friend_id' => $user['id'], 'status' => FRIEND_STATUS_FRIEND));
+        foreach ($friend_of as $member) $members[] = $member['user_id'];
+        chat_msg_send_system(sprintf(translate('Игрок %s вошёл в игру.'), html_user_info($user)), CHAT_CHF_USER, $members);
+    }
+
+    $auth = auth_get($user['id']);
+
+    // История Входов
+    user_ip_history_save(array(
+        'user_id' => $user['id'],
+        'ip' => sprintf('%u',ip2long($auth['last_ip'])),
+        'cid' => $auth['last_cid'],
+        'stime'=> time_current(),
+    ));
+}
+
+function user_leaving($user) {
+    require_once('lib/friend.lib');
+
+    user_friend_trigger($user, FRIEND_SETTING_ENTER_FLAG, 2);
+
+    if(true == false) {
+        // Оповещение друзей о выходе
+        $members = array();
+        $friend_of = friend_list(array('friend_id' => $user['id'], 'status' => FRIEND_STATUS_FRIEND));
+        foreach ($friend_of as $member) $members[] = $member['user_id'];
+        chat_msg_send_system(sprintf(translate('Игрок %s вышел из игры.'), html_user_info($user)), CHAT_CHF_USER, $members);
+    }
+}
+
+// очистить слоты, занятые артефактами от просроченного пояса
+function user_free_expired_slots($user_id) {
+    NODE_PUSH(null, $user_id);
+    //Проверим вариативные карманы!
+    do{
+        $slot_cnt = user_get_slot_num_max($user_id, 'VARIANT_EFFECT');
+        $artifacts = artifact_list(false, $user_id, 'VARIANT_EFFECT', false, false, $add=' and slot_num > ' . $slot_cnt);
+        if (!$artifacts) break;
+        $artikuls = get_hash($artifacts, 'artikul_id', 'artikul_id');
+        $artifacts_in_backpack = make_hash(artifact_list($artikuls, $user_id, null, true, false,' AND slot_id = ""'), 'artikul_id');
+        foreach ($artifacts as $artifact) {
+            if (!isset($artifacts_in_backpack[$artifact['artikul_id']])) {
+                artifact_save(array(
+                    'id' => $artifact['id'],
+                    'slot_id' => '',
+                    'slot_num' => 0,
+                ));
+            } else {
+                artifact_change_cnt($artifacts_in_backpack[$artifact['artikul_id']]['id'],$artifact['cnt'], '', array(
+                    'time_expire' => intval($artifact['time_expire']),
+                ));
+                artifact_delete($artifact);
+            }
+        }
+    }while(0);
+
+    $slot_cnt = user_get_slot_num_max($user_id, 'EFFECT');
+    $artifacts = artifact_list(false, $user_id, 'EFFECT', false, false, $add=' and slot_num > ' . $slot_cnt);
+    if (!$artifacts) return;
+    $artikuls = get_hash($artifacts, 'artikul_id', 'artikul_id');
+    $artifacts_in_backpack = make_hash(artifact_list($artikuls, $user_id, null, true, false,' AND slot_id = ""'), 'artikul_id');
+    foreach ($artifacts as $artifact) {
+        if (!isset($artifacts_in_backpack[$artifact['artikul_id']])) {
+            artifact_save(array(
+                'id' => $artifact['id'],
+                'slot_id' => '',
+                'slot_num' => 0,
+            ));
+        } else {
+            artifact_change_cnt($artifacts_in_backpack[$artifact['artikul_id']]['id'],$artifact['cnt'], '', array(
+                'time_expire' => intval($artifact['time_expire']),
+            ));
+            artifact_delete($artifact);
+        }
+    }
+    NODE_POP();
+}
+
+function user_get_native_skill_info($level, $kind) {
+    $native_skill_info = array(
+       
+		 KIND_HUMAN => array(
+            1 => array(
+                'DEX'     => 6,
+                'ENDUR'   => 6,
+                'INT'     => 6,
+                'SPEED'   => 800,
+                'STR'     => 6,
+                'VIT'     => 6,
+            ),
+            2 => array(
+                'DEX'     => 7,
+                'ENDUR'   => 7,
+                'INT'     => 7,
+                'SPEED'   => 200,
+                'STR'     => 8,
+                'VIT'     => 7,
+            ),
+            3 => array(
+                'DEX'     => 9,
+                'ENDUR'   => 8,
+                'INT'     => 9,
+                'SPEED'   => 50,
+                'STR'     => 9,
+                'VIT'     => 8,
+            ),
+            4 => array(
+                'DEX'     => 10,
+                'ENDUR'   => 10,
+                'INT'     => 11,
+                'STR'     => 11,
+                'VIT'     => 10,
+            ),
+            5 => array(
+                'DEX'     => 12,
+                'ENDUR'   => 12,
+                'INT'     => 12,
+                'STR'     => 12,
+                'VIT'     => 12,
+            ),
+            6 => array(
+                'DEX'     => 15,
+                'ENDUR'   => 15,
+                'INT'     => 15,
+                'STR'     => 15,
+                'VIT'     => 15,
+            ),
+            7 => array(
+                'DEX'     => 18,
+                'ENDUR'   => 18,
+                'INT'     => 18,
+                'STR'     => 18,
+                'VIT'     => 18,
+            ),
+            8 => array(
+                'DEX'     => 21,
+                'ENDUR'   => 21,
+                'INT'     => 22,
+                'STR'     => 21,
+                'VIT'     => 22,
+            ),
+            9 => array(
+                'DEX'     => 26,
+                'ENDUR'   => 26,
+                'INT'     => 26,
+                'STR'     => 26,
+                'VIT'     => 25,
+            ),
+            10 => array(
+                'DEX'     => 31,
+                'ENDUR'   => 31,
+                'INT'     => 31,
+                'STR'     => 31,
+                'VIT'     => 31,
+            ),
+            11 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 47,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 47,
+            ),
+            12 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 52,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 52,
+            ),
+            13 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 57,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 57,
+            ),
+            14 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 62,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 62,
+            ),
+            15 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 68,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 68,
+            ),
+            16 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 75,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 75,
+            ),
+            17 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 82,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 82,
+            ),
+            18 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 90,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 90,
+            ),
+            19 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 99,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 99,
+            ),
+            20 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 109,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 109,
+            ),
+        ),
+        KIND_MAGMAR => array(
+            1 => array(
+                'DEX'     => 6,
+                'ENDUR'   => 6,
+                'INT'     => 6,
+                'SPEED'   => 800,
+                'STR'     => 6,
+                'VIT'     => 6,
+            ),
+            2 => array(
+                'DEX'     => 7,
+                'ENDUR'   => 7,
+                'INT'     => 7,
+                'SPEED'   => 200,
+                'STR'     => 7,
+                'VIT'     => 8,
+            ),
+            3 => array(
+                'DEX'     => 9,
+                'ENDUR'   => 9,
+                'INT'     => 8,
+                'SPEED'   => 50,
+                'STR'     => 8,
+                'VIT'     => 9,
+            ),
+            4 => array(
+                'DEX'     => 10,
+                'ENDUR'   => 11,
+                'INT'     => 10,
+                'STR'     => 10,
+                'VIT'     => 11,
+            ),
+            5 => array(
+                'DEX'     => 12,
+                'ENDUR'   => 12,
+                'INT'     => 12,
+                'STR'     => 12,
+                'VIT'     => 12,
+            ),
+            6 => array(
+                'DEX'     => 15,
+                'ENDUR'   => 15,
+                'INT'     => 15,
+                'STR'     => 15,
+                'VIT'     => 15,
+            ),
+            7 => array(
+                'DEX'     => 18,
+                'ENDUR'   => 18,
+                'INT'     => 18,
+                'STR'     => 18,
+                'VIT'     => 18,
+            ),
+            8 => array(
+                'DEX'     => 21,
+                'ENDUR'   => 22,
+                'INT'     => 21,
+                'STR'     => 21,
+                'VIT'     => 22,
+            ),
+            9 => array(
+                'DEX'     => 26,
+                'ENDUR'   => 26,
+                'INT'     => 26,
+                'STR'     => 25,
+                'VIT'     => 26,
+            ),
+            10 => array(
+                'DEX'     => 31,
+                'ENDUR'   => 31,
+                'INT'     => 31,
+                'STR'     => 31,
+                'VIT'     => 31,
+            ),
+            11 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 47,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 47,
+            ),
+            12 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 52,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 52,
+            ),
+            13 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 57,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 57,
+            ),
+            14 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 62,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 62,
+            ),
+            15 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 68,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 68,
+            ),
+            16 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 75,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 75,
+            ),
+            17 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 82,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 82,
+            ),
+            18 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 90,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 90,
+            ),
+            19 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 99,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 99,
+            ),
+            20 => array(
+                'DEX'     => 37,
+                'ENDUR'   => 37,
+                'INT'     => 37,
+                'INTELL'  => 109,
+                'MAGCRIT' => 3,
+                'STR'     => 37,
+                'VIT'     => 37,
+                'WISDOM'  => 109,
+            ),
+        ),
+    );
+
+    if (!isset($native_skill_info[$kind][$level])) {
+        if ($level != 0) error_log(sprintf('[user_get_native_skill_info] Trying to access undefined Level [%s]', $level));
+        return array();
+    }
+
+    return $native_skill_info[$kind][$level];
+}
+
+function user_check_time_bonus_swf_vars($user, &$swf_vars,$session) {
+    $stat = user_stat_get(false, sql_pholder(' AND user_id = ? AND object_id = ? AND type_id = ?', $user['id'], USER_STAT_OBJECT_ONLINE_TIME, USER_STAT_TYPE_MISC));
+    $online_time_stat = $stat ? intval($stat['value']) : 0;
+    //120, 600, 1500, 3600
+    $time_online_fields = array(1=>2,2=>120,3=>600,4=>1500,5=>3600);
+    $time_online = 0;
+    foreach ($time_online_fields as $time){
+        if($online_time_stat <= $time){
+            $time_online = $time - $online_time_stat;
+            break;
+        }
+    }
+    //echo $online_time_stat + time_current() - $session['stime'];
+    $swf_vars['time_bonus_online'] = $online_time_stat + time_current() - $session['stime'];
+    $swf_vars['time_bonus_message'] = translate('Останься в игре и получи подарок!');
+    $swf_vars['time_bonus_hint'] = translate('Оставайтесь в игре и через указанное на таймере время получите подарок!');
+}
+
+// Можно ли положить в проф. сумку пользователя
+function user_check_prof_bag($artifact_or_artikul, $user, $count, $skip_capacity = false) {
+    if ($artifact_or_artikul['type_id'] == ARTIFACT_TYPE_ID_PROF_BAG) return false;
+
+    if ($artifact_or_artikul['artikul_id']) {
+        $artikul = artifact_artikul_get($artifact_or_artikul['artikul_id']);
+    } else {
+        $artikul = $artifact_or_artikul;
+    }
+    if (!$artikul['profession']) return false;
+
+    $prof_bag = user_get_artifact_list($user['id'], 'PR_BAG', ' LIMIT 1');
+    if (!empty($prof_bag)) $prof_bag = reset($prof_bag);
+    else return false;
+    $prof_bag_artikul = artifact_artikul_get($prof_bag['artikul_id']);
+    if (!$prof_bag_artikul) return false;
+
+    $professions = array(PR_FARM, PR_GEOLOGY, PR_FISHING, PR_ALCHEMY, PR_MAGIC, PR_JEWELRY);
+    foreach ($professions as $profession) {
+        if ($artikul['profession'] & $profession && $prof_bag_artikul['profession'] & $profession) {
+            if ($skip_capacity) return true;
+
+            $bag_capacity = user_get_artifact_amount_max($user['id'], ARTIFACT_STORAGE_TYPE_PR_BAG);
+            if ($bag_capacity <= 0) return false;
+
+            $bag_artifact_hash = make_hash(user_get_artifact_list($user['id'], '', '', ARTIFACT_STORAGE_TYPE_PR_BAG));
+            foreach ($bag_artifact_hash as $artifact) {
+                if ($artifact['artikul_id'] == $artikul['id'] && $artifact['cnt'] > 0 && ($artifact['flags'] & ARTIFACT_FLAG_WEIGHT_COLLAPSED) == 0) return true;
+            }
+            $weight_left = $bag_capacity - count($bag_artifact_hash);
+            if ($weight_left < 0) return false;
+
+            $weight_left -= artifact_check_capacity($artikul,$count,$user['id'],false,'',0,true,ARTIFACT_STORAGE_TYPE_PR_BAG);
+            return $weight_left >= 0;
+        }
+    }
+    return false;
+}
+/*
+// получить каналы на которые юзер должен быть подписан
+function user_get_chat_channels($user) {
+    $kinds = array(0);
+    if (!(defined('SERVER_TALKFREE') && SERVER_TALKFREE)) {
+        global $kind_info;
+        foreach ($kind_info as $kind) {
+            $kinds[] = $kind['id'] . ':' . ($user['flags'] & USER_FLAG_TALKFREE ? $kind['id'] : $user['kind']);
+        }
+    }
+    
+    $channels = array();
+    
+    foreach ($kinds as $kind) {
+        if (!($user['flags2'] & USER_FLAG2_IN_ESTATE)) {
+            $channels[] = chat_channel(CHAT_CHF_AREA, CHAT_AREA_ID_BROADCAST, $kind);
+            $loc_id = $user['instance_id'] > 0 ? CHAT_AREA_ID_INST + $user['instance_id'] : $user['area_id'];
+            $channels[] = chat_channel(CHAT_CHF_AREA, $loc_id, $kind);
+            if (!$user['instance_id'] && $user['area_id']) {
+                $area = area_get($user['area_id']);
+                if ($area['area_chat_subchannel_id'])
+                    $channels[] = chat_channel(CHAT_CHF_AREA_SUBCHANNEL, $area['area_chat_subchannel_id'], $kind);
+            }
+        
+            if ($user['level'] > 1) {
+                $channels[] = chat_channel(CHAT_CHF_TRADE, $user['trade_sess_id'] ? $user['trade_sess_id'] : $loc_id, $kind);
+            }
+        }
+    }	
+    
+    $channels[] = chat_channel(CHAT_CHF_USER, $user['id']);
+        
+    if ($user['party_id']) {
+        $channels[] = chat_channel(CHAT_CHF_PARTY, $user['party_id']); 
+    }
+    
+    if ($user['raid_id']) {
+        $channels[] = chat_channel(CHAT_CHF_RAID, $user['raid_id']);
+    }
+    
+    if ($user['access'] & USER_ACCESS_COMPLAINCHN) {
+        $channels[] = chat_channel(CHAT_CHF_AUX, 100 + $user['kind']); 
+    }
+
+    if ($user['clan_id']) {
+        $channels[] = chat_channel(CHAT_CHF_CLAN, $user['clan_id']); 
+        $alliance_id = common_cache_get('CLAN_ALLIANCE_'.$user['clan_id']);
+        if (!abs($alliance_id)) {
+            $clan = clan_get($user['clan_id']);
+            $alliance_id = $clan['alliance_id'];
+            if (!$alliance_id) {
+                $alliance_id = -1;
+            }
+            common_cache_store('CLAN_ALLIANCE_'.$user['clan_id'], $alliance_id);
+        }
+        if ($alliance_id > -1) {
+            $channels[] = chat_channel(CHAT_CHF_ALLY, $alliance_id); 
+        }
+    }	
+
+    return  $channels;
+}
+
+// получение сессионных данных для корректной работы клиентской части чата
+function user_get_chat_session_state($user) {
+    $dt = new DateTime("now");
+    $session = array(
+        'time_offset' => $dt->getOffset(),
+        'kind' => $user['kind'],  
+        'id' => $user['id'],
+        'raid' => $user['raid_id'],
+        'level' => (int)$user['level'],
+        'lang' => translate_default_language(),
+        'avail' => 0,
+        'loc_id' => $user['instance_id'] ? CHAT_AREA_ID_INST + $user['instance_id'] : (int)$user['area_id'],
+        'no_sys_msg' => $user['flags'] & USER_FLAG_NOSYSMSG,
+        'talkfree' => $user['flags'] & USER_FLAG_TALKFREE,
+        'deaf' => $user['flags'] & USER_FLAG_DEAF,
+    );
+            
+    $is_ghost = $user['flags'] & USER_FLAG_GHOST;	
+    $channels = user_get_chat_channels($user);
+    foreach($channels as $ch) {
+        $ch = explode(':', $ch);
+        if ($is_ghost && $ch[0] & (CHAT_CHF_AREA | CHAT_CHF_TRADE)) continue;
+        $session['avail'] |= intval($ch[0]);
+    }
+    
+    return $session;
+}
+
+// обновление сессии чата через сам чат
+function user_update_chat_client_session($user) {
+    chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $user['id'], array('func' => 'top.frames.chat.sessionUpdate('.json_encode(user_get_chat_session_state($user)).');'));
+}
+
+// обновление подписок на каналы
+function user_change_chat_channels($old, $new) {
+    if (!chat_user_is_connected($old)) return;
+    $new = array_merge($old, $new);
+    
+    $old_channels = user_get_chat_channels($old);
+    $new_channels = user_get_chat_channels($new);
+    $unsubscribe = array();
+    $subscribe = array();
+        
+    $unsubscribe = array_diff($old_channels, $new_channels);
+    $subscribe = array_diff($new_channels, $old_channels);
+    
+    // <debug>
+    //error_log(sprintf('user_change_chat_channels: [%s](%s) [%s](%s)',
+    //	$old['id'], implode(', ', $unsubscribe), $new['id'], implode(', ', $subscribe)
+    //));
+    // </debug>
+    
+    chat_unsubscribe_user($old, $unsubscribe);
+    chat_subscribe_user($new, $subscribe);
+}
+
+// восстановление подсписки на каналы чата у пользователя
+function user_restore_chat_channels($user_id) {
+    global $session_user;
+    $user = $session_user['id'] == $user_id ? $session_user : user_get($user_id);
+    chat_reset_user($user);	
+
+    // <debug>
+    //error_log(sprintf('user_restore_chat_channels: [%s](%s)',
+    //	$user['id'], implode(', ', user_get_chat_channels($user))
+    //));
+    // </debug>
+            
+    $channels = user_get_chat_channels($user);
+    chat_subscribe_user($user, $channels);
+    return $channels;
+}
+*/
+// функция для расчета изменения текущего значения меняющихся со временем характеристик
+// например, текущее значение ХП считается из максимального, времени старта регенерации и времени окончания регенерации
+function user_calc_volatile_skill_change($val, $t0, $t1, $max, $rel = true, $prc = true) {
+    if (!$t0 || !$t1 || !$max || !($t1 - $t0)) return false;
+    $cur = (time_current() - $t0) / ($t1 - $t0);
+
+    if ($prc) {
+        $val = $val / 100;
+    } else {
+        $val = $val / $max;
+    }
+
+    if ($rel) {
+        $val = $cur + $val;
+    }
+
+    $val = max($val, 0);
+    $val = min($val, 1);
+
+    $tshift = time_current() - ($t0 + $val * ($t1 - $t0));
+    return array('t0' => $t0 + $tshift, 't1' => $t1 + $tshift);
+}
+
+function user_set_hp($user_id, $value, $rel = true, $prc = true) {
+    if (!$user_id || !$value) return false;
+
+    if (!NODE_PUSH(null, $user_id)) return false;
+    $skill_info = user_get_skill_info($user_id, array('HP_T0', 'HP_T1', 'HPMAX'), true, true);
+    NODE_POP();
+
+    if (!$skill_info) return false;
+    $skill_hash = $skill_info['skills'];
+
+    if (!$skill_hash['HPMAX']['value'] || ($skill_hash['HP_T0']['value'] == $skill_hash['HP_T1']['value'])) return true;
+
+    $new = user_calc_volatile_skill_change($value, $skill_hash['HP_T0']['value'], $skill_hash['HP_T1']['value'], $skill_hash['HPMAX']['value'], $rel, $prc);
+    if (!$new) return false;
+
+    if (!NODE_PUSH(null, $user_id)) return false;
+    skill_object_set_value(OBJECT_CLASS_USER, $user_id, 'HP_T0', $new['t0']);
+    skill_object_set_value(OBJECT_CLASS_USER, $user_id, 'HP_T1', $new['t1']);
+    NODE_POP();
+
+    return true;
+}
+
+function user_set_mp($user_id, $value, $rel = true, $prc = true) {
+    if (!$user_id || !$value) return false;
+
+    if (!NODE_PUSH(null, $user_id)) return false;
+    $skill_info = user_get_skill_info($user_id, array('MP_T0', 'MP_T1', 'MPMAX'), true, true);
+    NODE_POP();
+
+    if (!$skill_info) return false;
+    $skill_hash = $skill_info['skills'];
+
+    if (!$skill_hash['MPMAX']['value'] || ($skill_hash['MP_T0']['value'] == $skill_hash['MP_T1']['value'])) return true;
+
+    $new = user_calc_volatile_skill_change($value, $skill_hash['MP_T0']['value'], $skill_hash['MP_T1']['value'], $skill_hash['MPMAX']['value'], $rel, $prc);
+    if (!$new) return false;
+
+    if (!NODE_PUSH(null, $user_id)) return false;
+    skill_object_set_value(OBJECT_CLASS_USER, $user_id, 'MP_T0', $new['t0']);
+    skill_object_set_value(OBJECT_CLASS_USER, $user_id, 'MP_T1', $new['t1']);
+    NODE_POP();
+
+    return true;
+}
+
+////Рента игроков
+define('RENTA_DAY_COUNT', 999);
+define('RENTA_BOT_ID', 1211);
+define('UDAR_PERSA_ID', 8676);
+$rent_pers = array(
+    1 => array(
+        'levels' => array(1,2),
+        'z' => 48,
+        'z_cnt' => 2,
+        'g' => 96,
+        'g_cnt' => 1,
+        'm' => 50,
+        'm_cnt' => 7,
+        's_cnt' => 2,
+        's_id' => 156,
+    ),
+    2 => array(
+        'levels' => array(3,4),
+        'z' => 55,
+        'z_cnt' => 2,
+        'g' => 98,
+        'g_cnt' => 1,
+        'm' => 52,
+        'm_cnt' => 9,
+        's_cnt' => 4,
+        's_id' => 157,
+    ),
+    3 => array(
+        'levels' => array(5,6,7),
+        'z' => 56,
+        'z_cnt' => 2,
+        'g' => 99,
+        'g_cnt' => 1,
+        'm' => 53,
+        'm_cnt' => 10,
+        'k' => 691,
+        'k_cnt' => 5,
+        's_cnt' => 6,
+        's_id' => 160,
+    ),
+    4 => array(
+        'levels' => array(8,9,10,11,12,13,14,15,16,17,18,19,20),
+        'z' => 4949,
+        'z_cnt' => 3,
+        'g' => 4950,
+        'g_cnt' => 1,
+        'm' => 4948,
+        'm_cnt' => 10,
+        'k' => 4951,
+        'k_cnt' => 6,
+        's_cnt' => 8,
+        's_id' => 226,
+    ),
+);
+
+function rent_user_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_RENT_USERS,$ref,$add);
+}
+
+function rent_user_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_RENT_USERS,$ref,$add,$field_list);
+}
+
+function rent_user_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_RENT_USERS, $ref, $add);
+}
+
+function rent_user_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_RENT_USERS,$param,FIELD_RENT_USERS);
+}
+
+function rent_user_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_RENT_USERS,$ref);
+    return true;
+}
+
+define('TABLE_USER_FAST_ACTION', 'fast_action_user');
+define('FIELD_USER_FAST_ACTION', '');
+
+function user_fast_action_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_USER_FAST_ACTION,$ref,$add);
+}
+
+function user_fast_action_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_USER_FAST_ACTION,$ref,$add,$field_list);
+}
+
+function user_fast_action_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_USER_FAST_ACTION, $ref, $add);
+}
+
+function user_fast_action_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_USER_FAST_ACTION,$param,FIELD_USER_FAST_ACTION);
+}
+
+function user_fast_action_delete($ref) {
+    global $db_2;
+    if (!$ref) return false;
+    common_delete($db_2,TABLE_USER_FAST_ACTION,$ref);
+    return true;
+}
+
+function fast_slot_items($fast_action, $session_user) {
+    global $fast_action_slot_max;
+    if(!$fast_action_slot_max) $fast_action_slot_max = user_fast_action_slot_max($session_user['id']);
+    ob_start();
+    $fast_action_settings = json_decode($fast_action['settings'],true);
+    $artifact_ids = false;
+    foreach ($fast_action_settings as $k=>$setting){
+        $artifact_ids[$setting['id']] = 1;
+    }
+    if($artifact_ids){
+        $list_arts = make_hash(user_get_artifact_list($session_user['id'],'',sql_pholder(' AND id IN (?@)', array_keys($artifact_ids))));
+        tpl_artifact_alt_prepare($list_arts,OBJECT_CLASS_ARTIFACT);
+        //foreach ($list_arts as $artifact) tpl_artifact_alt($artifact);
+    }
+
+    for($i=1; $i <= $fast_action_slot_max; $i++){
+        $artifact = $list_arts[$fast_action_settings[$i]['id']];
+        ?>
+        <div id="fast_slot_<?=$i;?>" <?=tpl_tooltip(($artifact ? $artifact['title'] : 'Выбрать артефакт'));?> class="fast_slot" data-id="<?=$i;?>" data-active="1" data-art="<?=($artifact ? $artifact['id'] : '');?>" onmouseover="fast_slot_alt(this, 2);" onmouseout="fast_slot_alt(this, 0);" onclick="fast_slot_action(this, event);">
+            <div class="fast_slot_cont"><div class="fast_slot_bg"></div><div class="fast_slot_bg2"></div>
+                <div class="fast_slot_plus" style="display: none;"></div>
+                <div class="fast_slot_close" style="display: none;"></div>
+                <div class="fast_slot_use" style="display: none;"></div>
+                <div class="fast_slot_art"><?if($artifact){?><img src="<?=PATH_IMAGE_ARTIFACTS.$artifact['picture'];?>"><?}?></div>
+            </div>
+        </div>
+    <?}
+    return ob_get_clean();
+}
+
+function user_fast_slot_check_artifacts($user_id){
+    if(!$user_id) return false;
+    $user_fast_action = user_fast_action_get(array('user_id' => $user_id));
+    if(!$user_fast_action) return false;
+    $settings = json_decode($user_fast_action['settings'],true);
+    if(!$settings) return false;
+    $artifact_ids = false;
+    foreach ($settings as $k=>$setting){
+        $artifact_ids[$setting['id']] = $setting['id'];
+    }
+    if(!$artifact_ids) return false;
+    if($artifact_ids) $artifact_list = make_hash(user_get_artifact_list($user_id, null, sql_pholder(' AND id IN (?@)',$artifact_ids)));
+    $unset = false;
+    foreach ($settings as $k=>$setting){
+        if(!$artifact_list[$setting['id']]){
+            unset($settings[$k]);
+            $unset = true;
+        }
+    }
+    if(!$unset) return false;
+    user_fast_action_save(array(
+        'id' => $user_fast_action['id'],
+        'settings' => json_encode($settings),
+    ));
+    return true;
+}
+
+function user_fast_action_slot_max($user_id){
+    global $session_premium;
+    if(!$user_id) return false;
+    if(!$session_premium) $session_premium = user_premium_get($user_id);
+
+    $plus = 0;
+    if($session_premium) $plus = intval($session_premium['vars'][P_INSTAP]['cnt']);
+    $skill = skill_object_get(OBJECT_CLASS_USER, $user_id, array('skill_id' => 'FAST_ACTION_NUM'));
+    return intval($skill['value']) + 2 + $plus;
+}
+
+//////////////////////////////////////////////////////////////////
+function user_friend_trigger($user, $trigger, $param = array()){
+    #logfile(NODE_FILE_LOG, print_r($user, true).' AND '.$trigger.' AND '.print_r($param, true));
+    if(!$user['id'] || !$trigger) return false;
+
+    return _friends_trigger($user, $trigger, $param);
+}
+
+function generate_bank_seed($session_user){
+    if(!$session_user) return false;
+    $next_seed = generateRandomString(6);
+    user_save(array(
+        'id' => $session_user['id'],
+        'bank_seed' => $next_seed,
+    ));
+    return $next_seed;
+}
+
+function user_clan_stat_archive($user, $type, $value = false, $param = array()){
+    if(!$user || !$user['clan_id']) return false;
+    clan_stat_archive($user['clan_id'], $user['id'], $type, $value, $param);
+}
+
+//Акция денег
+function user_price_vaucher_get($user_id, $art = false){
+    if(!$user_id) return false;
+    $price_vaucher = artifact_get(array('user_id' => $user_id, 'type_id' => ARTIFACT_TYPE_ID_SALE_ITEM), 'ORDER BY param2, time_expire, param1  DESC');
+    if(!$price_vaucher) return false;
+    if(!$art) return $price_vaucher;
+    $price_vaucher_artikul = artifact_artikul_get($price_vaucher['artikul_id']);
+    if(!$price_vaucher_artikul) return false;
+    return $price_vaucher_artikul;
+}
+
+function user_deaf_remove($user = array()){
+    if(!$user || !$user['id']) return false;
+    if($user['flags'] & USER_FLAG_DEAF){
+        user_save(array(
+            'id' => $user['id'],
+            '_set' => sql_pholder('flags = flags ^ ?#USER_FLAG_DEAF'),
+        ));
+    }
+    if($user['flags2'] & USER_FLAG2_DEAF){
+        user_save(array(
+            'id' => $user['id'],
+            '_set' => sql_pholder('flags2 = flags2 ^ ?#USER_FLAG2_DEAF'),
+        ));
+    }
+}
+
+function user_drink_effect($artikul_id, $subject, $chat_msg = false){
+    if (!$artikul_id) return;
+    $artikul = artifact_artikul_get($artikul_id);
+    if(!$artikul) return;
+    NODE_SWITCH(false, $subject['id']);
+    $artifact = artifact_get(array('user_id' => $subject['user_id'], 'artikul_id' => $artikul_id, 'slot_id' => 'TEMP_EFFECT'));
+    if($artifact) return;
+
+    $artifact_id = artifact_add($artikul_id, 1, $subject['id'], false, 'TEMP_EFFECT', array(
+        'time_expire' => mktime(23, 59, 59) + 1,
+        'cnt' => 0,
+    ));
+
+    if($artifact_id && $chat_msg){
+        chat_msg_send_system(sprintf(translate('<b>На вас наложен эффект</b> <b class="redd">%s.</b>'),$artikul['title']),CHAT_CHF_USER,$subject['id']);
+    }
+}
+
+//Добавление характеристик юзеру (Он сам решает какие)
+function user_add_skills_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_USER_ADD_SKILLS,$ref,$add);
+}
+
+function user_add_skills_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_USER_ADD_SKILLS,$ref,$add,$field_list);
+}
+
+function user_add_skills_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_USER_ADD_SKILLS, $ref, $add);
+}
+
+function user_add_skills_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_USER_ADD_SKILLS,$param);
+}
+
+function user_add_skills_delete($ref) {
+    global $db_2;
+    if (!$ref) return false;
+    common_delete($db_2,TABLE_USER_ADD_SKILLS,$ref);
+    return true;
+}
+
+function user_get_noty_artifacts($user_id, $count = false){
+    NODE_SWITCH($user_id);
+    $period = 84600*1;
+    if($count){
+        $add_c = " AND type_id NOT IN('".ARTIFACT_TYPE_ID_INJURY."','".ARTIFACT_TYPE_ID_AWARD."') ";
+        return artifact_count(false, $user_id, null, true, ARTIFACT_FLAG_HIDDEN,
+            sql_pholder(' AND !(slot_id IN(?@)) AND time_expire > 0 AND time_expire <= ? AND !(flags2 & ?#ARTIFACT_FLAG2_NOTIFY_EXPIRE) '.$add_c, array('TEMP_EFFECT', 'VARIANT_EFFECT', 'GOD_EFFECT', 'EFFECT'), time_current() + $period));
+    }else{
+        return user_get_artifact_list($user_id, null,
+            sql_pholder(' AND slot_id NOT IN(?@) AND time_expire > 0 AND time_expire <= ? AND !(flags2 & ?#ARTIFACT_FLAG2_NOTIFY_EXPIRE) ', array('TEMP_EFFECT', 'VARIANT_EFFECT', 'GOD_EFFECT', 'EFFECT'), time_current() + $period));
+    }
+}
+
+///////Капчанский
+define('TABLE_USER_CAPCHA', 'user_capcha');
+
+define('CAPTCHA_WIDTH', 3);
+define('CAPTCHA_HEIGHT', 2);
+define('CELL_SIZE', 128);
+define('USER_CAPCHA_TIME', 600);
+
+function generateCaptchaHunt($in_seq = false, $_x = false, $_y = false){
+    $src = ImageCreateFromPNG(SERVER_ROOT."images/capcha.png");
+    $size_x = imageSX($src);
+    $size_y = imageSY($src);
+
+    $s_x = 0; $s_y = 0;
+    if($_x) $s_x = min($size_x - CAPTCHA_WIDTH * CELL_SIZE, $_x);
+    if($_y) $s_y = min($size_y - CAPTCHA_HEIGHT * CELL_SIZE, $_x);
+
+    $outimg = imagecreatetruecolor(CAPTCHA_WIDTH * CELL_SIZE, CAPTCHA_HEIGHT * CELL_SIZE);
+    $k = 0;
+    $sequence_imgs = array();
+    $sequence_shuffle = true;
+    if($in_seq){
+        $in_seq = explode(',', $in_seq);
+        $sequence_shuffle = false;
+    }else{
+        for($i=0; $i < CAPTCHA_WIDTH * CAPTCHA_HEIGHT; $i++) $in_seq[] = $i;
+    }
+    $id = 0;
+    for($y = 0; $y < CAPTCHA_HEIGHT; $y++){
+        for($x = 0; $x < CAPTCHA_WIDTH; $x++){
+            $xx = ($x ? $x * CELL_SIZE : 0); $yy = ($y ? $y * CELL_SIZE : 0);
+            $im2 = imagecreatetruecolor(CELL_SIZE, CELL_SIZE);
+            imagecopy($im2, $src, 0, 0, $s_x + $xx, $s_y + $yy, CELL_SIZE, CELL_SIZE);
+            $sequence_imgs[] = array('img' => $im2, 'k' => $id);
+            $id++;
+        }
+    }
+
+    if($sequence_shuffle) shuffle($sequence_imgs);
+    shuffle($sequence_imgs);
+    $seq_true = array();
+
+    $id = 0;
+    for($y = 0; $y < CAPTCHA_HEIGHT; $y++) {
+        for($x = 0; $x < CAPTCHA_WIDTH; $x++){
+            $seq = $sequence_imgs[$id];
+            $xx = ($x ? $x * CELL_SIZE : 0); $yy = ($y ? $y * CELL_SIZE : 0);
+            imagecopy($outimg, $seq['img'], $xx, $yy, 0, 0, CELL_SIZE, CELL_SIZE);
+            $seq_true[$seq['k']] = $id;
+            $id++;
+        }
+    }
+    ksort($seq_true);
+    $out = array(
+        'param' => array(
+            'x' => $s_x,
+            'y' => $s_y,
+            'sequence' => implode(',', $seq_true),
+        ),
+        'captcha' => $outimg,
+    );
+    return $out;
+}
+
+function user_captcha_print($user_id = false){
+    if(!$user_id) return false;
+    //$user = user_get($user_id);
+    $user_captha = user_capcha_get(array('user_id' => $user_id)); //Получить с базы
+    $_x = 0; $_y = 0;
+    $sequence = ($user_captha['sequence'] ? $user_captha['sequence'] : false);
+    $sequence = false;
+    if($user_captha['complete'] || $user_captha['dtime'] >= time_current() || !$user_captha){
+        //NewSeq
+        $seq = array();
+        for($i=0; $i < CAPTCHA_WIDTH * CAPTCHA_HEIGHT; $i++) $seq[] = $i;
+        shuffle($seq);
+        $sequence = implode(',', $seq);
+        $_x = mt_rand(0, 600);
+        $_y = mt_rand(0, 350);
+    }
+    $captha = generateCaptchaHunt($sequence, $_x, $_y);
+
+    $seq = $captha['param']['sequence'];
+
+    if($user_captha){
+        if($user_captha['dtime'] >= time_current()) {
+            user_capcha_save(array(
+                'id' => $user_captha['id'],
+                'ctime' => time_current(),
+                'dtime' => time_current() + USER_CAPCHA_TIME,
+                'sequence' => $seq,
+                'x' => $_x,
+                'y' => $_y,
+                'complete' => 0,
+            ));
+        }
+    }else{
+        user_capcha_save(array(
+            'user_id' => $user_id,
+            'ctime' => time_current(),
+            'dtime' => time_current() + USER_CAPCHA_TIME,
+            'sequence' => $seq,
+            'x' => $_x,
+            'y' => $_y,
+            'complete' => 0,
+        ));
+    }
+
+    //Выводим капчу.
+    header('Content-Type: image/gif');
+    imagegif($captha['captcha']);
+}
+
+function user_capcha_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_USER_CAPCHA,$ref,$add);
+}
+
+function user_capcha_list($ref=false, $add='', $field_list='*') {
+    global $db_2;
+    return common_list($db_2,TABLE_USER_CAPCHA,$ref,$add,$field_list);
+}
+
+function user_capcha_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2, TABLE_USER_CAPCHA, $ref, $add);
+}
+
+function user_capcha_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_USER_CAPCHA,$param);
+}
+
+function user_capcha_delete($ref) {
+    global $db_2;
+    if (!$ref) return false;
+    common_delete($db_2,TABLE_USER_CAPCHA,$ref);
+    return true;
+}
+
+function user_trend_identify($user_id) {
+    global $user_body_slots;
+    $trend = 0;
+    $artifact_list = user_get_artifact_list($user_id, $user_body_slots, sql_pholder(' AND NOT flags & ?#ARTIFACT_FLAG_ARMOR_STYLE'), false, false, 'artikul_id', 'id,artikul_id');
+    if($artifact_list) $artikul_ids = get_hash($artifact_list, 'artikul_id', 'artikul_id');
+    if($artikul_ids) $artikul_list = artifact_artikul_list(array('id' => $artikul_ids), false, 'id, trend');
+    $trend_info = array();
+    foreach ($artikul_list as $artikul){
+        $trend_info[$artikul['trend']]++;
+    }
+    $t_val = 0;
+    foreach ($trend_info as $_t=>$val){
+        if($val > $t_val){ $t_val = $val; $trend = $_t; }
+    }
+    return array('trend' => $trend, 'trend_slots' => $trend_info[$trend],);
+}
+
+//Функция проверки по всем возможным принятиям участия игроком! (Чтобы везде блять одно и тоже не писать сука!)
+define('USER_TARGET_RESTRICTION_BG',            1);
+define('USER_TARGET_RESTRICTION_SLAUGHTER',     2);
+define('USER_TARGET_RESTRICTION_RAID',          3);
+define('USER_TARGET_RESTRICTION_CHAOT',         4);
+define('USER_TARGET_RESTRICTION_BOSS',          5);
+define('USER_TARGET_RESTRICTION_DUNGEON',       6);
+define('USER_TARGET_RESTRICTION_HUNT_ATTACK',   7);
+define('USER_TARGET_RESTRICTION_ARENA_EQUAL',   8);
+define('USER_TARGET_RESTRICTION_DUEL',          9);
+
+global $_user_target_restriction_default;
+$_user_target_restriction_default = false;
+global $user_target_restriction_default;
+$user_target_restriction_default = $_user_target_restriction_default;
+
+function check_user_target_restriction_set($set = array()) {
+    //Зависимости
+    require_once("lib/bg.lib");
+    require_once("lib/slaughter.lib");
+    require_once("lib/raid.lib");
+    require_once("lib/adv_chaot.lib");
+    require_once("lib/boss_planner.lib");
+    require_once("lib/dungeons.lib");
+    require_once("lib/hunt_attack.lib");
+    require_once("lib/arena.lib");
+    require_once("lib/pvp_fight.lib");
+    global $_user_target_restriction_default, $user_target_restriction_default;
+    $_user_target_restriction_default = array(
+        USER_TARGET_RESTRICTION_BG => array(
+            'ref' => false,
+            'ref_add' => array('status' => array(BG_USER_STATUS_WAITING, BG_USER_STATUS_PENDING)),
+            'error' => 'Вы не можете совершить это действие, так как Вы участвуете в очереди на Полях битв!',
+        ),
+        USER_TARGET_RESTRICTION_SLAUGHTER => array(
+            'ref' => false,
+            'ref_add' => array('status' => array(SLAUGHTER_USER_STATUS_WAITING, SLAUGHTER_USER_STATUS_PENDING)),
+            'error' => 'Вы не можете совершить это действие, так как Вы участвуете в очереди на Бойню!',
+        ),
+        USER_TARGET_RESTRICTION_RAID => array(
+            'ref' => false,
+            'ref_add' => array('status' => array(RAID_USER_STATUS_WAITING,RAID_USER_STATUS_PENDING)),
+            'error' => 'Вы не можете совершить это действие, так как Вы участвуете в очереди на Рейд!',
+        ),
+        USER_TARGET_RESTRICTION_CHAOT => array(
+            'ref' => false,
+            'ref_add' => false,
+            'error' => 'Вы не можете совершить это действие, так как Вы участвуете в очереди на Хаотичную битву!',
+        ),
+        USER_TARGET_RESTRICTION_BOSS => array(
+            'ref' => false,
+            'ref_add' => false,
+            'error' => 'Вы не можете совершить это действие, так как Вы участвуете в очереди на босса!',
+        ),
+        USER_TARGET_RESTRICTION_DUNGEON => array(
+            'ref' => false,
+            'ref_add' => array('status' => array(DUNGEON_QUEUE_STATUS_WAITING,DUNGEON_QUEUE_STATUS_PENDING)),
+            'error' => 'Вы не можете совершить это действие, так как Вы участвуете в очереди на Подземелье!',
+        ),
+        USER_TARGET_RESTRICTION_HUNT_ATTACK => array(
+            'ref' => false,
+            'ref_add' => array('status' => array(HUNT_ATTACK_USER_STATUS_CREATE,HUNT_ATTACK_USER_STATUS_PENDING,HUNT_ATTACK_USER_STATUS_STARDED)),
+            'error' => 'Вы не можете совершить это действие, так как Вы участвуете в очереди на Поисх охоты!',
+        ),
+        USER_TARGET_RESTRICTION_ARENA_EQUAL => array(
+            'ref' => false,
+            'ref_add' => array('pending' => array(ARENA_STATUS_WAITING, ARENA_STATUS_PENDING, ARENA_STATUS_INFIGHT)),
+            'error' => 'Вы не можете совершить это действие, так как Вы участвуете в очереди арену равных!',
+        ),
+        USER_TARGET_RESTRICTION_DUEL => array(
+            'ref' => false,
+            'ref_add' => false,
+            'error' => 'Вы не можете совершить это действие, так как Вы участвуете в очереди на дуэль!',
+        ),
+    );
+    $user_target_restriction_default = $_user_target_restriction_default;
+
+    if($set) {
+        for ($i = USER_TARGET_RESTRICTION_BG; $i <= USER_TARGET_RESTRICTION_HUNT_ATTACK; $i++) {
+            if ($set[$i]) $user_target_restriction_default[$i] = array_replace($user_target_restriction_default[$i], $set[$i]);
+        }
+    }
+}
+
+function fast_action_open($user = array()){
+    if(((defined('FAST_ACTION_ONLY_ADMIN') && FAST_ACTION_ONLY_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('FAST_ACTION_GLOBAL_OPEN') && FAST_ACTION_GLOBAL_OPEN)) {
+        return true;
+    }
+    return false;
+}
+
+function check_user_target_restriction($user, $exclude = array()) {
+    if(!$user || !$user['id']) return array('status' => -1, 'error' => 'Не найден игрок!');
+    global $user_target_restriction_default, $_user_target_restriction_default;
+    if(!$_user_target_restriction_default) check_user_target_restriction_set();
+    if(!is_array($exclude)) $exclude = array($exclude);
+    $rest = array();
+    $utrd = $user_target_restriction_default;
+    foreach ($exclude as $v) unset($utrd[$v]);
+    foreach ($utrd as $key=>$value) {
+        $ref = ($user_target_restriction_default[$key]['ref'] ? $user_target_restriction_default[$key]['ref'] : array('user_id' => $user['id']));
+        $ref_add = ($user_target_restriction_default[$key]['ref_add'] ? $user_target_restriction_default[$key]['ref_add'] : array());
+        $add = ($user_target_restriction_default[$key]['add'] ? $user_target_restriction_default[$key]['add'] : '');
+        switch ($key) {
+            case USER_TARGET_RESTRICTION_BG:
+                if(bg_user_get(array_replace($ref, $ref_add), $add)) $rest[] = $user_target_restriction_default[$key]['error'];
+                break;
+            case USER_TARGET_RESTRICTION_SLAUGHTER:
+                if(slaughter_user_get(array_replace($ref, $ref_add), $add)) $rest[] = $user_target_restriction_default[$key]['error'];
+                break;
+            case USER_TARGET_RESTRICTION_RAID:
+                if(raid_user_get(array_replace($ref, $ref_add), $add)) $rest[] = $user_target_restriction_default[$key]['error'];
+                break;
+            case USER_TARGET_RESTRICTION_CHAOT:
+                $adv_chaot_area_ids = get_hash(adv_chaot_list(false, sql_pholder(' AND flags & ?#ADV_CHAOT_FLAG_ACTIVE'), 'area_id'), 'area_id', 'area_id');
+                if($adv_chaot_area_ids && in_array($user['area_id'], $adv_chaot_area_ids)) $rest[] = $user_target_restriction_default[$key]['error'];
+                break;
+            case USER_TARGET_RESTRICTION_BOSS:
+                if($user['area_id'] == BOSS_PLANNER_PREP_AREA_ID) $rest[] = $user_target_restriction_default[$key]['error'];
+                break;
+            case USER_TARGET_RESTRICTION_DUNGEON:
+                if(dungeon_queue_get(array_replace($ref, $ref_add), $add)) $rest[] = $user_target_restriction_default[$key]['error'];
+                break;
+            case USER_TARGET_RESTRICTION_HUNT_ATTACK:
+                if(hunt_attack_user_get(array_replace($ref, $ref_add), $add)) $rest[] = $user_target_restriction_default[$key]['error'];
+                break;
+            case USER_TARGET_RESTRICTION_ARENA_EQUAL:
+                if(arena_user_get(array_replace($ref, $ref_add), $add)) $rest[] = $user_target_restriction_default[$key]['error'];
+                break;
+            case USER_TARGET_RESTRICTION_DUEL:
+                if(pvp_fight_request_get(array_replace($ref, $ref_add), $add)) $rest[] = $user_target_restriction_default[$key]['error'];
+                break;
+        }
+    }
+
+    $user_target_restriction_default = $_user_target_restriction_default; //После всех манипуляйций восстановим стандартную херню
+    return array(
+        'status' => ($rest ? -1 : 100),
+        'error' => implode(' | ', $rest),
+    );
+}
+
+?>

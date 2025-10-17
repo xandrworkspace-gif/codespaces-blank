@@ -1,0 +1,147 @@
+<?php 
+
+// действие Сменить школу магии
+global $class_info;
+
+if (!in_array($object['object_class'],array(OBJECT_CLASS_ARTIFACT))) return;
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+
+$class_id = isset($in['class_id']) ? intval($in['class_id']) : 0;
+if ( !$class_id || !isset($class_info[$class_id]) ) {
+	$out['error'] = translate('Не удалось выполнить действие');
+	return;
+}
+
+if (!$subject['class']) {
+	$out['error'] = translate('Вы еще не познали искусство магии!');
+	return;
+}
+
+if ( isset($class_info[$class_id]['kind']) && ($class_info[$class_id]['kind'] != $subject['kind']) ) {
+	$out['error'] = translate('Вам недоступна эта школа магии');
+	return;
+}
+
+if ($subject['class'] == $class_id) {
+	$out['error'] = translate('Вы уже изучили эту школу магии');
+	return;
+}
+
+if (!user_save(array(
+	'id' => $subject['id'],
+	'class' => $class_id,
+))) {
+	$out['error'] = translate('Не удалось сменить школу магии');
+	return;
+}
+
+// костыль
+$skills = array();
+switch ($class_id) {
+	case 0x0001: // Воздух
+		$skills['VIT'] = 0;
+		switch ($subject['class']) {
+			case 0x0002: // вода
+				$skills['WISDOM'] = -90;
+				$skills['STR'] = -90;
+				break;
+			case 0x0004: // свет
+				$skills['VIT'] -= 90;
+				break;
+			default: break 2;
+		}
+		$skills['VIT'] += 90;
+		break;
+		
+	case 0x0002: // Вода
+		switch ($subject['class']) {
+			case 0x0001:
+			case 0x0004:
+				$skills['VIT'] = -90;
+				break;
+			default: break 2;
+		}
+		$skills['WISDOM'] = 90;
+		$skills['STR'] = 90;
+		break;
+		
+	case 0x0004: // Свет
+		$skills['VIT'] = 0;
+		switch ($subject['class']) {
+			case 0x0001:
+				$skills['VIT'] -= 90;
+				break;
+			case 0x0002:
+				$skills['WISDOM'] = -90;
+				$skills['STR'] = -90;
+			break;
+			default: break 2;
+		}
+		$skills['VIT'] += 90;
+		break;
+		
+	case 0x0008: // Огонь
+		$skills['VIT'] = 0;
+		switch ($subject['class']) {
+			case 0x0010:
+				$skills['WISDOM'] = -90;
+				$skills['STR'] = -90;
+				break;
+			case 0x0020:
+				$skills['VIT'] -= 90;
+				break;
+			default: break 2;
+		}
+		$skills['VIT'] += 90;
+		break;
+		
+	case 0x0010: // Земля
+		switch ($subject['class']) {
+			case 0x0008:
+			case 0x0020:
+				$skills['VIT'] = -90;
+				break;
+			default: break 2;
+		}
+		$skills['WISDOM'] = 90;
+		$skills['STR'] = 90;
+		break;
+		
+	case 0x0020: // Тень
+		$skills['VIT'] = 0;
+		switch ($subject['class']) {
+			case 0x0008:
+				$skills['VIT'] -= 90;
+				break;
+			case 0x0010:
+				$skills['WISDOM'] = -90;
+				$skills['STR'] = -90;
+				break;
+			default: break 2;
+		}
+		$skills['VIT'] += 90;
+		break;
+}
+
+foreach ($skills as $skill_id => $value) {
+	skill_object_set_value(OBJECT_CLASS_USER, $subject['id'], $skill_id, $value, array('relative' => true, 'min' => 0));
+}
+
+// нужно вытащить из слотов все заклинания, у которых class = 0, если в этих слотах лежат другие заклинания
+$user_spells = spell_user_list(array('user_id' => $subject['id']), sql_pholder(' AND (class = 0 OR class & ?) AND slot != 0', $class_id));
+$spells_by_school = array(0 => array(), $class_id => array());
+foreach ($user_spells as $spell) {
+	$key = $spell['class'] ? $class_id : 0;
+	$spells_by_school[$key][] = 
+	$spell['slot'];
+}
+$same_slots = array_intersect($spells_by_school[0], $spells_by_school[$class_id]);
+foreach ($user_spells as $spell) {
+	if ($spell['class'] != 0) continue;
+	if (!in_array($spell['slot'], $same_slots)) continue;
+	$spell['slot'] = 0;
+	spell_user_save($spell);
+}
+chat_msg_send_system(sprintf(translate('Вы сменили школу магии на "%s".'),ucfirst($class_info[$class_id]['title'])), CHAT_CHF_USER, $subject['id']);
+
+$out['status'] = ACTION_STATUS_OK;

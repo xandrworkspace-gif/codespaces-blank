@@ -1,0 +1,29 @@
+<? # $Id: area_barber.lib,v 1.1 2009-01-28 10:36:20 kastet Exp $
+
+// Имена и поля таблиц
+define('TABLE_AREA_BARBER_CHANGES','area_barber_changes');
+define('FIELD_AREA_BARBER_CHANGES','');
+
+
+function area_barber_get($ref=false, $add='') {
+	global $db;
+	return common_get($db,TABLE_AREA_BARBER_CHANGES,$ref,$add);
+}
+/*
+function area_barber_list($ref=false, $add='') {
+	global $db;
+	return common_list($db,TABLE_AREA_BARBER_CHANGES,$ref,$add);
+}
+
+function area_barber_count($ref=false, $add='') {
+	global $db;
+	return common_count($db,TABLE_AREA_BARBER_CHANGES,$ref,$add);
+}
+*/
+function area_barber_save($param) {
+	global $db;
+	return common_save($db,TABLE_AREA_BARBER_CHANGES,$param,FIELD_AREA_BARBER_CHANGES);
+}
+
+
+?>

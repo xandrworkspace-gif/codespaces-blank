@@ -1,0 +1,230 @@
+<?php
+
+define('TABLE_TALENTS', 'talents');
+define('FIELD_TALENTS', '');
+define('TABLE_TALENTS_CATEGORY', 'talents_category');
+define('FIELD_TALENTS_CATEGORY', '');
+define('TABLE_TALENTS_BLOCK', 'talents_block');
+define('FIELD_TALENTS_BLOCK', '');
+
+define('TABLE_TALENTS_USER', 'talents_user');
+define('FIELD_TALENTS_USER', '');
+define('TABLE_TALENTS_USER_SBROS', 'talents_user_sbros');
+define('FIELD_TALENTS_USER_SBROS', '');
+
+define('TALENTS_FLAG_HIDE', 0x0000001); //Скрытый до получения
+define('TALENTS_ARTIFACT_REMOVE', 0x0000002); //Изымать артефакт огранки
+$talents_flags_hash = array(
+    TALENTS_FLAG_HIDE => 'Скрытый до получения',
+    TALENTS_ARTIFACT_REMOVE => 'Изымать артефакт огранки',
+);
+
+define('TALENTS_BLOCK_FLAG_HIDE', 0x0000001); //Скрытый до получения
+$talents_block_flags_hash = array(
+    TALENTS_BLOCK_FLAG_HIDE => 'Скрытый до получения',
+);
+
+define('TALENTS_CAMEN_ID', 9810); //Камень для сброса)
+define('TALENTS_CAMEN_CNT', 1); //Кол-во камней
+define('TALENTS_SBROS_TIME', 86400); //1 суток 60*60*24*3
+
+function talents_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_TALENTS,$ref,$add);
+}
+
+function talents_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_TALENTS,$ref,$add,$field_list);
+}
+
+function talents_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_TALENTS, $ref, $add);
+}
+
+function talents_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_TALENTS,$param,FIELD_TALENTS);
+}
+
+function talents_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_TALENTS,$ref);
+    return true;
+}
+
+///////////////////////////
+
+function talents_category_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_TALENTS_CATEGORY,$ref,$add);
+}
+
+function talents_category_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_TALENTS_CATEGORY,$ref,$add,$field_list);
+}
+
+function talents_category_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_TALENTS_CATEGORY, $ref, $add);
+}
+
+function talents_category_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_TALENTS_CATEGORY,$param,FIELD_TALENTS_CATEGORY);
+}
+
+function talents_category_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_TALENTS_CATEGORY,$ref);
+    return true;
+}
+
+////////////////////
+
+function talents_block_get($ref=false, $add='') {
+    global $db_path;
+    $talents_block = common_get($db_path,TABLE_TALENTS_BLOCK,$ref,$add);
+    $talents_block['object_class'] = OBJECT_CLASS_TALENT_BLOCK;
+    return $talents_block;
+}
+
+function talents_block_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_TALENTS_BLOCK,$ref,$add,$field_list);
+}
+
+function talents_block_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_TALENTS_BLOCK, $ref, $add);
+}
+
+function talents_block_save($param) {
+    global $db_path;
+    unset($param['object_class']);
+    return common_save($db_path,TABLE_TALENTS_BLOCK,$param,FIELD_TALENTS_BLOCK);
+}
+
+function talents_block_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_TALENTS_BLOCK,$ref);
+    return true;
+}
+
+//////////////////////////////
+
+function talents_user_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_TALENTS_USER,$ref,$add);
+}
+
+function talents_user_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_TALENTS_USER,$ref,$add,$field_list);
+}
+
+function talents_user_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_TALENTS_USER, $ref, $add);
+}
+
+function talents_user_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_TALENTS_USER,$param,FIELD_TALENTS_USER);
+}
+
+function talents_user_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_TALENTS_USER,$ref);
+    return true;
+}
+
+//////////////////////
+
+function talents_user_sbros_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_TALENTS_USER_SBROS,$ref,$add);
+}
+
+function talents_user_sbros_list($ref=false, $add='', $field_list='*') {
+    global $db_path;
+    return common_list($db_path,TABLE_TALENTS_USER_SBROS,$ref,$add,$field_list);
+}
+
+function talents_user_sbros_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_TALENTS_USER_SBROS, $ref, $add);
+}
+
+function talents_user_sbros_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_TALENTS_USER_SBROS,$param,FIELD_TALENTS_USER_SBROS);
+}
+
+function talents_user_sbros_delete($ref) {
+    global $db_path;
+    if (!$ref) return false;
+    common_delete($db_path,TABLE_TALENTS_USER_SBROS,$ref);
+    return true;
+}
+
+////////////////////////////
+
+function talents_object($block_id=false,$talent_num=false, $object_class = OBJECT_CLASS_TALENT){
+    $object = array(
+        'id' => talents_object_id($block_id, $talent_num),
+        'talent_num' => $talent_num,
+        'object_class' => $object_class,
+    );
+    return $object;
+}
+
+function talents_objects($talent_id=false){
+    $objects = array();
+    for($i = 1;$i <= 5; $i++){
+        $object = array(
+            'id' => talents_object_id($talent_id, $i),
+            'talent_num' => $i,
+            'object_class' => OBJECT_CLASS_TALENT,
+        );
+        $objects[] = $object;
+    }
+    return $objects;
+}
+
+function talents_object_id($talent_id=false,$talent_num=false){
+    return intval($talent_id.$talent_num);
+}
+
+function talents_user_artikul_ids($user_id){
+    $talent_user_list = talents_user_list(array('user_id' => $user_id), ' AND talent_id != 0');
+    if(!$talent_user_list) return false;
+    $talents_ids = array();
+    foreach ($talent_user_list as $talent_user){
+        $talents_ids[$talent_user['talent_id']] = true;
+    }
+    if($talents_ids){
+        $talents_artikuls = make_hash(talents_list(array('id' => array_keys($talents_ids))));
+        $skill_artikuls_ids = array();
+        foreach ($talent_user_list as $talent_user){
+            $artikul_id = $talents_artikuls[$talent_user['talent_id']]['artikul_id_'.$talent_user['progress']];
+            $skill_artikuls_ids[$artikul_id]++;
+        }
+        if($skill_artikuls_ids){
+            return $skill_artikuls_ids;
+        }
+    }
+}
+
+function talents_open($user = array()){
+    if(((defined('TALENTS_GLOBAL_OPEN_ADMIN') && TALENTS_GLOBAL_OPEN_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('TALENTS_GLOBAL_OPEN') && TALENTS_GLOBAL_OPEN)) {
+        return true;
+    }
+    return false;
+}

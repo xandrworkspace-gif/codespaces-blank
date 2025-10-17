@@ -1,0 +1,393 @@
+<? # $Id: bg.lib,v 1.26 2009-10-27 13:46:19 s.ignatenkov Exp $
+
+define('BG_MIN_USER_LEVEL', 3);	// минимальный уровень персонажа для входа в БГ
+
+// флаги
+define('BG_FLAG_ADMIN',          0x0001);	// Видимый только администраторами
+define('BG_FLAG_NO_OUT_PENALTY', 0x0002);	// Без 3-часового штрафа за бегство
+define('BG_FLAG_HIDE_SCORE',	 0x0004);	// Не отображать счет
+define('BG_FLAG_CROSSSERVER',	 0x0008);	// Межсерверное ПБ
+define('BG_FLAG_GLADIATOR',      0x0010);	// Гладиаторское поле битвы
+define('BG_FLAG_TESTER',         0x0020);	// Только для тестеров
+define('BG_FLAG_WRITE_STAT',	 0x0040);   // Вести статитику по этому бг
+define('BG_FLAG_NO_CHAT',	     0x0080);   // Запретить чат
+
+// статусы очереди
+define('BG_USER_STATUS_WAITING',       0);
+define('BG_USER_STATUS_PENDING',       1);
+define('BG_USER_STATUS_LOCKED',        2);
+
+define('BG_USER_FLAG_CROSSSERVER',	 0x0001);
+
+define('BG_REQ_TTL',       10800); // время жизни заявки
+define('BG_PENDING_TTL',     300); // время ожидания подтверждения заявки
+define('BG_STAT_TTL', 7*24*60*60); // время жизни статистики
+define('BG_LOCK_COOLDOWN', 10800); // время кулдауна на вход
+define('BG_LOCK_ORDER',     3600); // время штрафа за неподтверждённую заявку
+
+// Имена и поля таблиц
+define('TABLE_BGS','bgs');
+define('FIELD_BGS','');
+define('TABLE_BG_USERS','bg_users');
+define('FIELD_BG_USERS','');
+define('TABLE_BG_STATS','bg_stats');
+define('FIELD_BG_STATS','');
+define('TABLE_BG_LEVELS','bg_levels');
+define('FIELD_BG_LEVELS','');
+
+
+function bg_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_BGS,$ref,$add);
+}
+
+function bg_list($ref=false, $add='') {
+	global $db_2;
+	return common_list($db_2,TABLE_BGS,$ref,$add);
+}
+
+function bg_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2, TABLE_BGS, $ref, $add);
+}
+
+function bg_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_BGS,$param,FIELD_BGS);
+}
+
+function bg_delete($ref) {
+	global $db_2;
+	if (!$ref || is_array($ref)) return false;
+	common_delete($db_2,TABLE_BGS,$ref);
+	bg_user_delete(array('bg_id' => $ref));
+	bg_stat_delete(array('bg_id' => $ref));
+	return true;
+}
+
+function bg_user_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_BG_USERS,$ref,$add);
+}
+
+function bg_user_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_BG_USERS,$ref,$add,$field_list);
+}
+
+function bg_user_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_BG_USERS,$ref,$add);
+}
+
+function bg_user_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_BG_USERS,$param,FIELD_BG_USERS);
+}
+
+function bg_user_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_BG_USERS,$ref,$add);
+}
+
+function bg_stat_get($ref=false, $add='') {
+	global $db_diff;
+	return common_get($db_diff, TABLE_BG_STATS, $ref, $add);
+}
+
+function bg_stat_list($ref=false, $add='') {
+	global $db_diff;
+	return common_list($db_diff, TABLE_BG_STATS, $ref, $add);
+}
+
+function bg_stat_count($ref=false, $add='') {
+	global $db_diff;
+	return common_count($db_diff, TABLE_BG_STATS, $ref, $add);
+}
+
+function bg_stat_save($param) {
+	global $db_diff;
+	return common_save($db_diff, TABLE_BG_STATS, $param, FIELD_BG_STATS);
+}
+
+function bg_stat_delete($ref, $add='') {
+	global $db_diff;
+	if ((!$ref || is_array($ref)) && !$add) return false;
+	return common_delete($db_diff, TABLE_BG_STATS, $ref, $add);
+}
+
+///////////////
+
+function bg_level_get($ref=false, $add='') {
+	global $db_2;
+	return common_get($db_2,TABLE_BG_LEVELS,$ref,$add);
+}
+
+function bg_level_list($ref=false, $add='', $field_list='*') {
+	global $db_2;
+	return common_list($db_2,TABLE_BG_LEVELS,$ref,$add,$field_list);
+}
+
+function bg_level_count($ref=false, $add='') {
+	global $db_2;
+	return common_count($db_2,TABLE_BG_LEVELS,$ref,$add);
+}
+
+function bg_level_save($param) {
+	global $db_2;
+	return common_save($db_2,TABLE_BG_LEVELS,$param,FIELD_BG_LEVELS);
+}
+
+function bg_level_delete($ref, $add='') {
+	global $db_2;
+	return common_delete($db_2,TABLE_BG_LEVELS,$ref,$add);
+}
+
+function bg_lock($ref, $timewait=20, $timelock=60) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->capture('BG_'.intval($ref),$timewait,$timelock);
+}
+
+function bg_unlock($ref) {
+	global $tq;
+	if (!$ref) return false;
+	return $tq->release('BG_'.intval($ref));
+}
+
+function bg_queue_perform($orders, $avail) {
+	// должен быть тотальный приоритет групп в очереди.
+	if (!$orders || (count($orders) < $avail)) return array();
+	
+	// соберём массив групп с ключом по количеству участников
+	$order_groups = array();
+	foreach($orders as $order_id => $order) {
+		if (!$order['party_id']) continue;
+		if (!isset($order['server_id'])) $order['server_id'] = -1;
+		
+		$cnt = 0;
+		$stime = 0;
+		$pkey = $order['party_id'].'_'.$order['server_id'];
+		
+		if (isset($order_groups[$cnt][$pkey])) continue;
+		//пробегаемся ещё раз и считаем количество пользователей в этой группе
+		foreach($orders as $group_find_order) {
+			if ($order['party_id'] == $group_find_order['party_id']) {
+				if (!isset($group_find_order['server_id'])) $group_find_order['server_id'] = -1;
+				if ($order['server_id'] == $group_find_order['server_id']) {
+					$cnt++;
+					// время создания заявки группы считаем как наименьшее из времен создания заявок ее участников
+					if (!$stime || ($stime > $order['stime'])) $stime = $order['stime'];
+				}
+			}
+		}
+		if ($cnt < 2) {
+			$orders[$order_id]['party_id'] = NULL;
+			continue;
+		}
+		$order_groups[$cnt][$pkey] = $stime;
+	}
+	
+	// сортируем группы по времени создания так, чтобы первой шла группа, созданная раньше всех
+	foreach ($order_groups as $cnt => $parties) asort($order_groups[$cnt]);
+	
+	$remain = $avail;
+	//теперь попробуем засунуть в очередь группы начиная с больших
+	$res = array();
+	for ($i = PARTY_MEMBER_MAX_DEFAULT; $i > 1; $i--) {
+        if (!isset($order_groups[$i])) continue; // если нет групп с таким количеством участников
+        foreach($order_groups[$i] as $pkey => $stime) {
+            if ($i > $remain) continue; // если осталось мест меньше, чем членов группы
+            
+            list($party_id, $server_id) = explode('_', $pkey);
+            //кидаем всех членов в очередь
+            foreach($orders as $order) {
+                if (($order['party_id'] == $party_id) && ($order['server_id'] == $server_id)) {
+                    $res[] = $order;
+                    $remain--;
+                }
+            }
+        }        
+    }
+	
+	// если группы забили собой все пространство, отлично, просто возвращаем очередь обратно
+	if (count($res) == $avail) return $res;
+	
+	// иначе сортируем уже отдельных участников по stime
+	uasort($orders, 'bg_user_cmp_func');
+	
+    //теперь добъём ответ не участниками групп
+    foreach($orders as $order) {
+        if ($remain <= 0) break;
+        if ($order['party_id']) continue;
+        $res[] = $order;
+        $remain--;
+    }
+    
+    //может получиться что группы не пролезли, а одиночек нехватает
+    if (count($res) < $avail) return array();
+	if (count($res) > $avail) {
+		error_log(sprintf('MNGR_BG: Users in list [%d] more than position available [%d]', count($res), $avail));
+	}
+    return $res;
+}
+
+function bg_level_get_info($user_level, $bg_level_list) {
+	if (!is_array($bg_level_list))
+		return false;
+	foreach ($bg_level_list as $bg_levels) {
+		if ($bg_levels['level_min'] <= $user_level && $user_level <= $bg_levels['level_max']) {
+			return $bg_levels;
+		}
+	}
+
+	return false;
+}
+
+
+function bg_level_get_key($user_level, $bg_level_list) {
+	$info = bg_level_get_info($user_level, $bg_level_list);
+
+	if (!$info) {
+		return false;
+	}
+
+	return "[{$info['level_min']}:{$info['level_max']}]";
+}
+
+function bg_users_unset_inactive(&$bg_users) {
+	global $NODE_NUMS;
+	$user_ids = get_hash($bg_users, 'user_id', 'user_id');
+	$session_hash = array();
+	if ($user_ids) {
+		foreach ($NODE_NUMS as $nn) {
+			if (($nn == FRIDGE_NN) || !NODE_SWITCH($nn)) continue;
+			$session_hash = array_merge($session_hash, session_list(null,null,true,sql_pholder(' AND uid IN (?@)',$user_ids),'uid',true));
+		}
+	}
+	$session_hash = get_hash($session_hash, 'uid', 'uid');
+	$delete_user_ids = array();
+	$delete_user_ids_without_penalty = array();
+	foreach ($bg_users as $k => $user) {
+		if (isset($user['server_id']) && ($user['server_id'] != SERVER_ID)) continue;
+		
+		if (!$session_hash[$user['user_id']]) {
+			if ($user['status'] == BG_USER_STATUS_PENDING) {
+				$delete_user_ids[] = $user['user_id'];
+			} else {
+				$delete_user_ids_without_penalty[] = $user['user_id'];
+			}
+			unset($bg_users[$k]);
+			unset($user_ids[$user['user_id']]);
+		}
+	}
+	if ($delete_user_ids) bg_user_save(array(
+		'_add' => sql_pholder(' AND user_id IN (?@)', $delete_user_ids),
+		'_set' => sql_pholder('dtime = ?, status = ?', time_current()+BG_LOCK_ORDER, BG_USER_STATUS_LOCKED),
+	));
+	if ($delete_user_ids_without_penalty) bg_user_delete(array('user_id' => $delete_user_ids_without_penalty));
+	
+	$party_member_hash = $user_ids ? get_hash(party_member_list(null,PM_STATUS_ACTIVE,sql_pholder(' AND user_id IN (?@)',$user_ids)),'user_id','party_id') : array();
+	foreach($bg_users as $k => $user) {
+		if (($bg_users[$k]['server_id'] == SERVER_ID) && isset($party_member_hash[$user['user_id']])) {
+			$bg_users[$k]['party_id'] = $party_member_hash[$user['user_id']];
+		}
+	}
+	
+	return true;
+} 
+
+function bg_user_send_invite($user_id, $bg_id, $instance_id, $pending_time, $server_id = SERVER_ID) {
+	$bg_user = bg_user_get(array('user_id' => $user_id));
+	if ($bg_user['bg_id'] != $bg_id) return false;
+	if ($bg_user['instance_id'] || !$instance_id) return false;
+	if ($bg_user['status'] != BG_USER_STATUS_WAITING) return false;
+	$bg = bg_get($bg_id);
+	if (!$bg_id) return false;
+	bg_user_save(array(
+		'_add' => sql_pholder(' AND user_id=? AND bg_id=? ', $user_id, $bg_id),
+		'_set' => sql_pholder('dtime = ?, instance_id = ?, server_id = ?', $pending_time, $instance_id, $server_id),
+	));
+	chat_msg_send_system(sprintf(translate('<b class="redd">Для того, чтобы подтвердить свое участие в поле битвы, нажмите</b> <b><a href="javascript: confirm_bg(%s)">СЮДА</a></b><b> не позднее %s.</b>'),$bg['t'.$bg_user['user_kind'].'_area_id'], date('H:i:s', $pending_time)), CHAT_CHF_USER, $user_id);
+	return true;
+}
+
+
+function bg_level_parse_teams_servers($teams_servers) {
+	$bg_level_team_servers = array();
+	$teams = explode('|', $teams_servers);
+	$team_num = 0;
+	foreach ($teams as $team_servers_str) {
+		$team_num++;
+		$team_servers = explode(',', $team_servers_str);
+		foreach ($team_servers as $team_server) {
+			$bg_level_team_servers[$team_num][$team_server] = $team_server;
+		}
+	}
+	
+	return $bg_level_team_servers;
+}
+
+function bg_level_serialize_teams_servers($teams_serves) {
+	$res = '';
+	$i = 0;
+	foreach ($teams_serves as $team => $team_data) {
+		if (!empty($team_data)) {
+			$res .= ($i > 0 ? '|' : '').implode(',', $team_data);
+		} else {
+			return '';
+		}
+		if (++$i > 2) break;
+	}
+
+	return $res;
+}
+
+// Возвращается текущий активный эвент для ПБ (в зависимости от текущего дня недели и времен - по расписанию)
+function bg_get_current_event($bg) {
+	if (!$bg)
+		return false;
+	$event_schedule = json_decode($bg['event_schedule'], true);
+	$day_of_week = date('N', time_current());
+	$time_today = time_current() - strtotime(date('Y-m-d', time_current()));
+	// Проверяем вчерашний день (если продолжительность эвента перевалила на следующий день)
+	$event = $event_schedule[$day_of_week - 1];
+	$yesterday_event = false;
+	if ($event && $event['time'] && $event['duration'] > 0 && ($event['no_injury'] || $event['no_break'])) {
+		$r = explode(':', $event['time']);
+		if (count($r) == 2) {
+			$from = ($r[0] * 60 + $r[1]) * 60;
+			$till = $from + $event['duration'];
+			if ($till > 24 * 3600 && $time_today <= $till - 24 * 3600)
+				$yesterday_event = $event;
+		}
+	}
+	// Проверяем сегодняшний день
+	$event = $event_schedule[$day_of_week];
+	$today_event = false;
+	if ($event && $event['time'] && $event['duration'] > 0 && ($event['no_injury'] || $event['no_break'])) {
+		$r = explode(':', $event['time']);
+		if (count($r) == 2) {
+			$from = ($r[0] * 60 + $r[1]) * 60;
+			$till = $from + $event['duration'];
+			if ($time_today >= $from && $time_today <= $till)
+				$today_event = $event;
+		}
+	}
+	if ($yesterday_event && !$today_event)
+		return $yesterday_event;
+	elseif (!$yesterday_event && $today_event)
+		return $today_event;
+	elseif ($yesterday_event && $today_event) {
+		if ($today_event['no_injury'])
+			$yesterday_event['no_injury'] = $today_event['no_injury'];
+		if ($today_event['no_break'])
+			$yesterday_event['no_break'] = $today_event['no_break'];
+		return $yesterday_event;
+	}
+	return false;
+}
+
+function bg_user_cmp_func($a, $b) {
+	return ($a['stime'] > $b['stime']) ? 1 : -1;
+}

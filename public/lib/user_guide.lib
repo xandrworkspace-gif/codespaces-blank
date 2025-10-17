@@ -1,0 +1,121 @@
+<?
+
+
+define('USER_GUIDE_TABLE', 'user_guide');
+define('USER_GUIDE_QUEUE_TABLE', 'user_guide_queue');
+define('USER_GUIDE_STAT_TABLE', 'user_guide_stat');
+define('USER_REPUTATION_TABLE', 'user_reputation');
+
+define('USER_GUIDE_ADMIN', 0x00001);
+
+$user_guide_flags_hash = array(
+    USER_GUIDE_ADMIN => 'Только для админов',
+);
+
+function user_guide_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,USER_GUIDE_TABLE,$ref,$add);
+}
+
+function user_guide_list($ref=false, $add = '') {
+    global $db_diff;
+    return common_list($db_diff,USER_GUIDE_TABLE,$ref,$add);
+}
+
+function user_guide_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,USER_GUIDE_TABLE,$ref,$add);
+}
+
+function user_guide_save($param) {
+    global $db_diff;
+    return common_save($db_diff,USER_GUIDE_TABLE,$param);
+}
+
+function user_guide_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff,USER_GUIDE_TABLE,$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function user_guide_stat_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,USER_GUIDE_STAT_TABLE,$ref,$add);
+}
+
+function user_guide_stat_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,USER_GUIDE_STAT_TABLE,$ref,$add);
+}
+
+function user_guide_stat_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,USER_GUIDE_STAT_TABLE,$ref,$add);
+}
+
+function user_guide_stat_save($param) {
+    global $db_diff;
+    return common_save($db_diff,USER_GUIDE_STAT_TABLE,$param);
+}
+
+function user_guide_stat_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff,USER_GUIDE_STAT_TABLE,$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function user_guide_queue_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,USER_GUIDE_QUEUE_TABLE,$ref,$add);
+}
+
+function user_guide_queue_list($ref=false, $add='') {
+    global $db_diff;
+    return common_list($db_diff,USER_GUIDE_QUEUE_TABLE,$ref,$add);
+}
+
+function user_guide_queue_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,USER_GUIDE_QUEUE_TABLE,$ref,$add);
+}
+
+function user_guide_queue_save($param) {
+    global $db_diff;
+    return common_save($db_diff,USER_GUIDE_QUEUE_TABLE,$param);
+}
+
+function user_guide_queue_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff,USER_GUIDE_QUEUE_TABLE,$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function user_reputation_get($ref=false, $add='') {
+    global $db_diff;
+    return common_get($db_diff,USER_REPUTATION_TABLE,$ref,$add);
+}
+
+function user_reputation_list($ref=false, $add = '') {
+    global $db_diff;
+    return common_list($db_diff,USER_REPUTATION_TABLE,$ref,$add);
+}
+
+function user_reputation_count($ref=false, $add='') {
+    global $db_diff;
+    return common_count($db_diff,USER_REPUTATION_TABLE,$ref,$add);
+}
+
+function user_reputation_save($param) {
+    global $db_diff;
+    return common_save($db_diff,USER_REPUTATION_TABLE,$param);
+}
+
+function user_reputation_delete($ref=false, $add='') {
+    global $db_diff;
+    return common_delete($db_diff,USER_REPUTATION_TABLE,$ref,$add);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

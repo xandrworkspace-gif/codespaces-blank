@@ -1,0 +1,329 @@
+<?php
+
+define('TABLE_USER_DROP','user_drop');
+define('FIELD_USER_DROP','');
+
+define('USER_DROP_MAX_LOG', 10);
+
+#Работа с базой данных
+function user_drop_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_USER_DROP,$ref,$add);
+}
+
+function user_drop_list($ref=false, $add='', $ex = false) {
+    global $db_path;
+    return common_list($db_path,TABLE_USER_DROP,$ref,$add);
+}
+
+function user_drop_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_USER_DROP, $ref, $add);
+}
+
+function user_drop_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_USER_DROP,$param,FIELD_USER_DROP);
+}
+
+function user_drop_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_USER_DROP,$ref,$add);
+    return true;
+}
+
+function user_drop_add($param=array(), $drop){
+    //Добавление дропа xD
+    if(!$drop) return false;
+
+    $user_drop_cnt = user_drop_count(array('user_id' => $param['user_id']));
+    if($user_drop_cnt >= USER_DROP_MAX_LOG){
+        $cnt = $user_drop_cnt - USER_DROP_MAX_LOG;
+        $razmah = ($cnt ? $cnt + 1 : 1);
+        user_drop_delete(array('user_id' => $param['user_id']), ' ORDER BY id ASC LIMIT '.$razmah);
+    }
+
+    $save = array(
+        'user_id' => $param['user_id'],
+        'fight_id' => $param['fight_id'],
+        'info' => json_encode($drop),
+    );
+    user_drop_save($save);
+}
+
+$define_out_bonus = array('artikuls_received', 'skills', 'stats');
+function user_drop_out_bonus(&$user_drop, $out_bonus){
+    if ($out_bonus['status'] !== BONUS_STATUS_OK) return false;
+    foreach ($out_bonus as $k=>$v){
+        switch($k){
+            case 'artikuls_received':
+                foreach ($v as $artikul_id=>$cnt){
+                    $user_drop[$k][$artikul_id] += $cnt;
+                }
+                break;
+            case 'skills':
+                foreach ($v as $skill_id=>$val){
+                    $user_drop[$k][$skill_id] += $val;
+                }
+                break;
+            case 'stats':
+                foreach ($v as $type_id=>$stats){
+                    foreach ($stats as $object_id=>$val){
+                        if($type_id == USER_STAT_TYPE_SKILL){
+                            if($object_id == USER_STAT_SKILL_EXP){$user_drop['exp'] += $val; continue;}
+                            if($object_id == USER_STAT_SKILL_HONOR){$user_drop['honor'] += $val;  continue;}
+                        }
+                        $user_drop[$k][$type_id][$object_id] += $val;
+                    }
+                }
+                break;
+            case 'money':
+                foreach ($v as $money_type=>$money){
+                    $user_drop[$k][$money_type] += round($money,2);
+                }
+                break;
+        }
+    }
+}
+
+function user_drop_table_top($v, $param){
+    switch ($v){
+        case 1:?>
+
+            <table <?=$param['add_table']?> class="w100" border="0" cellpadding="0" cellspacing="0">
+                <tbody><tr>
+                    <td width="12" height="12" class="common-inset-tl"></td>
+                    <td height="12" class="common-inset-t"></td>
+                    <td width="12" height="12" class="common-inset-tr"></td>
+                </tr>
+                <tr>
+                    <td width="12" class="common-inset-l"><img src="images/blank.gif" width="12" alt=""></td>
+                    <td align="center" height="12" class="common-inset-bg">
+                        <b><?=$param['title']?></b>
+                        <br>
+            <?break;?>
+        <?case 2:?>
+
+        <table <?=$param['add_table']?> width="100%" border="0" cellspacing="0" cellpadding="0">
+        <tbody><tr height="22">
+            <td width="20" align="right" valign="bottom"><img src="images/tbl-shp_sml-corner-top-left.gif" width="20" height="22"></td>
+            <td class="tbl-shp_sml-top" valign="top" align="center">
+                <table border="0" cellspacing="0" cellpadding="0">
+                    <tbody><tr height="22">
+                        <td width="27"><img src="images/tbl-usi_label-left.gif" width="27" height="22"></td>
+                        <td align="center" class="tbl-usi_label-center"><?=$param['title'];?></td>
+                        <td width="27"><img src="images/tbl-usi_label-right.gif" width="27" height="22"></td>
+                    </tr>
+                    </tbody></table>
+            </td>
+            <td width="20" align="left" valign="bottom"><img src="images/tbl-shp_sml-corner-top-right.gif" width="20" height="22"></td>
+        </tr>
+        <tr>
+        <td class="tbl-usi_left">&nbsp;</td>
+        <td class="tbl-usi_bg" valign="top" align="center" style="padding: 10 10 16 10">
+
+        <?break;?>
+    <?case 3:?>
+        <div <?=$param['add_table']?> class="popup_global_container">
+        <div class="popup-top-left">
+            <div class="popup-top-right">
+                <div class="popup-top-center">
+                    <div class="popup_global_title" id="action_title_amount">
+                        <?=$param['title']?>
+                    </div>
+                </div>
+                <div class="popup_global_close_btn" title="Удалить статистику" onclick="delete_user_drop(<?=$param['drop_id'];?>);"></div>
+            </div>
+        </div>
+        <div class="popup-left-center">
+        <div class="popup-right-center">
+        <div class="popup_global_content" style="padding: 5px;">
+        <div style="text-align: center;">
+        <center>
+        <?break;?>
+    <?}?>
+
+<?}
+
+function user_drop_table_bottom($v=1){
+    switch ($v){
+        case 1:?>
+            </td>
+            <td width="12" class="common-inset-r"><img src="images/blank.gif" width="12" alt=""></td>
+            </tr>
+            <tr>
+                <td width="12" height="12" class="common-inset-bl"></td>
+                <td height="12" class="common-inset-b"></td>
+                <td width="12" height="12" class="common-inset-br"></td>
+            </tr>
+            </tbody></table>
+            <?break;?>
+        <?case 2:?>
+
+        </td>
+        <td class="tbl-usi_right">&nbsp;</td>
+        </tr>
+        <tr height="18">
+            <td width="20" align="right" valign="top"><img src="images/tbl-shp_sml-corner-bottom-left.gif" width="20" height="18"></td>
+            <td class="tbl-shp_sml-bottom" valign="top" align="center">&nbsp;   </td>
+            <td width="20" align="left" valign="top"><img src="images/tbl-shp_sml-corner-bottom-right.gif" width="20" height="18"></td>
+        </tr>
+        </tbody></table>
+
+            <?break;?>
+        <?case 3:?>
+        </center>
+        </div>
+        </div>
+        </div>
+        </div>
+        <div class="popup-left-bottom">
+            <div class="popup-right-bottom">
+                <div class="popup-bottom-center">
+                </div>
+            </div>
+        </div>
+        </div>
+            <?break;?>
+    <?}?>
+<?}
+
+function user_drop_print($drop, $param=array()){
+    if(!$drop) return false;
+    $info = json_decode($drop['info'],true);
+    if(!$info) return false;
+
+    if($param['no_skill']){
+        if(!($info['money'] || $info['artikuls_received'])) return false;
+    }
+
+    if($param['check']){
+        return true;
+    }
+
+    global $quality_info;
+
+    if(!$param['v']) $param['v'] = 1;
+
+    if($param['v'] == 1){
+        user_drop_table_top($param['v'], array(
+            'add_table' => 'id="drop_info_'.$drop['id'].'"',
+            'title' => "<b class=redd onclick='showFightInfo(".$drop['fight_id'].");' style='cursor:pointer;'>Выписка по бою №".$drop['fight_id']."</b>",
+            'drop_id' => $drop['id'],
+        ));
+    }
+    if($param['v'] == 2){
+        user_drop_table_top($param['v'], array(
+            'title' => "Выписка по бою",
+        ));
+    }
+
+    global $user_stat_skill_hash;
+    $artifact_artikul_list = array();
+    $skills_hash = array();
+    foreach ($info as $k=>$v){
+        switch($k){
+			case 'money':
+                echo "<table class='coll w100 p10h p2v brd2-all' border='0'>";
+                echo '<tr class="bg_l">
+						<td class="brd2-top brd2-bt b">
+						Деньги:
+						</td>
+						<td class="brd2-top brd2-bt b redd" align="right">';
+                foreach ($v as $money_type=>$money){
+                    echo html_money_str($money_type,round($money,2)).'&nbsp;';
+                }
+				echo "</tr></table>";
+                break;
+            case 'artikuls_received':
+				echo "<table class='coll w100 p10h p2v brd2-all' border='0'>";
+                echo '<tr class="bg_l">
+						<td class="brd2-top brd2-bt b">
+						Артефакты
+						</td>
+					</tr><tr><td>';
+                foreach ($v as $artikul_id=>$cnt){
+                    $artikul = cache_fetch($artifact_artikul_list, $artikul_id, 'artifact_artikul_get');
+                    if($param['artifact_alt']){
+                        $div='';
+                        $attr='';
+                        $artikul_hash=artifact_artikul_list(array('id'=>$artikul_id));
+                        foreach ($artikul_hash as $k=>$artikul) {$artikul['artikul_id']=$artikul_id;}
+                        tpl_artifact_alt_prepare($artikul_hash,OBJECT_CLASS_ARTIFACT_ARTIKUL);
+                        $uid_artifact = 'artifact_'.$artikul_id.rand(1,1000000);
+                        $artikul=array_shift($artikul_hash);
+                        tpl_artifact_alt($artikul,false,$uid_artifact);
+                        if($param['v'] == 1){
+                            $attr .= 'onMouseOver="ShowDiv(this,event,2);return false;" onMouseOut="ShowDiv(this,event,0);return false;" div_id="'.$uid_artifact.'"';
+                            echo '<div style="display: inline-block;"><a href="#" '.tpl_tooltip('<b style=color:'.$quality_info[$artikul['quality']]['color'].'>'.$artikul["title"].'</a> '. $cnt.'шт.'.'</b>').' '.$attr.' style="color:'.$quality_info[$artikul['quality']]['color'].';" onClick="showArtifactInfo(false,'.$artikul_id.');return false;"><img width=35 height=35 src="'.PATH_IMAGE_ARTIFACTS.$artikul['picture'].'" border="0" style="margin-left: 2px;"></a></div>';
+                        }elseif ($param['v'] == 2){
+                            $attr .= 'onMouseOver="artifactAlt(this,event,2);return false;" onMouseOut="artifactAlt(this,event,0);return false;" div_id="'.$uid_artifact.'"';
+                            echo '<div style="display: inline-block;"><a href="#" '.tpl_tooltip('<b style=color:'.$quality_info[$artikul['quality']]['color'].'>'.$artikul["title"].'</a> '. $cnt.'шт.'.'</b>').' '.$attr.' style="color:'.$quality_info[$artikul['quality']]['color'].';" onClick="showArtifactInfo(false,'.$artikul_id.');return false;"><img width=35 height=35 src="'.PATH_IMAGE_ARTIFACTS.$artikul['picture'].'" border="0" style="margin-left: 2px;"></a></div>';
+                        }
+                    }else{
+                        echo $artikul['title'].' '.$cnt.'шт.<br>';
+                    }
+                }
+				echo "</td></tr></table>";
+                break;
+            case 'skills' | 'stats':
+                if($param['no_skill']) break;
+
+               echo "<table class='coll w100 p10h p2v brd2-all' border='0'>";
+                echo '<tr class="bg_l">
+						<td class="brd2-top brd2-bt b">
+						Характеристики:
+						</td>
+					</tr><tr><td>';
+                foreach ($v as $skill_id=>$val){
+                    $skill = cache_fetch($skills_hash, $skill_id, 'skill_get');
+                    echo $skill['title'].' '.$val.'<br>';
+                }
+                foreach ($v as $type_id=>$stats){
+                    foreach ($stats as $object_id=>$val){
+                        if($type_id == USER_STAT_TYPE_SKILL){
+                            $user_stat_skill = $user_stat_skill_hash[$object_id];
+                            echo $user_stat_skill['title'].' '.$val.'<br>';
+                        }
+                    }
+                }
+				echo "</td></tr></table>";
+                break;
+            case 'exp':
+                if($param['no_skill']) break;
+                if(intval($v)){
+                    echo "<table class='coll w100 p10h p2v brd2-all' border='0'>";
+                    echo '<tr class="bg_l">
+						<td class="brd2-top brd2-bt b">
+						Опыт:
+						</td>
+						<td class="brd2-top brd2-bt b redd" align="right">'.intval($v).'</tr></table>';
+                }
+                break;
+            case 'honor':
+                if($param['no_skill']) break;
+                if(intval($v)) {
+                    echo "<table class='coll w100 p10h p2v brd2-all' border='0'>";
+                    echo '<tr class="bg_l">
+						<td class="brd2-top brd2-bt b">
+						Доблесть:
+						</td>
+						<td class="brd2-top brd2-bt b redd" align="right">' . intval($v) . '</tr></table>';
+                }
+                break;
+        }
+    }
+	user_drop_table_bottom($param['v']);
+}
+////////////////////////////////////////
+
+function user_drop_check($fight = array()){
+    $add = true;
+    if(!(defined('USER_DROP_ACT_DUEL') && USER_DROP_ACT_DUEL) && $fight['type'] == FIGHT_TYPE_ADV_DUEL) $add = false;
+    if(!(defined('USER_DROP_ACT_CHAOT') && USER_DROP_ACT_CHAOT) && $fight['type'] == FIGHT_TYPE_CHAOTIC) $add = false;
+    if(!(defined('USER_DROP_ACT_STRONHOLD') && USER_DROP_ACT_STRONHOLD) && $fight['flags'] & FIGHT_FLAG_STRONGHOLD) $add = false;
+    if(!(defined('USER_DROP_ACT_WB') && USER_DROP_ACT_WB) && $fight['level']) $add = false;
+    if(!(defined('USER_DROP_ACT_ARENA') && USER_DROP_ACT_ARENA) && $fight['type'] == FIGHT_TYPE_ARENA) $add = false;
+    return $add;
+}

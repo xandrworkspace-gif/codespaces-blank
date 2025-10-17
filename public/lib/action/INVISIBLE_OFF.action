@@ -1,0 +1,21 @@
+<? # $Id: INVISIBLE_OFF.action,v 1.5 2010-01-15 09:50:11 p.knoblokh Exp $
+
+// действие "выключить невидимость"
+
+if (!in_array($subject['object_class'],array(OBJECT_CLASS_USER))) return;
+
+if (($subject['flags'] & USER_FLAG_NOACTION) || $subject['trade_sess_id']) {
+	$out['error'] = translate('В настоящий момент это действие выполнить нельзя!');
+	return;
+}
+
+user_save(array(
+	'id' => $subject['id'],
+	'invisibility_time' => 0,
+));
+
+chat_msg_send_special(CODE_CALL_JSFUNC, CHAT_CHF_USER, $subject['id'], array('func' => "updateSwf({'lvl':''})"));
+
+$out['status'] = ACTION_STATUS_OK;
+
+?>

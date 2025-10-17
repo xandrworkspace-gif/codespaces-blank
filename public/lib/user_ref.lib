@@ -1,0 +1,352 @@
+<?
+
+//Типы наград
+
+//Одноразовые (Игрок получает 1 раз)
+//Многоразовые (Игрок получает за каждого приглашенного 1 раз)
+//Кол-во рефералов N уровня
+//Кол-во рефералов N звания
+//Кол-во построек и улучшений в поместье
+//Кол-во характеристики
+
+//События рефералов
+//Дата Ник Событие
+
+define('TABLE_USER_REF_AWARDS_ARTIKUL_LIST', 'user_ref_awards_artikul');
+define('TABLE_USER_REF_AWARDS_USER_LIST', 'user_ref_awards_user');
+define('TABLE_USER_REF_STAT_LIST', 'user_ref_stat');
+
+
+define('USER_REF_STAT_TYPE_LEVEL',         1); //Получение уровня
+define('USER_REF_STAT_TYPE_RANK',          2); //Получение звания
+define('USER_REF_STAT_IN_CLAN',            3); //Вступление в клан
+define('USER_REF_STAT_OUT_CLAN',           4); //Выход из клана
+define('USER_REF_STAT_GAIN_CLAN',          5); //Кикнули из клана
+define('USER_REF_STAT_GIVE_MEDAL',         6); //Получил медаль
+
+//Например один игрок достиг 2 уровня
+
+define('USER_REF_ARTIKUL_TYPE_ONLY',   1); //Можно получить только один раз
+define('USER_REF_ARTIKUL_TYPE_MULTI',    2); //Можно получить единожды за одного реферала
+
+$user_ref_artikul_type_hash = array(
+    USER_REF_ARTIKUL_TYPE_ONLY => 'Можно получить только один раз',
+    USER_REF_ARTIKUL_TYPE_MULTI => 'Можно получить единожды за одного реферала',
+);
+
+//Триггеры
+define('USER_REF_TRIGGER_LEVEL',        1);
+define('USER_REF_TRIGGER_RANK',         2);
+define('USER_REF_TRIGGER_SKILL',        3);
+define('USER_REF_TRIGGER_SKILL_STAT',   4);
+define('USER_REF_TRIGGER_BUILDING',     5);
+define('USER_REF_TRIGGER_CLAN_IN',      6);
+define('USER_REF_TRIGGER_BRILLIANT',    7);
+define('USER_REF_TRIGGER_GIVE_MEDAL',   8);
+
+$user_ref_trigger_hash = array(
+    USER_REF_TRIGGER_LEVEL => 'Уровень', //COMPLETE
+    USER_REF_TRIGGER_RANK => 'Звание', //COMPLETE
+    USER_REF_TRIGGER_SKILL => 'Характеристика', //COMPLETE
+    USER_REF_TRIGGER_SKILL_STAT => 'Стат. хар.', //COMPLETE
+    USER_REF_TRIGGER_BUILDING => 'Постройка в поместье', //COMPLETE
+    USER_REF_TRIGGER_CLAN_IN => 'Вступление в клан', //COMPLETE
+    USER_REF_TRIGGER_BRILLIANT => 'Размен бриллиантов', //COMPLETE
+    USER_REF_TRIGGER_GIVE_MEDAL => 'Получена медаль', //COMPLETE
+);
+
+/*
+ * Сделать позже в bonus.lib
+ * ЗАДЕЙСТВОВАТЬ ТРИГГЕР, а там уже выбор из триггеров и значение!
+ */
+
+function msg_log_add(&$msg, $str = ''){ $msg .= $str; }
+
+define('USER_REF_TRIGGER_CACHE_TTL', 43200); //Храним кеш 12 часов
+
+define('LETOPIS_PAGE_CNT', 30);
+define('REFERRAL_PAGE_CNT', 30);
+
+function user_ref_trigger_hash($update = false){
+    $user_ref_trigger_cache = new Cache(md5('USER_REF_TRIGGER_HASH_CACHE'));
+    if (!$user_ref_trigger_cache->get() || $update) {// Проверим кеш
+        $ref_award_trig_hash = array();
+        $ref_award_artikul_list = user_ref_awards_artikul_list(false, ' AND trig != \'\'');
+        foreach ($ref_award_artikul_list as $ref_award){
+            $ref_award_trig_hash[$ref_award['trig']][$ref_award['ref']] = true;
+        }
+        $user_ref_trigger_cache->update($ref_award_trig_hash,USER_REF_TRIGGER_CACHE_TTL);
+        return $ref_award_trig_hash;
+    }else{
+        return $user_ref_trigger_cache->get();
+    }
+}
+
+//$user_id - тот самый реферал который что-то получил
+function user_ref_triggered($user, $trigger, $value, $ref = null, $param = array()){
+    global $user_ref_trigger_hash;
+
+    //Кешированная проверка...
+    $ref_award_trig_hash = user_ref_trigger_hash();
+    if($trigger && isset($ref)){
+        if(!$ref_award_trig_hash[$trigger][$ref]) return false; //Не нужно проверять то чего нет по сути и по факту!
+    }
+
+    $msg_log = '';
+    do{
+        if(!$user || !$trigger || !$value) break;
+        $user_id = intval($user['id']);
+        if(!$user_id || !$user['referrer_id']) break;
+        $referral_id = $user['referrer_id'];
+        msg_log_add($msg_log, 'Пользователь '.$user['nick'].'['.$user['level'].'] триггернул "'.$user_ref_trigger_hash[$trigger].' | '.$ref.' | '.$value.'" его реферал UID: '.$referral_id);
+
+        //Поднимем все награды с данным триггером
+        $ref_award_artikul_list = user_ref_awards_artikul_list(array(
+            'trig' => $trigger,
+        ),(isset($ref) ? sql_pholder(' AND ref = ?', $ref) : ''));
+
+        if(!$ref_award_artikul_list) break;
+        $ref_award_artikul_type_only_ids = array();
+        $ref_award_artikul_type_multi_ids = array();
+        foreach ($ref_award_artikul_list as $ref_award_artikul){
+            if($ref_award_artikul['type'] == USER_REF_ARTIKUL_TYPE_ONLY) $ref_award_artikul_type_only_ids[] = $ref_award_artikul['id'];
+            elseif($ref_award_artikul['type'] == USER_REF_ARTIKUL_TYPE_MULTI) $ref_award_artikul_type_multi_ids[] = $ref_award_artikul['id'];
+        }
+
+        if($ref_award_artikul_type_only_ids){
+            msg_log_add($msg_log, ' | only_ids: ('.implode(',', $ref_award_artikul_type_only_ids).')');
+        }
+        if($ref_award_artikul_type_multi_ids){
+            msg_log_add($msg_log, ' | multi_ids: ('.implode(',', $ref_award_artikul_type_multi_ids).')');
+        }
+
+        //Разделение необходимо, для того чтобы:
+        //USER_REF_ARTIKUL_TYPE_ONLY - выборка шла по $referral_id
+        //USER_REF_ARTIKUL_TYPE_MULTI - выборка шла по $user_id
+        $ref_award_user_only_list = array();
+        $ref_award_user_multi_list = array();
+        if($ref_award_artikul_type_only_ids) $ref_award_user_only_list = make_hash(user_ref_awards_user_list(array(
+            'ref_award_id' => $ref_award_artikul_type_only_ids,
+            'type' => USER_REF_ARTIKUL_TYPE_ONLY,
+            'user_id' => $referral_id,
+        )), 'ref_award_id');
+        if($ref_award_artikul_type_multi_ids) $ref_award_user_multi_list = make_hash(user_ref_awards_user_list(array(
+            'ref_award_id' => $ref_award_artikul_type_multi_ids,
+            'type' => USER_REF_ARTIKUL_TYPE_MULTI,
+            'user_id' => $user_id,
+        )), 'ref_award_id');
+
+        foreach ($ref_award_artikul_list as $ref_award_artikul){
+            $_user_id = false;
+            $ref_award_user = false;
+            if($ref_award_artikul['type'] == USER_REF_ARTIKUL_TYPE_ONLY){
+                $ref_award_user = $ref_award_user_only_list[$ref_award_artikul['id']];
+                $_user_id = $referral_id;
+            }elseif($ref_award_artikul['type'] == USER_REF_ARTIKUL_TYPE_MULTI){
+                $ref_award_user = $ref_award_user_multi_list[$ref_award_artikul['id']];
+                $_user_id = $user_id;
+            }
+
+            if(!$_user_id) continue;
+            if($ref_award_user['complete']){
+                msg_log_add($msg_log, ' | Награда ['.$ref_award_artikul['id'].'] Завершена!');
+                continue;
+            }
+            if(!$ref_award_user){
+                $n_id = user_ref_awards_user_save(array(
+                    'ref_award_id' => $ref_award_artikul['id'],
+                    'user_id' => $_user_id,
+                    'type' => $ref_award_artikul['type'], //Ошибка века нахуй!
+                    'value' => $value,
+                ));
+                $ref_award_user = user_ref_awards_user_get($n_id);
+            }else{
+                if($param['no_relative']) {
+                    $ref_award_user['value'] = $value;
+                    user_ref_awards_user_save(array(
+                        'id' => $ref_award_user['id'],
+                        'value' => $value,
+                    ));
+                } else {
+                    $ref_award_user['value'] += $value;
+                    user_ref_awards_user_save(array(
+                        'id' => $ref_award_user['id'],
+                        '_set' => sql_pholder(' value = value + ?', $value),
+                    ));
+                }
+            }
+            if(!$ref_award_user) continue;
+            if($ref_award_user['value'] >= $ref_award_artikul['value'] && !$ref_award_user['complete']){
+                //Выдаем награду и закрываем по данному рефералу статистику!
+                $save_complete = user_ref_awards_user_save(array(
+                    'id' => $ref_award_user['id'],
+                    'complete' => 1,
+                ));
+                if(!$save_complete) break;
+                msg_log_add($msg_log, ' | Награда ['.$ref_award_artikul['id'].'] ВЫДАНА!');
+                do{ //Выдача наград
+                    if(!$save_complete) break;
+                    if($ref_award_artikul['artikul_id']){
+                        $artikul = artifact_artikul_get($ref_award_artikul['artikul_id']);
+                        artifact_add($ref_award_artikul['artikul_id'], max(1, $ref_award_artikul['artikul_cnt']), $referral_id);
+                        $msg = '<b>Вы получили награду за рефералов <b class=grnn>"'.$ref_award_artikul['title'].'"</b> : '.tpl_artikul_info($artikul).'</b>';
+                        chat_msg_send_system($msg, CHAT_CHF_USER, $referral_id);
+                    }
+                    if($ref_award_artikul['bonus_id']){
+                        $referral_user = user_get($referral_id);
+                        bonus_apply($referral_user, $ref_award_artikul['bonus_id']);
+                    }
+                }while(0);
+            }
+        }
+    }while(0);
+    logfile(USER_REF_LOG, $msg_log);
+}
+
+function user_ref_bonus_trigger($user_id, $ref_award_id, $value=1, $param = array()){
+    if(!$user_id) return false;
+    $user = user_get($user_id);
+    if(!$user || !$user['referrer_id']) return false;
+    $referral_id = $user['referrer_id'];
+
+    $user_ref_award_artikul = user_ref_awards_artikul_get($ref_award_id, ' AND trig = 0');
+    if(!$user_ref_award_artikul) return false;
+    $user_ref_awards = user_ref_awards_user_get(array(
+        'ref_award_id' => $ref_award_id,
+        'user_id' => $user_id,
+    ));
+    if(!$user_ref_awards){
+        $n_id = user_ref_awards_user_save(array(
+            'ref_award_id' => $ref_award_id,
+            'user_id' => $user_id,
+            'value' => $value,
+        ));
+        $user_ref_awards = user_ref_awards_user_get($n_id);
+    }else{
+        if($param['no_relative']){
+            $user_ref_awards['value'] = $value;
+            user_ref_awards_user_save(array(
+                'id' => $user_ref_awards['id'],
+                'value' => $value,
+            ));
+        }else{
+            $user_ref_awards['value'] += $value;
+            user_ref_awards_user_save(array(
+                'id' => $user_ref_awards['id'],
+                '_set' => sql_pholder(' value = value + ?', $value),
+            ));
+        }
+    }
+    if(!$user_ref_awards) return false;
+    if($user_ref_awards['value'] >= $user_ref_award_artikul['value']){
+        //Выдаем награду и закрываем по данному рефералу статистику!
+        $save_complete = user_ref_awards_user_save(array(
+            'id' => $user_ref_awards['id'],
+            'complete' => 1,
+        ));
+        do{ //Выдача наград
+            if(!$save_complete) break;
+            if($user_ref_award_artikul['artikul_id']){
+                artifact_add($user_ref_award_artikul['artikul_id'], max(1, $user_ref_award_artikul['artikul_cnt']), $referral_id);
+            }
+            if($user_ref_award_artikul['bonus_id']){
+                $referral_user = user_get($referral_id);
+                bonus_apply($referral_user, $user_ref_award_artikul['bonus_id']);
+            }
+        }while(0);
+    }
+}
+
+function user_ref_stat_uniform($user = array(), $type, $val1 = false, $val2 = false){
+    if(!$user['id'] || !$type) return false;
+    $param = array(
+        'user_id' => intval($user['id']),
+        'referral_id' => intval($user['referrer_id']),
+        'type_id' => $type,
+        'ctime' => time_current(),
+    );
+    if($val1) $param['value'] = $val1;
+    if($val2) $param['value2'] = $val2;
+    user_ref_stat_save($param);
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+
+function user_ref_awards_artikul_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_USER_REF_AWARDS_ARTIKUL_LIST,$ref,$add);
+}
+
+function user_ref_awards_artikul_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_USER_REF_AWARDS_ARTIKUL_LIST,$ref,$add);
+}
+
+function user_ref_awards_artikul_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_USER_REF_AWARDS_ARTIKUL_LIST,$ref,$add,true);
+}
+
+function user_ref_awards_artikul_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_USER_REF_AWARDS_ARTIKUL_LIST,$param);
+}
+
+function user_ref_awards_artikul_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_USER_REF_AWARDS_ARTIKUL_LIST,$ref,$add);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+function user_ref_awards_user_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_USER_REF_AWARDS_USER_LIST,$ref,$add);
+}
+
+function user_ref_awards_user_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_USER_REF_AWARDS_USER_LIST,$ref,$add);
+}
+
+function user_ref_awards_user_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_USER_REF_AWARDS_USER_LIST,$ref,$add,true);
+}
+
+function user_ref_awards_user_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_USER_REF_AWARDS_USER_LIST,$param);
+}
+
+function user_ref_awards_user_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_USER_REF_AWARDS_USER_LIST,$ref,$add);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////
+
+function user_ref_stat_get($ref=false, $add='') {
+    global $db_2;
+    return common_get($db_2,TABLE_USER_REF_STAT_LIST,$ref,$add);
+}
+
+function user_ref_stat_list($ref=false, $add='') {
+    global $db_2;
+    return common_list($db_2,TABLE_USER_REF_STAT_LIST,$ref,$add);
+}
+
+function user_ref_stat_count($ref=false, $add='') {
+    global $db_2;
+    return common_count($db_2,TABLE_USER_REF_STAT_LIST,$ref,$add,true);
+}
+
+function user_ref_stat_save($param) {
+    global $db_2;
+    return common_save($db_2,TABLE_USER_REF_STAT_LIST,$param);
+}
+
+function user_ref_stat_delete($ref=false, $add='') {
+    global $db_2;
+    return common_delete($db_2,TABLE_USER_REF_STAT_LIST,$ref,$add);
+}

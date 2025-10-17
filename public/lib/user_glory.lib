@@ -1,0 +1,165 @@
+<?php
+
+define('TABLE_USER_GLORY_ARTIKUL','user_glory_artikul');
+define('FIELD_USER_GLORY_ARTIKUL','');
+
+define('TABLE_USER_GLORY','user_glory');
+define('FIELD_USER_GLORY','');
+
+define('USER_GLORY_NO_MULTI_FLAG',  0x000001); //Можно получить один раз
+define('USER_GLORY_ARTIFACT_ADD',   0x000002); //Выдавать нарисованный артефакт
+
+$user_glory_flags_hash = array(
+    USER_GLORY_NO_MULTI_FLAG => 'Можно получить один раз',
+    USER_GLORY_ARTIFACT_ADD => 'Выдавать нарисованный артефакт',
+);
+
+define('USER_GLORY_TYPE_GLORY',         1);
+define('USER_GLORY_TYPE_BATTLE_UDAL',   2);
+define('USER_GLORY_TYPE_AZART_DOBICH',  3);
+define('USER_GLORY_TYPE_HUNT_LUCK',     4);
+define('USER_GLORY_TYPE_DUNGEON',       5);
+
+$user_glory_type_hash = array(
+    USER_GLORY_TYPE_GLORY => 'Слава',
+    USER_GLORY_TYPE_BATTLE_UDAL => 'Воинская удаль',
+    USER_GLORY_TYPE_AZART_DOBICH => 'Азарт добытчика',
+    USER_GLORY_TYPE_HUNT_LUCK => 'Охота за удачей',
+    USER_GLORY_TYPE_DUNGEON => 'Расхититель подземелий',
+);
+
+#Работа с базой данных
+function user_glory_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_USER_GLORY,$ref,$add);
+}
+
+function user_glory_list($ref=false, $add='', $ex = false) {
+    global $db_path;
+    return common_list($db_path,TABLE_USER_GLORY,$ref,$add);
+}
+
+function user_glory_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_USER_GLORY, $ref, $add);
+}
+
+function user_glory_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_USER_GLORY,$param,FIELD_USER_GLORY);
+}
+
+function user_glory_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_USER_GLORY,$ref,$add);
+    return true;
+}
+////////////////////////////////////////
+
+function user_glory_artikul_get($ref=false, $add='') {
+    global $db_path;
+    return common_get($db_path,TABLE_USER_GLORY_ARTIKUL,$ref,$add);
+}
+
+function user_glory_artikul_list($ref=false, $add='', $ex = false) {
+    global $db_path;
+    return common_list($db_path,TABLE_USER_GLORY_ARTIKUL,$ref,$add);
+}
+
+function user_glory_artikul_count($ref=false, $add='') {
+    global $db_path;
+    return common_count($db_path, TABLE_USER_GLORY_ARTIKUL, $ref, $add);
+}
+
+function user_glory_artikul_save($param) {
+    global $db_path;
+    return common_save($db_path,TABLE_USER_GLORY_ARTIKUL,$param,FIELD_USER_GLORY_ARTIKUL);
+}
+
+function user_glory_artikul_delete($ref, $add='') {
+    global $db_path;
+    if(!$ref)return false;
+    common_delete($db_path,TABLE_USER_GLORY_ARTIKUL,$ref,$add);
+    return true;
+}
+////////////////////////////////////////
+
+function user_glory_add($user_id, $glory_type_id, $add_glory=0){
+    global $user_glory_artikul_hash;
+    if(!$user_id || !$glory_type_id) return false;
+
+    $glory_artikul = user_glory_artikul_get(array('type_id' => $glory_type_id));
+    if(!$glory_artikul) return false;
+
+    if($add_glory < 0) return false;
+
+    $user_glory = user_glory_get(array('user_id' => $user_id, 'glory_id' => $glory_artikul['id']));
+    if($user_glory['cooldown'] > time_current()){
+        return false;
+    }
+    if(!$user_glory){
+        $user_glory_id = user_glory_save(array(
+            'user_id' => $user_id,
+            'glory_id' => $glory_artikul['id'],
+            'glory' => $add_glory,
+            'ctime' => time_current(),
+            'dtime' => mktime(23,59,59) + 1, //Время удаления такое...
+        ));
+        return $user_glory_id;
+    }else{
+        //Добавляем к текущему
+        if($user_glory['glory'] >= $glory_artikul['glory']) return false;
+        $is_max = ($user_glory['glory'] + $add_glory > $glory_artikul['glory']);
+        $is_max_send = ($user_glory['glory'] + $add_glory >= $glory_artikul['glory']);
+        if($is_max){
+            $add_glory = $add_glory - (($user_glory['glory'] + $add_glory) - $glory_artikul['glory']);
+        }
+        if($is_max_send){
+            chat_msg_send_system('<b>Вы совершили свершение <a class="grnn pointer" onclick="main_frame_set_url(\'/user_event.php?mode=rewards\')">"'.$glory_artikul['title'].'"</a> получите свою награду!</b>', CHAT_CHF_USER, $user_id);
+        }
+        if($add_glory <= 0) return false;
+        return user_glory_save(array(
+            'id' => $user_glory['id'],
+            '_set' => sql_pholder(' glory = glory + ?', $add_glory),
+        ));
+    }
+}
+
+function user_glory_artikul_list_cache(){
+    $cache = new Cache('MAX_USER_GLORY_ARTIKUL_LIST_'.USER_GLORE_CACHE_ID);
+    if (!$cache->isValid() && $cache->tryLock()) {
+        $user_glory_artikul_hash = user_glory_artikul_list(false, ' ORDER BY id ASC');
+        $cache->update($user_glory_artikul_hash, 3600);
+        return $user_glory_artikul_hash;
+    }else{
+        return $cache->get();
+    }
+}
+
+function max_glory_artikul_get(){
+    $cache = new Cache('MAX_USER_GLORY_ARTIKUL_'.USER_GLORE_CACHE_ID);
+    if (!$cache->isValid() && $cache->tryLock()) {
+        $user_glory_artikul_max = user_glory_artikul_get(false, ' ORDER BY glory DESC');
+        $cache->update($user_glory_artikul_max, 3600);
+        return $user_glory_artikul_max;
+    }else{
+        return $cache->get();
+    }
+}
+
+function user_glory_open($user = array()){
+    if(((defined('GLORY_GLOBAL_OPEN_ADMIN') && GLORY_GLOBAL_OPEN_ADMIN) && $user['flags'] & USER_FLAG_ADMIN) || (defined('GLORY_GLOBAL_OPEN') && GLORY_GLOBAL_OPEN)) {
+        return true;
+    }
+    return false;
+}
+
+function user_glory_cron(){
+    //Не нужно удалять! Другая логика!
+    /*$min_glory = user_glory_artikul_get(false, ' ORDER BY id ASC');
+    user_glory_save(array(
+        '_add' => sql_pholder(' AND dtime < ?',time_current()),
+        '_set' => sql_pholder(' glory = 0, progress = ?, dtime= ?',$min_glory['id'], mktime(23,59,59) + 1),
+    ));*/
+}
